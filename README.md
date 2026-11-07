@@ -26,6 +26,7 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
 - [Troubleshooting](#troubleshooting)
 - [Building and developing](#building-and-developing)
 - [Credits](#credits)
+- [License](#license)
 
 ## Requirements
 
@@ -347,3 +348,8 @@ the same key names, and no two actions on one default key. A mod's work in the g
   everyone who contributed: the features, their design, the settings and the default keys.
 - [RS Re-ARMed](https://github.com/bbelgg/rs-rearmed): the Mac build these mods run in, and its runtime headers in
   `include/rs-rearmed` (MIT).
+
+## License
+
+[MIT](LICENSE), for this project's own code. `include/rs-rearmed` is RS Re-ARMed's, under its own MIT license. RSMods has no
+license file, and this license gives no rights to RSMods itself.
