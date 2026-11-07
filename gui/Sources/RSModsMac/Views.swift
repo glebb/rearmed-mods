@@ -435,7 +435,7 @@ struct MiscSettings: View {
                         .foregroundStyle(store.toneHostInstalled ? Color.green : Color.orange)
                     Text(store.toneHostInstalled
                          ? "The game starts it, and it plays the guitar through your plug-in, following the game's tones. The game's own guitar is silent while it runs; the guitar fader and the volume keys still work."
-                         : "Until it is, the game keeps its own tones. Set it up with RS Re-ARMed's tools/tonehost.")
+                         : "Until it is, the game keeps its own tones. Set it up with tonehost in rearmed-mods' source.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

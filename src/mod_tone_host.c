@@ -1,4 +1,4 @@
-// RSMods: your own plug-in in place of the game's tones (ToneHost), with rs-tonehost from RS Re-ARMed playing the guitar.
+// RSMods: your own plug-in in place of the game's tones (ToneHost), with rs-tonehost (tonehost/) playing the guitar.
 // On a tone change the game sets every knob of the gear as a Wwise RTPC by name (Amp_GB38_Gain,
 // Rack_StudioCompressor_Ratio), then the tone's balance and P1_NoiseFloor, all in one go, about two seconds before the
 // change in the songs tried. This collects them and writes one "gear ..." line to the host's FIFO. While the host is

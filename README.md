@@ -235,9 +235,10 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     mods show the frame before it. Checked in the Mac edition, in a window and in full screen; not yet in Learn & Play.
 
 * **Your Own Plug-in (ToneHost)** (not in RSMods)
-  * RS Re-ARMed's `rs-tonehost` plays the guitar through an Audio Unit, such as Helix Native, and follows the game's
-    tones. The game starts the host, and the game's guitar is silent while it runs; the guitar fader and the volume keys
-    still work. Without the host the game keeps its tones. Set it up with `tools/tonehost` in RS Re-ARMed.
+  * `rs-tonehost`, an add-on in [`tonehost`](tonehost/README.md), plays the guitar through an Audio Unit, such as Helix
+    Native, and follows the game's tones. The game starts the host, and the game's guitar is silent while it runs; the
+    guitar fader and the volume keys still work. Without the host the game keeps its tones. It is built from source and
+    isn't in the app: set it up from that folder.
   * `ToneHost`
 
 The hiding mods (loft, headstock, skyline, lyrics, frets, inlays, lane markers) find what they hide in the game's
@@ -317,6 +318,7 @@ src/rsmods_scene.c       the scene graph and render steps: finding and hiding by
 src/mod_*.c              one file per mod
 include/rs-rearmed/      RS Re-ARMed's runtime headers (MIT)
 gui/                     Re-ARMed Mods.app: settings and installer (SwiftUI); build-app.sh --zip makes the release
+tonehost/                rs-tonehost: the add-on that hosts your own plug-in, and its Helix Native setup
 docs/how-it-works.md     how the library works with RS Re-ARMed
 ```
 
