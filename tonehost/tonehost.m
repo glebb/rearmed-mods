@@ -26,6 +26,7 @@
 #include <time.h>
 #include <unistd.h>
 #include "gate_floor.h"
+#include "tone_gain.h"
 
 #define SLOTS 2
 #define MAX_FRAMES 1024
@@ -51,6 +52,7 @@ static _Atomic uint64_t g_ring_write;
 static uint64_t g_ring_read;
 static int g_channel;               // input channel, from 0
 static float g_input_gain = 1.f;
+static float g_gain_offset;  // the commands' thread alone
 static const float *g_block;        // the input of the block being rendered
 static _Atomic int g_target = -1;   // the slot asked for; -1 none
 static int g_current = -1;          // audio thread: the slot playing
@@ -372,14 +374,14 @@ static float number_of(NSDictionary *gear, NSString *suffix, NSString *prefix, N
   return best;
 }
 
-// The game's gain knob of the amp (a Plexi has two), and whether a drive pedal is in the tone, 0 to 1
+// The game's gain knob of the amp (a Plexi has two), 0 to 1, as the song's correction leaves it
 static float amp_gain(NSDictionary *gear) {
   float g = -1;
   for (NSString *k in gear)
     if ([k rangeOfString:@"Amp_"].location != NSNotFound)
       for (NSString *s in g_map[@"gain_knobs"])
         if ([k hasSuffix:s]) g = fmaxf(g, [gear[k] floatValue]);
-  return g < 0 ? 0 : g / 100.f;
+  return g < 0 ? 0 : corrected_gain(g / 100.f, g_gain_offset);
 }
 
 static NSString *pick(NSDictionary *gear) {
@@ -460,6 +462,7 @@ static void use_template(NSString *name, NSDictionary *gear) {
 }
 
 static void command(char *line) {
+  static NSDictionary *last_gear;
   if (!strncmp(line, "gear ", 5)) {
     NSMutableDictionary *gear = [NSMutableDictionary dictionary];
     for (NSString *pair in [[NSString stringWithUTF8String:line + 5] componentsSeparatedByString:@" "]) {
@@ -468,7 +471,14 @@ static void command(char *line) {
     }
     NSString *name = pick(gear);
     say("tone: gain %.2f, balance %s, %lu knobs -> %s", amp_gain(gear), [gear[@"Meter_Tone_Balance_Return"] UTF8String], (unsigned long)gear.count, name.UTF8String);
+    last_gear = gear;
     use_template(name, gear);
+  } else if (!strncmp(line, "offset ", 7)) {  // from RS Companion, as a song loads or its AI answer comes
+    float v = strtof(line + 7, NULL);
+    if (v == g_gain_offset) return;
+    g_gain_offset = v;
+    say("song's gain offset %+.2f", v);
+    if (last_gear) use_template(pick(last_gear), last_gear);  // through the instance nobody hears, like any tone
   } else if (!strncmp(line, "mixer ", 6)) {  // the game's guitar fader, 0 to 100
     float v = strtof(line + 6, NULL);
     atomic_store(&g_mixer_gain, v / 100.f);

@@ -19,7 +19,10 @@ ORDER = ["octave_up", "octave_down", "wah", "fuzz", "metal", "drive", None, "com
 PATH_ONE = 8  # blocks on the first path; the rest go on the second
 TO_PATH_2A = 2  # @output of the first path
 SWITCH = 16  # Audio Unit parameters: knobs 0-15, switches 16-31
-AMP_KNOBS = {"Drive": 0, "Bass": 1, "Mid": 2, "Treble": 3, "Presence": 4}
+AMP_KNOBS = {"Bass": 1, "Mid": 2, "Treble": 3, "Presence": 4}
+GAIN_KNOB = 0
+GAIN = ["Drive", "Gain", "DriveNorm", "Ch1Drive", "Ch2Drive", "Norm Drive"]  # what an amp calls its gain, the first it has
+GAIN_FIRST = {"AmpAguaSledge": "Gain"}  # its Drive is a second stage, at 0 by default
 BLOCK_TYPE = {"drive": 0, "compressor": 0, "chorus": 0, "phaser": 0, "tremolo": 0, "delay": 0, "reverb": 0}
 
 
@@ -70,7 +73,8 @@ def preset(name, amp, base, M, gear):
             d["cab0"].update(defaults(cab))
             blocks["dsp0"][key] = True
             have = defaults(m)
-            for p, k in AMP_KNOBS.items():
+            gain = GAIN_FIRST.get(amp) or next(p for p in GAIN if p in have)
+            for p, k in {gain: GAIN_KNOB, **AMP_KNOBS}.items():
                 if p in have:
                     assign[k] = {"@param": "dsp0.%s.%s" % (key, p), "@min": 0, "@max": 1}
                     knob_default[str(k)] = have[p]

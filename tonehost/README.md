@@ -101,7 +101,12 @@ The mod looks for the FIFO at `~/Library/Application Support/RS Re-ARMed/tonehos
 setlist with one preset per Helix amp and the rules, from Line 6's model files in the install, and `capture_states.m`
 saves each preset's state after a one-time import. The setlist isn't needed after that.
 
-Commands on the FIFO: `gear KEY=VALUE ...` and `mixer VALUE` from the mod, `use TEMPLATE`, `mute` and `quit` by hand.
+Commands on the FIFO: `gear KEY=VALUE ...` and `mixer VALUE` from the mod, `offset VALUE` from
+[RS Companion](https://github.com/glebb/rs-mac-companion), `use TEMPLATE`, `mute` and `quit` by hand.
+
+`offset` is how much too hot a song's tones are against its record, in thirds of the gain knob: an AI's answer, 0 if there
+is none. It comes as a song loads, and lowers `amp_gain` for a tone at a third or more, so clean parts stay as they are. A
+change takes the tone in play through the instance nobody hears, as any tone change does.
 
 ## What is measured, and what isn't
 

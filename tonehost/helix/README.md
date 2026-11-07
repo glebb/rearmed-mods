@@ -35,7 +35,7 @@ Every preset is the same chain, so knobs and switches mean the same everywhere. 
 | 1 | Fuzz | Triangle Fuzz | 19 | 8 Sustain |
 | 1 | Metal | Swedish Chainsaw | 20 | 14 Drive |
 | 1 | Drive | Minotaur | 21 | 5 Gain, 6 Tone |
-| 1 | Amp and cab | from `gear.json`, Helix's default cab | | 0 Drive, 1 Bass, 2 Mid, 3 Treble, 4 Presence |
+| 1 | Amp and cab | from `gear.json`, Helix's default cab | | 0 the amp's gain, 1 Bass, 2 Mid, 3 Treble, 4 Presence |
 | 1 | Compressor | Deluxe Comp, 4:1 | 22 | 7 Threshold |
 | 2 | Chorus | Chorus | 23 | 10 Mix |
 | 2 | Flanger | Gray Flanger | 24 | 9 Rate |
@@ -52,6 +52,9 @@ A pedal stands ahead of the amp even where the game has it after the amp, as a `
 takes effect: rendered both ways, it makes no difference.
 
 Left out on purpose: the game's EQs. Not mapped: the acoustic emulator, Lo-Fi Filter, its noise gate, pitch shifters.
+
+An amp's gain isn't always called Drive: Fullerton and Grammatico have DriveNorm, Matchstick Ch1Drive and Ch2Drive, US Dripman
+Norm Drive, Mandarin Bass and Agua Sledge Gain. An amp's model lacks some knobs too, and those stay as they are.
 
 ## Helix's files
 
