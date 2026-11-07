@@ -32,7 +32,7 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
 
 - An Apple Silicon Mac with **RS Re-ARMed 1.5.1 or later** installed. The library is built on what 1.5.1 brought, the
   game's functions and data by name, so one file runs on both editions. With an older version it doesn't load.
-- The string, note and highway colors need the RS Re-ARMed release after 1.8.0, which has the game's color table by name
+- The string, note and highway colors need RS Re-ARMed 1.9.0, which has the game's color table by name
   and the render API, and the note and highway colors need its Metal renderer. Without them those mods stay off and the
   rest works. Sunlight needs the Metal renderer too.
 - macOS 13 or later for the app.
@@ -267,7 +267,7 @@ These RSMods features need no mod, as RS Re-ARMed has them itself, on both editi
 
 - **Fast Load**: the game starts with no intro screens.
 - **Enumerate**: ENUMERATE in the main menu, in place of SHOP, adds new songs with no restart.
-- **Exit Game**: EXIT GAME in the main menu, in place of UPLAY. From the RS Re-ARMed release after 1.8.0, with **Refresh
+- **Exit Game**: EXIT GAME in the main menu, in place of UPLAY. From RS Re-ARMed 1.9.0, with **Refresh
   Game Files** after updating.
 - **Direct Connect Mode**: DIRECT CONNECT in the INPUT setting and on the cable screen, for any audio interface.
 

@@ -474,7 +474,7 @@ struct ColorsTab: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text("The notes follow the strings unless Separate Note Colors is on. Rainbow Strings and Rainbow Notes turn on with their keys. These need RS Re-ARMed after 1.8.0; the note and highway colors need its Metal renderer too.")
+                Text("The notes follow the strings unless Separate Note Colors is on. Rainbow Strings and Rainbow Notes turn on with their keys. These need RS Re-ARMed 1.9.0; the note and highway colors need its Metal renderer too.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

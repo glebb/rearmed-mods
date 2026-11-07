@@ -78,7 +78,7 @@ The mod looks for the FIFO at `~/Library/Application Support/RS Re-ARMed/tonehos
   as the game's does.
   Input and output on one device give the lowest latency: one callback and nothing held between them. A virtual device
   such as Loopback adds a hop. `buffer` can go below the 128 the game's input works in: the game collects what comes,
-  from RS Re-ARMed after 1.8.0, and the host sets its size again if something changes it.
+  from RS Re-ARMed 1.9.0, and the host sets its size again if something changes it.
 - `gate` works on the input after `gain_db`, ahead of the plug-in; leave it out for none. It learns the guitar's noise,
   the quietest 100 ms lately, and opens `margin_db` above it, kept between `min_db` and `max_db`. A tone's gain moves it
   from loose to tight: `tight_db` more threshold, and `hold_ms` and `release_ms` from their first value to the second. A

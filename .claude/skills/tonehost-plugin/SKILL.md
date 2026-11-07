@@ -52,7 +52,7 @@ Start at level 1, play it, and go further only if the player asks.
   with no error. Check that `netguard.log` starts with `mode=block`. A plug-in's window may try the network; the guard refuses it
   and Helix carries on. Never turn the guard off to make a plug-in work without asking the maintainer.
 - **Notes stop registering** below 128 frames on a device the game also reads: that needs the game build with the input change
-  (after 1.8.0). A device has one buffer size, and the last to set it wins.
+  (from 1.9.0). A device has one buffer size, and the last to set it wins.
 - **Too loud after going straight to a device.** Sound sent to a device directly skips a virtual device's volume. The host
   follows the system output's volume anyway, unless `ignore_system_volume` is set.
 - **Doubled sound, dry under wet.** Check the plug-in by sending a high tone through it: a dry path passes it at full level.

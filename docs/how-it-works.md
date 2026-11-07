@@ -30,7 +30,7 @@ Instead, RS Re-ARMed gives mods these ways in, the same in both its apps (the Ma
   back, on whichever renderer the game uses (Metal by default since 1.3.0, or OpenGL). A mod may not call the
   graphics API itself.
 
-- **A render API** (from the release after 1.8.0). libRSOpenGL exports `shims/include/rs_render.h`: a mod makes a rule for a game
+- **A render API** (from 1.9.0). libRSOpenGL exports `shims/include/rs_render.h`: a mod makes a rule for a game
   texture by its size and the hash of what the game uploads, and gives pixels to draw in its place, or hides the draws that use it. The game's texture is
   left alone. It is on Metal alone, and needs no hook point.
 
