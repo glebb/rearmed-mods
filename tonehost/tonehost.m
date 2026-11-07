@@ -25,6 +25,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include "gate_floor.h"
 
 #define SLOTS 2
 #define MAX_FRAMES 1024
@@ -68,7 +69,8 @@ static _Atomic int g_standby = -1;  // the slot being made ready; it renders tho
 // there is depends on the guitar, so it learns that: the floor is the quietest 100 ms lately, and the gate opens a margin
 // above it. How tight it is depends on the tone: a clean tone keeps its note tails, a high-gain one stops between riffs.
 static int g_gate_on;
-static float g_gate_env, g_gate_gain = 1.f, g_gate_attack, g_floor_db = -70.f, g_window_peak;
+static float g_gate_env, g_gate_gain = 1.f, g_gate_attack, g_window_peak;
+static gate_floor_t g_floor = {.db = -70.f};
 static float g_gate_margin = 12.f, g_gate_tight_db = 8.f, g_gate_min = -72.f, g_gate_max = -40.f;
 static uint32_t g_gate_hold_left, g_window_left;
 static int g_gate_is_open;
@@ -191,7 +193,7 @@ static void render_slot(slot_t *s, UInt32 n) {
 static void gate(float *x, UInt32 n) {
   if (!g_gate_on) return;
   float tight = atomic_load_explicit(&g_tightness, memory_order_relaxed);
-  float open_db = fminf(fmaxf(g_floor_db + g_gate_margin + tight * g_gate_tight_db, g_gate_min), g_gate_max);
+  float open_db = fminf(fmaxf(g_floor.db + g_gate_margin + tight * g_gate_tight_db, g_gate_min), g_gate_max);
   open_db = fmaxf(open_db, atomic_load_explicit(&g_gate_at_least, memory_order_relaxed));
   atomic_store_explicit(&g_open_db, open_db, memory_order_relaxed);
   float open = powf(10.f, open_db / 20.f), close = open * 0.5f;
@@ -200,10 +202,8 @@ static void gate(float *x, UInt32 n) {
   for (UInt32 i = 0; i < n; i++) {
     float a = fabsf(x[i]);
     if (a > g_window_peak) g_window_peak = a;
-    if (!g_window_left--) {  // 100 ms done: the floor falls at once and rises quickly, but not under a note
-      float db = 20.f * log10f(g_window_peak + 1e-9f);
-      if (db < g_floor_db) g_floor_db = fmaxf(db, -85.f);
-      else if (db < open_db + 6.f) g_floor_db = fminf(fminf(g_floor_db + 0.3f, db), -45.f);  // no note: 3 dB a second
+    if (!g_window_left--) {
+      gate_floor_window(&g_floor, 20.f * log10f(g_window_peak + 1e-9f), open_db);
       g_window_peak = 0;
       g_window_left = (uint32_t)(RATE / 10);
     }
@@ -557,7 +557,7 @@ int main(int argc, char **argv) { @autoreleasepool {
     float i, o;
     memcpy(&i, &a, 4);
     memcpy(&o, &b, 4);
-    say("peak in %.1f dB, out %.1f dB, floor %.1f dB, gate %.1f dB, late %u, empty %u", 20 * log10f(i + 1e-9f), 20 * log10f(o + 1e-9f), g_floor_db,
+    say("peak in %.1f dB, out %.1f dB, floor %.1f dB, gate %.1f dB, late %u, empty %u", 20 * log10f(i + 1e-9f), 20 * log10f(o + 1e-9f), g_floor.db,
         atomic_load(&g_open_db), atomic_load(&g_late_blocks), atomic_load(&g_empty_blocks));
   });
   dispatch_resume(meter);
