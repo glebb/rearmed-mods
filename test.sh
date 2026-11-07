@@ -8,7 +8,9 @@ cc="clang -arch arm64 -g -Wall -Wno-unused-function -I$here/src -I$here/include/
 
 $cc "$here/tests/test_ini.c" "$here/src/rsmods_ini.c" -o "$out/test_ini"
 $cc "$here/tests/test_sunlight.c" -lobjc -framework CoreFoundation -framework CoreGraphics -o "$out/test_sunlight"
+$cc "$here/tests/test_colors.c" -o "$out/test_colors"
 "$out/test_ini"
+"$out/test_colors"
 "$out/test_sunlight"
 
 cd "$here/gui"

@@ -1,14 +1,13 @@
-// RSMods: custom string and note colors (ExtendedRangeMod.cpp, CollectColors.cpp), rainbow strings and notes
-// (RainbowNotesMod.cpp) and custom highway colors (CustomHighwayColorsMod.cpp).
+// Custom string and note colors, rainbow strings and notes, and custom highway colors: RSMods' features, with its
+// settings, written for this build.
 //
-// The strings: as on Windows, the colors in the game's own table. GameColorManager (game_color_manager) has pointers to
+// The strings: the colors in the game's own table. GameColorManager (game_color_manager) has pointers to
 // three floats (game_color_table): six strings for each kind of color, in two banks, normal and colorblind. Both banks are
 // written here, each with its own set, and every frame, as the game can load the table again. What it had is put back
 // when a mod is turned off.
 //
-// The notes and the highway: Windows gives Direct3D a texture of its own in the draws of certain meshes. The game
-// colors these through small palette textures, so here the palettes themselves are replaced, through RS Re-ARMed's render
-// API (rs_render.h), with what Windows draws: the gradient of D3D.cpp, a row per color, black to the color at 40% to white.
+// The notes and the highway: the game colors these through small palette textures, so the palettes themselves are
+// replaced, through RS Re-ARMed's render API (rs_render.h): a row per color, from black through the color to white.
 //
 //   notes      two 256x128 ramps, 16 rows: the six strings and two inactive rows, then the same for colorblind mode. One
 //              has heads, tails and open strings, the other the indicators
@@ -24,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "color_math.h"
 #include "rs_render.h"
 #include "rsmods.h"
 
@@ -45,7 +45,7 @@ static const struct {
     [FRET_NUMBERS] = {512, 32, 0xa2d05469a96005e4ull, 0x96b53f954f4db8dbull},
 };
 
-// Settings.hpp: the game's own colors, a row for each string and for the two inactive rows
+// The game's own colors, a row for each string and for the two inactive rows
 static const char *const DEFAULT_N[8] = {"FF4F5A", "E2C102", "1DACF9", "FF9216", "3FCC0C", "C825ED", "0ABCB9", "909090"};
 static const char *const DEFAULT_CB[8] = {"C12A2A", "A3F400", "1DACF9", "DB7F41", "00C68E", "7648A8", "493647", "4C4C4C"};
 
@@ -77,17 +77,15 @@ static int parse_color(const char *hex, color *c) {
   return 1;
 }
 
-// D3D.cpp's CreateGradientBitmap for one row: black, the color at 40%, white, and the last three pixels white
+// A row of a palette, with white at the very end, where the game's palettes have their highlight
 static void gradient_row(uint8_t *row, int w, color c) {
   for (int x = 0; x < w; x++, row += 4) {
     float t = (float)x / (float)(w - 1);
-    float k = t < 0.4f ? t / 0.4f : (t - 0.4f) / 0.6f;
-    int white = t >= 0.4f;
-    row[0] = (uint8_t)(white ? c.r + (255 - c.r) * k : c.r * k);
-    row[1] = (uint8_t)(white ? c.g + (255 - c.g) * k : c.g * k);
-    row[2] = (uint8_t)(white ? c.b + (255 - c.b) * k : c.b * k);
+    int end = x >= w - 3;
+    row[0] = end ? 255 : ramp_channel(c.r, t);
+    row[1] = end ? 255 : ramp_channel(c.g, t);
+    row[2] = end ? 255 : ramp_channel(c.b, t);
     row[3] = 255;
-    if (x >= w - 3) row[0] = row[1] = row[2] = 255;
   }
 }
 
@@ -119,7 +117,7 @@ static void read_rows(const char *prefix, color *rows) {
   }
 }
 
-// ExtendedRangeMod::UpdateNoteTexture
+// The notes take the string colors, their own colors or the game's, by the settings
 static void apply_notes(void) {
   const char *custom = rsm_get("Toggle Switches", "CustomStringColors");
   long mode = rsm_long("SeparateNoteColorsMode", 0);
@@ -164,36 +162,28 @@ static void apply_highway(void) {
   replace_single(FRET_NUMBERS, "CustomFretNubmers");  // the key's name on Windows
 }
 
-// RSColor::setH, with the same clamp as ClampColorComponents
-static uint8_t hue_channel(float v) {
-  if (v > 1.0f) v = 1.0f;
-  if (v < 0.0f) v = -v;
-  return (uint8_t)(v * 255.0f);
+#define RAINBOW_DEGREES_PER_SECOND 120.0f  // a turn in three seconds
+#define RAINBOW_STRING_STEP 24.0f          // the six strings across a third of the wheel
+
+static rgb rainbow_rgb(double now, int string) {
+  float hue = (float)fmod(now * RAINBOW_DEGREES_PER_SECOND, 360.0) + RAINBOW_STRING_STEP * (float)string;
+  return to_rgb((hsl){hue, 1.0f, 0.5f});
 }
 
-static color hue_color(float degrees) {
-  float rad = degrees * (float)M_PI / 180.0f, u = cosf(rad), w = sinf(rad);
-  color c = {hue_channel(0.299f + 0.701f * u + 0.168f * w), hue_channel(0.299f - 0.299f * u - 0.328f * w),
-             hue_channel(0.299f - 0.300f * u + 1.250f * w)};
-  return c;
-}
-
-// As RainbowWorker: 2 degrees every 16 ms, a turn in about three seconds
-static float rainbow_hue(double now) { return fmodf((float)now * 125.0f, 360.0f); }
-
-// ERMode::GenerateRainbowTextures: the strings 20 degrees apart, the two inactive rows as the last string, and the same for
-// colorblind mode.
+// Each string a step further round, the two inactive rows as the last string, and the same for colorblind mode
 static void apply_rainbow(double now) {
-  float h = rainbow_hue(now);
   color rows[RAMP_ROWS];
-  for (int i = 0; i < 8; i++) rows[i] = rows[8 + i] = hue_color(h + 20.0f * (float)(i < 6 ? i : 5));
+  for (int i = 0; i < 8; i++) {
+    rgb c = rainbow_rgb(now, i < 6 ? i : 5);
+    rows[i] = rows[8 + i] = (color){(uint8_t)(c.r * 255.0f), (uint8_t)(c.g * 255.0f), (uint8_t)(c.b * 255.0f)};
+  }
   set_ramps(rows);
 }
 
 // ------------------------------------------------------------------------------------------------
 // The strings
 // ------------------------------------------------------------------------------------------------
-// StringState.h: the kinds of color, by their order in the table
+// The kinds of color, by their order in the game's table
 enum {
   ST_ENABLED = 1,
   ST_DISABLED = 2,
@@ -208,17 +198,14 @@ enum {
 };
 enum { BANK_ENTRIES = 0xa8, STRINGS = 6, BANKS = 2 };
 
-typedef struct {
-  float r, g, b;
-} rgb;
-
 static const int CUSTOM_STATES[] = {ST_ENABLED,       ST_DISABLED, ST_GLOW,      ST_PEGS_TUNING, ST_PEGS_IN_TUNE,
                                     ST_PEGS_OUT_TUNE, ST_TEXT,     ST_BODY_NORM, ST_BODY_ACC};
 #define NCUSTOM ((int)(sizeof CUSTOM_STATES / sizeof CUSTOM_STATES[0]))
 static const int RAINBOW_STATES[] = {ST_ENABLED, ST_GLOW, ST_DISABLED};
 
 static rgb g_custom[BANKS][NCUSTOM][STRINGS];
-static int g_custom_on;
+static color g_custom_from[BANKS][STRINGS];  // the player's colors, what g_custom is made from
+static int g_custom_on, g_custom_stale;
 static rgb g_saved[BANKS][ST_COUNT][STRINGS];
 static const char *g_saved_for;  // the manager g_saved is of; NULL: nothing written since the last restore
 
@@ -235,57 +222,18 @@ static float *string_color(const char *mgr, int bank, int state, int string) {
   return rc_mod_ptr(mgr + RC_OFF(game_color_table) + (size_t)i * (size_t)rc_guest_ptr_size);
 }
 
-// CollectColors::RGB2HSL, with grey as hue and saturation 0
-static void rgb_to_hsl(rgb c, int *h, float *s, float *l) {
-  float lo = fminf(c.r, fminf(c.g, c.b)), hi = fmaxf(c.r, fmaxf(c.g, c.b)), d = hi - lo, f;
-  *l = (lo + hi) / 2;
-  *h = 0;
-  *s = 0;
-  if (d == 0.0f) return;
-  *s = *l <= 0.5f ? d / (lo + hi) : d / (2 - hi - lo);
-  f = c.r == hi ? (c.g - c.b) / d : c.g == hi ? 2 + (c.b - c.r) / d : 4 + (c.r - c.g) / d;
-  *h = (int)(60 * f);
-  if (*h < 0) *h += 360;
-}
-
-// CollectColors::HSL2RGB, with the hue brought into range: Windows' hue + 5 can pass 360 or go below 0
-static rgb hsl_to_rgb(int hue, float s, float l) {
-  rgb c = {0, 0, 0};
-  float v = l <= 0.5f ? l * (1 + s) : l + s - l * s;
-  if (v <= 0) return c;
-  float h = (float)(((hue % 360) + 360) % 360) / 60.0f, lo = 2 * l - v, sv = (v - lo) / v;
-  int sextant = (int)h;
-  float vsf = v * sv * (h - (float)sextant), mid1 = lo + vsf, mid2 = v - vsf;
-  switch (sextant) {
-    case 0: c = (rgb){v, mid1, lo}; break;
-    case 1: c = (rgb){mid2, v, lo}; break;
-    case 2: c = (rgb){lo, v, mid1}; break;
-    case 3: c = (rgb){lo, mid2, v}; break;
-    case 4: c = (rgb){mid1, lo, v}; break;
-    default: c = (rgb){v, lo, mid2}; break;
-  }
-  return c;
-}
-
-// ERMode::GetCustomColors: what each kind of color is made from a string's color. (Windows looks the two note body colors
-// up by a name it doesn't have, so they come out red there; here they are what CollectColors has for them.)
-static void derive_colors(int bank, int string, color from) {
-  int cb = bank == 1, h;
-  float s, l;
-  rgb c = {from.r / 255.0f, from.g / 255.0f, from.b / 255.0f};
-  rgb_to_hsl(c, &h, &s, &l);
-  const rgb out[NCUSTOM] = {
-      c,
-      hsl_to_rgb(h, s - (cb ? 0.428f : 0.144f), l / (cb ? 2.812f : 3.136f)),
-      hsl_to_rgb(h - 4, 1.0f, 0.5f),
-      hsl_to_rgb(h, 1.0f, 0.25f),
-      hsl_to_rgb(h + (cb ? -1 : 4), 1.0f, 0.349f),
-      hsl_to_rgb(0, 0.0f, 1.0f),
-      hsl_to_rgb(h + (cb ? 2 : 3), 1.0f, cb ? 0.624f : 0.625f),
-      cb ? c : hsl_to_rgb(h + 5, 1.0f, 0.5f),
-      cb ? hsl_to_rgb(0, 0.0f, 1.0f) : hsl_to_rgb(h + 3, 0.909f, 0.761f),
-  };
-  for (int i = 0; i < NCUSTOM; i++) g_custom[bank][i][string] = out[i];
+// Every kind of color for the player's string colors, from what the game has for its own (g_saved)
+static void derive_colors(void) {
+  for (int b = 0; b < BANKS; b++)
+    for (int i = 0; i < STRINGS; i++) {
+      color from = g_custom_from[b][i];
+      rgb c = {from.r / 255.0f, from.g / 255.0f, from.b / 255.0f};
+      for (int k = 0; k < NCUSTOM; k++) {
+        int state = CUSTOM_STATES[k];
+        g_custom[b][k][i] = state == ST_ENABLED ? c : restyle(c, g_saved[b][ST_ENABLED][i], g_saved[b][state][i]);
+      }
+    }
+  g_custom_stale = 0;
 }
 
 static void read_custom_strings(void) {
@@ -294,9 +242,10 @@ static void read_custom_strings(void) {
   g_custom_on = custom && atoi(custom) == 2;
   read_rows("string", rows);
   for (int i = 0; i < STRINGS; i++) {
-    derive_colors(0, i, rows[i]);
-    derive_colors(1, i, rows[8 + i]);
+    g_custom_from[0][i] = rows[i];
+    g_custom_from[1][i] = rows[8 + i];
   }
+  g_custom_stale = 1;
 }
 
 static void save_strings(const char *mgr) {
@@ -327,13 +276,14 @@ static void apply_strings(double now) {
     if (g_saved_for) restore_strings(mgr);
     return;
   }
-  if (g_saved_for != mgr) save_strings(mgr);
+  if (g_saved_for != mgr) {
+    save_strings(mgr);
+    g_custom_stale = 1;
+  }
+  if (g_custom_on && g_custom_stale) derive_colors();
   rgb rainbow[STRINGS];
   if (g_rainbow_strings)
-    for (int i = 0; i < STRINGS; i++) {
-      color c = hue_color(rainbow_hue(now) + 20.0f * (float)i);
-      rainbow[i] = (rgb){c.r / 255.0f, c.g / 255.0f, c.b / 255.0f};
-    }
+    for (int i = 0; i < STRINGS; i++) rainbow[i] = rainbow_rgb(now, i);
   for (int b = 0; b < BANKS; b++)
     for (int i = 0; i < STRINGS; i++) {
       if (g_custom_on)

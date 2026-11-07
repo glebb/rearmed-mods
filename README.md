@@ -202,8 +202,7 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * The strings and what the game makes from them (glow, inactive, tuning pegs, text), for normal and colorblind
     mode. The notes follow unless they have their own colors.
   * `CustomStringColors = 2`, `[String Colors]` `string0_N` to `string5_N`, `string0_CB` to `string5_CB` (RRGGBB)
-  * Different: the two note body colors are what RSMods' color tables give; on Windows a lookup by the wrong name
-    makes them red.
+  * Different: each kind of color is made from your color as the game makes its own, from the game's table.
 
 * **Separate Note Colors**
   * The notes get their own colors.
@@ -340,7 +339,7 @@ and its mod stays off.
 ./test.sh
 ```
 
-runs the library's tests (`tests/`: `RSMods.ini`, key names, Sunlight's colors) and the app's (`gui/Tests`: settings, install
+runs the library's tests (`tests/`: `RSMods.ini`, key names, the color maths, Sunlight's colors) and the app's (`gui/Tests`: settings, install
 and update for both editions). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,
 the same key names, and no two actions on one default key. A mod's work in the game is checked by playing it.
 
