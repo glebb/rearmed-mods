@@ -55,6 +55,10 @@ Start at level 1, play it, and go further only if the player asks.
   (from 1.9.0). A device has one buffer size, and the last to set it wins.
 - **Too loud after going straight to a device.** Sound sent to a device directly skips a virtual device's volume. The host
   follows the system output's volume anyway, unless `ignore_system_volume` is set.
+- **Crackles only while the game has focus.** macOS Game Mode: an app with a game category in full screen gets it, and the host
+  then misses its audio deadlines. `late` and `empty` in `host.log` stay 0; look for `Overload` in coreaudiod's log, and for
+  `Game mode status` in gamepolicyd's. `LSSupportsGameMode` false alone didn't stop it; `LSApplicationCategoryType`
+  `public.app-category.music` did, with it. A game built before that change needs it in its Info.plist, re-signed.
 - **Doubled sound, dry under wet.** Check the plug-in by sending a high tone through it: a dry path passes it at full level.
   Otherwise look at the interface, whose own preset or direct monitoring feeds the same outputs.
 - **Scripted game tests.** `start.sh` in the test rig kills any running game: never run it while the player is playing. No builds
