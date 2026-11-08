@@ -19,7 +19,8 @@ An amp that sounds wrong: change its line in `gear.json`, `"Amp_GB38": "AmpBritJ
 in `HX_ModelCatalog.json` in `/Library/Application Support/Line 6/Helix Native/res`; drop `HD2_` from the id. Then run `setup.sh`:
 a Helix amp not used so far needs a new preset, so it takes the import again. Moving a game amp to a Helix amp already in use
 needs only `make_presets.py` and `make_config.py`, as the states are kept by Helix amp. The names of disguised amps are a best
-guess, and the cab is always Helix's default for the amp, whatever the song has.
+guess, and the cab is always Helix's default for the amp, whatever the song has. A Helix preamp, `Preamp...`, has no cab, and
+`amp_set` sets its parameters, as `MicLine` for Studio Tube Pre.
 
 `high_gain` lists Helix amps that get less input and drive for the same knob, and a tighter gate.
 
@@ -29,29 +30,41 @@ Every preset is the same chain, so knobs and switches mean the same everywhere. 
 
 | Path | Block | Model | Switch | Knobs |
 |---|---|---|---|---|
-| 1 | Octave up | Simple Pitch, +12, mix 50% | 16 | |
+| 1 | Octave up | Simple Pitch, +12 | 16 | 9 Mix |
 | 1 | Octave down | Simple Pitch, -12, mix 50% | 17 | |
 | 1 | Wah | Auto Filter: there is no pedal to rock | 18 | |
 | 1 | Fuzz | Triangle Fuzz | 19 | 8 Sustain |
 | 1 | Metal | Swedish Chainsaw | 20 | 14 Drive |
 | 1 | Drive | Minotaur | 21 | 5 Gain, 6 Tone |
-| 1 | Amp and cab | from `gear.json`, Helix's default cab | | 0 the amp's gain, 1 Bass, 2 Mid, 3 Treble, 4 Presence |
+| 1 | Amp and cab | from `gear.json`, Helix's default cab; a preamp has none | | 0 the amp's gain, 1 Bass, 2 Mid, 3 Treble, 4 Presence |
 | 1 | Compressor | Deluxe Comp, 4:1 | 22 | 7 Threshold |
-| 2 | Chorus | Chorus | 23 | 10 Mix |
-| 2 | Flanger | Gray Flanger | 24 | 9 Rate |
-| 2 | Phaser | Script Mod Phase | 25 | |
-| 2 | Tremolo | Optical Trem | 26 | |
-| 2 | Delay | Simple Delay | 27 | 11 Time, 12 Feedback, 13 Mix |
-| 2 | Reverb | Plate | 28 | 15 Mix |
+| 2 | Acoustic | Acoustic Sim, mode 2 | 23 | 1 Body, 3 Top, with Studio Tube Pre only |
+| 2 | Chorus | Chorus | 24 | 10 Mix |
+| 2 | Flanger | Gray Flanger, rate 0.25 | 25 | |
+| 2 | Phaser | Script Mod Phase | 26 | |
+| 2 | Tremolo | Optical Trem | 27 | |
+| 2 | Delay | Simple Delay | 28 | 11 Time, 12 Feedback, 13 Mix |
+| 2 | Reverb | Plate | 29 | 15 Mix |
 
-All sixteen knobs are in use, so a new one has to replace another. Parameters 32 and 33 are Master Input and Output Level, in dB;
-32 is how hard a tone hits the amp. It follows a rule from fits on a few tones, not a measurement of each amp. With a drive pedal
-it rises faster; with fuzz or metal it doesn't, as those distort plenty themselves. That hasn't been compared with the game.
+All sixteen knobs are in use, so a new one has to replace another. The octave up's mix took the flanger's rate: the game's
+octave mixes go from 1 to 100, a faint shimmer on an acoustic to a whole octave lead, and a fixed 50% made the first kind
+a loud second voice; the flanger is on fewer tones, and its rate stays at their median. The octave down still mixes 50%.
+Parameters 32 and 33 are Master Input and Output Level, in dB; 32 is how hard a tone hits the amp. It follows a rule from fits
+on a few tones, not a measurement of each amp. With a drive pedal it rises faster; with fuzz or metal it doesn't, as those
+distort plenty themselves. That hasn't been compared with the game.
 
 A pedal stands ahead of the amp even where the game has it after the amp, as a `PostPedal`. A knob set together with its switch
 takes effect: rendered both ways, it makes no difference.
 
-Left out on purpose: the game's EQs. Not mapped: the acoustic emulator, Lo-Fi Filter, its noise gate, pitch shifters.
+An acoustic tone in the game is its Acoustic Emulator pedal, nearly always into the Tube Pre DI and a full-range PA cab. That
+became Helix's bass amp and its 1x15, with nothing for the emulator: a dull electric. Now the DI preamps are Studio Tube Pre
+with no cab, and the emulator switches on Acoustic Sim, in mode 2 as Line 6's own acoustic presets have it. Studio Tube Pre has
+no tone knobs, so its preset gives knobs 1 and 3 to the sim's Body and Top, from the emulator's Body and Tone: a spare knob,
+`spare_knobs` in `gear.json`, with the rule in that template alone. With a guitar amp, as about one acoustic tone in eight
+has, the sim keeps Helix's default Body and Top and sits after the cab. None of it has been compared with the game, mode and
+shimmer included, and the DI Tube Pre's own EQ is left out, as the game's EQs are.
+
+Left out on purpose: the game's EQs. Not mapped: Lo-Fi Filter, its noise gate, pitch shifters.
 
 An amp's gain isn't always called Drive: Fullerton and Grammatico have DriveNorm, Matchstick Ch1Drive and Ch2Drive, US Dripman
 Norm Drive, Mandarin Bass and Agua Sledge Gain. An amp's model lacks some knobs too, and those stay as they are.
@@ -70,8 +83,9 @@ Norm Drive, Mandarin Bass and Agua Sledge Gain. An amp's model lacks some knobs 
   per knob. An enum such as the compressor's Ratio is its index, 0-5.
 - **Audio Unit parameters** 0-15 are the knobs, 16-31 the switches, 32 Master Input, 33 Master Output, 34 Master Bypass, 36 Snapshot
   Index. A knob's value from a state isn't reported: set every knob you rely on after loading one.
-- **Paths.** A path holds eight blocks; an amp and its cab take one. `dsp0.outputA["@output"] = 2` sends path 1 to path 2A. In
-  the editor brackets round a block's name mean it has a bypass control; a dim block is off.
+- **Paths.** A path holds eight blocks; an amp and its cab take one. An amp with its cab is `@type` 3 with `"@cab": "cab0"`,
+  a preamp `@type` 1 with no cab, the rest 0. `dsp0.outputA["@output"] = 2` sends path 1 to path 2A. In the editor brackets
+  round a block's name mean it has a bypass control; a dim block is off.
 - **Snapshots** list `blocks` per `dsp`, which set what is on: keep them in step with `@enabled`.
 - **Preset recall by MIDI** works in the Audio Unit only, not VST3: CC 32 picks the setlist, 6 being USER 5, then Program Change.
   A change takes up to half a second and dips, so never on the instance being heard.

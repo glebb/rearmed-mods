@@ -7,7 +7,8 @@ OUTDIR gets setlist.hls, one preset per Helix amp to import once, and tones.json
 presets in order and the rules from the game's knobs to parameters. Every value not set here is Line 6's default, read
 from the install, and nothing of Line 6's is kept in the repository. Each preset is the same chain, so the knobs and
 switches mean the same everywhere: octave up and down, wah, fuzz, metal, drive, amp and its default cab, compressor, then
-chorus, flanger, phaser, tremolo, delay and reverb on the second path, as a path has room for eight blocks. README.md has
+acoustic sim, chorus, flanger, phaser, tremolo, delay and reverb on the second path, as a path has room for eight blocks.
+A Helix preamp in place of an amp has no cab, and knobs it has no use for can go to a block's spare_knobs. README.md has
 what was learned about Helix's files.
 """
 import base64, json, os, sys, time, zlib
@@ -15,14 +16,15 @@ import base64, json, os, sys, time, zlib
 RES = "/Library/Application Support/Line 6/Helix Native/res"
 NATIVE = 2162944  # Helix Native in Helix compatibility mode
 ORDER = ["octave_up", "octave_down", "wah", "fuzz", "metal", "drive", None, "compressor",  # None: the amp
-         "chorus", "flanger", "phaser", "tremolo", "delay", "reverb"]
+         "acoustic", "chorus", "flanger", "phaser", "tremolo", "delay", "reverb"]
 PATH_ONE = 8  # blocks on the first path; the rest go on the second
 TO_PATH_2A = 2  # @output of the first path
 SWITCH = 16  # Audio Unit parameters: knobs 0-15, switches 16-31
 AMP_KNOBS = {"Bass": 1, "Mid": 2, "Treble": 3, "Presence": 4}
 GAIN_KNOB = 0
 GAIN = ["Drive", "Gain", "DriveNorm", "Ch1Drive", "Ch2Drive", "Norm Drive"]  # what an amp calls its gain, the first it has
-GAIN_FIRST = {"AmpAguaSledge": "Gain"}  # its Drive is a second stage, at 0 by default
+GAIN_FIRST = {"AmpAguaSledge": "Gain",  # its Drive is a second stage, at 0 by default
+              "PreampVintagePre": "Input"}  # Studio Tube Pre: a mic pre, its gain called Input
 BLOCK_TYPE = {"drive": 0, "compressor": 0, "chorus": 0, "phaser": 0, "tremolo": 0, "delay": 0, "reverb": 0}
 
 
@@ -58,19 +60,24 @@ def preset(name, amp, base, M, gear):
     d["outputA"]["@output"] = TO_PATH_2A
     second["inputA"]["@input"] = 0
     second["outputA"]["@output"] = 1
-    assign, knob_default, blocks = [None] * (SWITCH + 13), {}, {"dsp0": {}, "dsp1": {}}
+    assign, knob_default, blocks = [None] * (SWITCH + 16), {}, {"dsp0": {}, "dsp1": {}}
+    lent = []  # rules for the knobs a block took over from this preset's amp
     sw = 0
     for index, kind in enumerate(ORDER):
         dsp_name, pos = ("dsp0", index) if index < PATH_ONE else ("dsp1", index - PATH_ONE)
         key = "block%d" % pos
         if kind is None:
             m = M["HD2_" + amp]
-            a = block(m, pos, True, {"@type": 3, "@cab": "cab0", "@bypassvolume": 1})
+            extra = dict(gear.get("amp_set", {}).get(amp, {}), **{"@bypassvolume": 1})
+            if amp.startswith("Preamp"):  # no cab: full range, as a DI is
+                a = block(m, pos, True, dict(extra, **{"@type": 1}))
+            else:
+                a = block(m, pos, True, dict(extra, **{"@type": 3, "@cab": "cab0"}))
+                cab = M[m.get("ircablink") or "HD2_CabMicIr_4x12Greenback25"]
+                d["cab0"] = {"@model": cab["symbolicID"], "@enabled": True}
+                d["cab0"].update(defaults(cab))
             a.pop("@stereo")
             d[key] = a
-            cab = M[m.get("ircablink") or "HD2_CabMicIr_4x12Greenback25"]
-            d["cab0"] = {"@model": cab["symbolicID"], "@enabled": True}
-            d["cab0"].update(defaults(cab))
             blocks["dsp0"][key] = True
             have = defaults(m)
             gain = GAIN_FIRST.get(amp) or next(p for p in GAIN if p in have)
@@ -91,6 +98,14 @@ def preset(name, amp, base, M, gear):
                 hi = 2.0  # of 8 s: a knob's whole travel for the times the game's pedals have
             assign[k] = {"@param": "%s.%s.%s" % (dsp_name, key, p), "@min": lo, "@max": hi}
             knob_default[str(k)] = (dsp[key][p] - lo) / (hi - lo)
+        # {"Body": [1, "_Body"]}: where the amp left knob 1 free, it is this block's Body, from the game's knob ending _Body,
+        # 0-100 over the knob's travel. Only that preset's template has the rule, after the shared ones it overrides.
+        for p, (k, suffix) in spec.get("spare_knobs", {}).items():
+            if assign[k] is None:
+                lo, hi = ranges[p]
+                assign[k] = {"@param": "%s.%s.%s" % (dsp_name, key, p), "@min": lo, "@max": hi}
+                knob_default[str(k)] = (dsp[key][p] - lo) / (hi - lo)
+                lent += [{"param": k, "from": suffix, "prefix": g + "_", "scale": 0.01, "offset": 0} for g in sorted(spec["gear"])]
         assign[SWITCH + sw] = {"@param": "%s.%s.@enabled" % (dsp_name, key), "@min": False, "@max": True}
         sw += 1
     while assign and assign[-1] is None:
@@ -105,7 +120,7 @@ def preset(name, amp, base, M, gear):
         t[s].pop("controllers", None)
     meta = h["data"]["meta"] if "data" in h else h["meta"]
     meta["name"] = name[:16]
-    return (h["data"] if "data" in h else h), knob_default
+    return (h["data"] if "data" in h else h), knob_default, lent
 
 
 def rules(gear):
@@ -117,12 +132,13 @@ def rules(gear):
          {"param": 32, "from": "amp_gain", "scale": 28, "offset": -14, "without": pedals}]
     for suffix, k in (("_Bass", 1), ("_Mid", 2), ("_Treble", 3), ("_Pres", 4)):
         f.append({"param": k, "from": suffix, "contains": "Amp_", "scale": 0.01, "offset": 0})
-    how = {("drive", "Gain"): ("_Gain", 0.0098, 0), ("drive", "Tone"): ("_Tone", 0.01, 0),
+    # The octave's mix is the game's own, from a faint shimmer to a whole octave lead; the flanger's rate gave it its knob
+    how = {("octave_up", "Mix"): ("_Mix", 0.01, 0), ("drive", "Gain"): ("_Gain", 0.0098, 0), ("drive", "Tone"): ("_Tone", 0.01, 0),
            ("compressor", "Threshold"): ("_Threshold", 1 / 60, 1), ("fuzz", "Sustain"): ("_Gain", 0.0098, 0), ("metal", "Drive"): ("_Gain", 0.0098, 0),
-           ("chorus", "Mix"): ("_Mix", 0.01, 0), ("flanger", "Rate"): ("_Rate", 0.01, 0),
+           ("chorus", "Mix"): ("_Mix", 0.01, 0),
            ("delay", "Time"): ("_Time", 0.0005, 0), ("delay", "Feedback"): ("_Feedback", 0.01, 0), ("delay", "Mix"): ("_Mix", 0.01, 0),
            ("reverb", "Mix"): ("_Mix", 0.01, 0)}
-    other = {"_Comp": (-1 / 150, 1), "_Compress": (-1 / 150, 1), "_Smash": (-1 / 150, 1), "_Limit": (-1 / 150, 1), "_Boost": (0.0098, 0), "_RateTen": (0.1, 0), "_GainWide": (0.0065, 0)}
+    other = {"_Comp": (-1 / 150, 1), "_Compress": (-1 / 150, 1), "_Smash": (-1 / 150, 1), "_Limit": (-1 / 150, 1), "_Boost": (0.0098, 0), "_GainWide": (0.0065, 0)}
     sw = 0
     for kind in [k for k in ORDER if k]:
         spec = gear["blocks"][kind]
@@ -134,7 +150,7 @@ def rules(gear):
                 if p in names:
                     suffix = names[p]
                     scale, offset = other.get(suffix, (scale, offset))
-                    suffix = {"_RateTen": "_Rate", "_GainWide": "_Gain"}.get(suffix, suffix)  # the knob's real name, on another scale
+                    suffix = {"_GainWide": "_Gain"}.get(suffix, suffix)  # the knob's real name, on another scale
                 f.append({"param": k, "from": suffix, "prefix": key + "_", "scale": round(scale, 6), "offset": offset})
     return f
 
@@ -152,12 +168,15 @@ def main():
         sys.exit("not in this Helix: %s" % missing)
     presets, templates = [], {}
     for i, amp in enumerate(used):
-        p, knobs = preset(amp[3:], amp, base, M, gear)
+        p, knobs, lent = preset(amp[3:] if amp.startswith("Amp") else amp, amp, base, M, gear)
         presets.append(p)
         templates[amp] = {"slot": i, "state": amp + ".plist", "output_db": 0, "params": knobs}
+        follow = list(lent)
         if amp in gear["high_gain"]:  # gain enough of their own: less drive and input for the same knob, a tighter gate
             templates[amp]["tight"] = 1.3
-            templates[amp]["follow"] = [{"param": 0, "from": "amp_gain", "scale": 0.6, "offset": 0}, {"param": 32, "from": "amp_gain", "scale": 18, "offset": -14}]
+            follow += [{"param": 0, "from": "amp_gain", "scale": 0.6, "offset": 0}, {"param": 32, "from": "amp_gain", "scale": 18, "offset": -14}]
+        if follow:
+            templates[amp]["follow"] = follow
     filler = json.loads(json.dumps(presets[-1]))
     filler["meta"]["name"] = "New Preset"
     while len(presets) < 128:
