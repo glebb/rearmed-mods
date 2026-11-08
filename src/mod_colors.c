@@ -17,6 +17,11 @@
 //
 // Found with the renderer's texture log (RS_GL_TEX_LOG). The hash is of the bytes the game uploads, and the
 // uncompressed ones differ between the editions: the Mac's are RGB, Learn & Play's BGRA.
+//
+// Extended Range (mod_extended_range.c says when): RSMods turns the game's colorblind mode on and writes the extended
+// range colors into the colorblind bank. Here the game's mode stays, and both banks get them: ZZ's colors with
+// CustomStringColors = 1, the player's colorblind ones with 2, the game's own colorblind bank with 0. The notes take
+// their colorblind rows (ZZ's colors with 1).
 #include <dlfcn.h>
 #include <math.h>
 #include <stdio.h>
@@ -117,23 +122,67 @@ static void read_rows(const char *prefix, color *rows) {
   }
 }
 
-// The notes take the string colors, their own colors or the game's, by the settings
-static void apply_notes(void) {
+// ZZ's (ZagatoZee's) extended range colors, by kind, low string first (RSMods' ExtendedRangeMode.hpp)
+enum { ZZ_ENABLED, ZZ_GLOW, ZZ_DISABLED, ZZ_PEGS_TUNING, ZZ_PEGS_IN_TUNE, ZZ_PEGS_OUT_TUNE, ZZ_TEXT, ZZ_BODY_NORM,
+       ZZ_BODY_ACC, ZZ_KINDS };
+static const rgb ZZ[ZZ_KINDS][6] = {
+    [ZZ_ENABLED] = {{0.0f, 0.7764706f, 0.5568628f}, {1.0f, 0.3098039f, 0.3529412f}, {0.8862745f, 0.7568628f, 0.007843138f},
+                    {0.1137255f, 0.6745098f, 0.9764706f}, {1.0f, 0.572549f, 0.08627451f}, {0.2470588f, 0.8f, 0.04705882f}},
+    [ZZ_GLOW] = {{0.0f, 1.0f, 0.6470588f}, {1.0f, 0.0f, 0.0627451f}, {1.0f, 0.7803922f, 0.0f}, {0.0f, 0.6627451f, 1.0f},
+                 {1.0f, 0.4470588f, 0.0f}, {0.2627451f, 1.0f, 0.0f}},
+    [ZZ_DISABLED] = {{0.0f, 0.2980392f, 0.2117647f}, {0.2980392f, 0.09019608f, 0.1058824f}, {0.2980392f, 0.254902f, 0.0f},
+                     {0.03529412f, 0.2117647f, 0.2980392f}, {0.2980392f, 0.1647059f, 0.02352941f},
+                     {0.09019608f, 0.2980392f, 0.01568628f}},
+    [ZZ_PEGS_TUNING] = {{0.003921569f, 0.55f, 0.3417647f}, {0.7490196f, 0.0f, 0.05882353f}, {0.6862745f, 0.4588235f, 0.0f},
+                        {0.0f, 0.3764706f, 0.7294118f}, {0.6980392f, 0.2196078f, 0.0f}, {0.1254902f, 0.5490196f, 0.0f}},
+    [ZZ_PEGS_IN_TUNE] = {{0.003921569f, 0.6f, 0.4117647f}, {0.7490196f, 0.0f, 0.05882353f}, {0.6862745f, 0.4588235f, 0.0f},
+                         {0.0f, 0.3764706f, 0.7294118f}, {0.6980392f, 0.2196078f, 0.0f}, {0.1254902f, 0.5490196f, 0.0f}},
+    [ZZ_PEGS_OUT_TUNE] = {{0.003921569f, 0.6f, 0.4117647f}, {0.7490196f, 0.0f, 0.05882353f}, {0.6862745f, 0.4588235f, 0.0f},
+                          {0.0f, 0.3764706f, 0.7294118f}, {0.6980392f, 0.2196078f, 0.0f}, {0.1254902f, 0.5490196f, 0.0f}},
+    [ZZ_TEXT] = {{0.2470588f, 1.0f, 0.7843137f}, {1.0f, 0.2509804f, 0.2509804f}, {1.0f, 1.0f, 0.2509804f},
+                 {0.2509804f, 0.5019608f, 1.0f}, {1.0f, 0.627451f, 0.2509804f}, {0.2509804f, 1.0f, 0.2509804f}},
+    [ZZ_BODY_NORM] = {{0.0f, 0.7764706f, 0.5568628f}, {0.7490196f, 0.372549f, 0.372549f}, {0.7490196f, 0.7176471f, 0.372549f},
+                      {0.3686275f, 0.6156863f, 0.7372549f}, {0.7490196f, 0.5529412f, 0.372549f},
+                      {0.372549f, 0.7490196f, 0.5921569f}},
+    [ZZ_BODY_ACC] = {{1.0f, 1.0f, 1.0f}, {0.9764706f, 0.572549f, 0.5372549f}, {0.9843137f, 0.9490196f, 0.5843138f},
+                     {0.5490196f, 0.9098039f, 0.9921569f}, {0.9882353f, 0.8196079f, 0.5254902f},
+                     {0.6901961f, 0.9568627f, 0.5137255f}},
+};
+
+static int string_color_mode(void) {
   const char *custom = rsm_get("Toggle Switches", "CustomStringColors");
+  return custom ? atoi(custom) : 0;
+}
+
+// The notes take the string colors, their own colors or the game's, by the settings; in an extended range song, the
+// colorblind rows in both halves
+static void apply_notes(void) {
+  int custom = string_color_mode(), er = rsm_extended_range();
   long mode = rsm_long("SeparateNoteColorsMode", 0);
   color rows[RAMP_ROWS];
-  if (mode == 0 && custom && atoi(custom) == 2) {
+  if (mode == 0 && custom == 2) {
     read_rows("string", rows);
-    set_ramps(rows);
     rsm_log("colors: notes as the custom string colors");
   } else if (mode == 2 && rsm_on("SeparateNoteColors")) {
     read_rows("note", rows);
-    set_ramps(rows);
     rsm_log("colors: custom note colors");
+  } else if (er) {
+    for (int i = 0; i < 8; i++) parse_color(DEFAULT_CB[i], &rows[8 + i]);
+    if (custom == 1)
+      for (int i = 0; i < 6; i++) {
+        rgb c = ZZ[ZZ_ENABLED][i];
+        rows[8 + i] = (color){(uint8_t)(c.r * 255.0f + 0.5f), (uint8_t)(c.g * 255.0f + 0.5f), (uint8_t)(c.b * 255.0f + 0.5f)};
+      }
   } else {
     render_replace(g_rule[RAMP_A], 0, 0, NULL);
     render_replace(g_rule[RAMP_B], 0, 0, NULL);
+    return;
   }
+  if (er) {
+    memcpy(rows, rows + 8, 8 * sizeof *rows);
+    rsm_log("colors: notes in the extended range colors");
+  }
+  set_ramps(rows);
 }
 
 static void replace_single(int palette, const char *key) {
@@ -269,10 +318,21 @@ static void restore_strings(const char *mgr) {
   g_saved_for = NULL;
 }
 
+// The extended range colors of a kind of color (by CUSTOM_STATES' order) for a string: ZZ's, the player's colorblind ones,
+// or the game's colorblind bank
+static const rgb *extended_range_color(int mode, int k, int i) {
+  static const int ZZ_OF[NCUSTOM] = {ZZ_ENABLED,       ZZ_DISABLED, ZZ_GLOW,      ZZ_PEGS_TUNING, ZZ_PEGS_IN_TUNE,
+                                     ZZ_PEGS_OUT_TUNE, ZZ_TEXT,     ZZ_BODY_NORM, ZZ_BODY_ACC};
+  if (mode == 1) return &ZZ[ZZ_OF[k]][i];
+  if (mode == 2) return &g_custom[1][k][i];
+  return &g_saved[1][CUSTOM_STATES[k]][i];
+}
+
 static void apply_strings(double now) {
   const char *mgr = color_manager();
   if (!mgr) return;
-  if (!g_custom_on && !g_rainbow_strings) {
+  int er = rsm_extended_range(), mode = string_color_mode();
+  if (!g_custom_on && !g_rainbow_strings && !er) {
     if (g_saved_for) restore_strings(mgr);
     return;
   }
@@ -286,7 +346,12 @@ static void apply_strings(double now) {
     for (int i = 0; i < STRINGS; i++) rainbow[i] = rainbow_rgb(now, i);
   for (int b = 0; b < BANKS; b++)
     for (int i = 0; i < STRINGS; i++) {
-      if (g_custom_on)
+      if (er)
+        for (int k = 0; k < NCUSTOM; k++) {
+          float *p = string_color(mgr, b, CUSTOM_STATES[k], i);
+          if (p) memcpy(p, extended_range_color(mode, k, i), sizeof(rgb));
+        }
+      else if (g_custom_on)
         for (int k = 0; k < NCUSTOM; k++) {
           float *p = string_color(mgr, b, CUSTOM_STATES[k], i);
           if (p) memcpy(p, &g_custom[b][k][i], sizeof(rgb));
@@ -335,6 +400,13 @@ static void tick(void) {
       rsm_log("colors: rainbow notes %s", g_rainbow ? "on" : "off");
       if (!g_rainbow) apply_notes();
     }
+  }
+  static int er_shown;
+  int er = rsm_extended_range();
+  if (er != er_shown) {
+    er_shown = er;
+    g_next_check = 0;
+    g_settings[0] = 0;  // the notes again
   }
   if (now >= g_next_check) {
     g_next_check = now + 0.5;

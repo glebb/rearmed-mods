@@ -34,8 +34,9 @@ static const char DEFAULT_INI[] =
     "; Volume keys ([Audio Keybindings]): each raises its channel by VolumeControlInterval, Ctrl + key lowers it;\n"
     "; hold the mixer key to see every channel. The mute keys work without this.\n"
     "VolumeControl = off\n"
-    "; Enter the last used profile (the top of the list) at startup\n"
+    "; Enter the last used profile (the top of the list) at startup, or the one named in ProfileToLoad\n"
     "ForceProfileLoad = off\n"
+    "ProfileToLoad = \n"
     "; Look for new songs without a restart: off, manual (the key) or automatic (when files in dlc/ change)\n"
     "ForceReEnumeration = off\n"
     "; Save the score screens as PNGs in ~/Pictures/RS Re-ARMed (8 s after they open)\n"
@@ -44,6 +45,10 @@ static const char DEFAULT_INI[] =
     "BypassTwoRTCMessageBox = off\n"
     "; Keep playing, with sound, while another app is active\n"
     "AllowAudioInBackground = off\n"
+    "; The same in songs only: another app coming to the front doesn't pause the song\n"
+    "PreventMidSongPause = off\n"
+    "; A tone change that never ends doesn't leave the game on the clean tone (needs RS Re-ARMed 1.11.0)\n"
+    "FixBrokenTones = off\n"
     "; Riff Repeater: the slider's percent is the song speed (default: 68% plays at about 50%)\n"
     "LinearRiffRepeater = off\n"
     "; The venue behind the highway black (for streams): ToggleLoftWhen = manual (the key), song or startup\n"
@@ -58,10 +63,29 @@ static const char DEFAULT_INI[] =
     "; No skyline (the phrase bars at the top): ToggleSkylineWhen = song or startup\n"
     "Skyline = off\n"
     "ToggleSkylineWhen = song\n"
-    "; No fret wires / no inlays / no lane markers on the highway\n"
+    "; No fret wires / no inlays / no lane markers on the highway / no fingerprints (a chord's hand indicators)\n"
     "Fretless = off\n"
     "Inlays = off\n"
     "LaneMarkers = off\n"
+    "RemoveFingerprints = off\n"
+    "; Only the wall behind the stage black (the amps stay); with ToggleLoft, the loft's wall in lessons too\n"
+    "GreenScreenWall = off\n"
+    "; Non-Stop Play waits CustomNSPTimeLimit ms between songs (2000 to 60000) instead of 10.99 s\n"
+    "UseCustomNSPTimer = off\n"
+    "; Move the game's window, at startup, to the screen whose top left corner is SecondaryMonitorXPosition,\n"
+    "; SecondaryMonitorYPosition (points, from the top left of the main screen, down)\n"
+    "SecondaryMonitor = off\n"
+    "; Extended range colors in songs whose lowest string is tuned at or below ExtendedRangeModeAt semitones from E\n"
+    "; (-5: B): CustomStringColors = 1 gives ZZ's colors, 2 your colorblind colors (string0_CB and so on).\n"
+    "; ExtendedRangeDropTuning: a drop tuning counts from that tuning, not two below. ExtendedRangeFixBassTuning: a\n"
+    "; bass charted with its top two strings left at E counts by its four. The key turns it on or off for a song.\n"
+    "ExtendedRange = off\n"
+    "ExtendedRangeDropTuning = off\n"
+    "ExtendedRangeFixBassTuning = off\n"
+    "; The note you play, on screen (heard from the guitar's input)\n"
+    "ShowCurrentNoteOnScreen = off\n"
+    "; Play notes to press keys in the menus: the notes are in [Guitar Speak]\n"
+    "GuitarSpeak = off\n"
     "; Keep an input device at OverrideInputVolume percent (17 is the game's default). The device: part of its\n"
     "; name as macOS shows it (Audio MIDI Setup), e.g. Rocksmith; empty = the default input. Several devices:\n"
     "; separated by ';', each optionally = its own percent: Rocksmith USB Guitar Adapter; Rocksmith Game (OBS) = 100\n"
@@ -77,8 +101,8 @@ static const char DEFAULT_INI[] =
     "; For a screen in the sun: the sunlight key goes through off, bright and daylight (a white highway with dark\n"
     "; notes, in songs), kept in SunlightMode (0, 1 or 2). In a song the venue goes too.\n"
     "Sunlight = off\n"
-    "; CustomStringColors = 2 colors the strings and notes with string0_N and so on in [String Colors]; SeparateNoteColors = on\n"
-    "; with SeparateNoteColorsMode = 2 gives the notes note0_N and so on.\n"
+    "; CustomStringColors = 2 colors the strings and notes with string0_N and so on in [String Colors] (1: ZZ's colors\n"
+    "; in extended range songs); SeparateNoteColors = on with SeparateNoteColorsMode = 2 gives the notes note0_N and so on.\n"
     "CustomStringColors = 0\n"
     "SeparateNoteColors = off\n"
     "; The notes cycle through the colors while the rainbow notes key has it on\n"
@@ -100,6 +124,36 @@ static const char DEFAULT_INI[] =
     "CameraTilt = 0\n"
     "SunlightMode = 1\n"
     "SeparateNoteColorsMode = 0\n"
+    "CustomNSPTimeLimit = 10000\n"
+    "SecondaryMonitorXPosition = 0\n"
+    "SecondaryMonitorYPosition = 0\n"
+    "ExtendedRangeModeAt = -5\n"
+    "\n"
+    "[Guitar Speak]\n"
+    "; The MIDI note (0-96; E3, the low E's 12th fret, is 52) that presses each key; 0 = none. The close note stops\n"
+    "; GuitarSpeak and starts it again. In the tuners only with GuitarSpeakWhileTuning = on.\n"
+    "GuitarSpeakDeleteWhen = 0\n"
+    "GuitarSpeakSpaceWhen = 0\n"
+    "GuitarSpeakEnterWhen = 0\n"
+    "GuitarSpeakTabWhen = 0\n"
+    "GuitarSpeakPGUPWhen = 0\n"
+    "GuitarSpeakPGDNWhen = 0\n"
+    "GuitarSpeakUPWhen = 0\n"
+    "GuitarSpeakDNWhen = 0\n"
+    "GuitarSpeakESCWhen = 0\n"
+    "GuitarSpeakCloseWhen = 0\n"
+    "GuitarSpeakOBracketWhen = 0\n"
+    "GuitarSpeakCBracketWhen = 0\n"
+    "GuitarSpeakTildeaWhen = 0\n"
+    "GuitarSpeakForSlashWhen = 0\n"
+    "GuitarSpeakAltWhen = 0\n"
+    "GuitarSpeakWhileTuning = off\n"
+    "\n"
+    "[GUI Settings]\n"
+    "; Back up the profiles to Profile_AutoBackups in the game folder while the game runs (when they changed, at most\n"
+    "; every 10 minutes), and when the app opens; NumberOfBackups: how many of the app's it keeps\n"
+    "BackupProfile = on\n"
+    "NumberOfBackups = 50\n"
     "\n"
     "[Highway Colors]\n"
     "; RRGGBB; a color left empty stays the game's. Numbered lanes and unnumbered ones go together. (The last key is spelled so on Windows too.)\n"
@@ -126,6 +180,7 @@ static const char DEFAULT_INI[] =
     "SunlightKey = G\n"
     "RainbowNotesKey = N\n"
     "RainbowStringsKey = V\n"
+    "ToggleExtendedRangeKey = E\n"
     "\n"
     "[Audio Keybindings]\n"
     "MasterVolumeKey = 5\n"
@@ -232,6 +287,41 @@ static const struct {
     {"Highway Colors", "CustomHighwayGutter", ""},
     {"Highway Colors", "CustomFretNubmers", ""},
     {"Keybinds", "RainbowNotesKey", "N"},
+    {"Toggle Switches", "ProfileToLoad", ""},
+    {"Toggle Switches", "RemoveFingerprints", "off"},
+    {"Toggle Switches", "GreenScreenWall", "off"},
+    {"Toggle Switches", "UseCustomNSPTimer", "off"},
+    {"Mod Settings", "CustomNSPTimeLimit", "10000"},
+    {"Toggle Switches", "SecondaryMonitor", "off"},
+    {"Mod Settings", "SecondaryMonitorXPosition", "0"},
+    {"Mod Settings", "SecondaryMonitorYPosition", "0"},
+    {"Toggle Switches", "ExtendedRange", "off"},
+    {"Toggle Switches", "ExtendedRangeDropTuning", "off"},
+    {"Toggle Switches", "ExtendedRangeFixBassTuning", "off"},
+    {"Mod Settings", "ExtendedRangeModeAt", "-5"},
+    {"Keybinds", "ToggleExtendedRangeKey", "E"},
+    {"Toggle Switches", "ShowCurrentNoteOnScreen", "off"},
+    {"Toggle Switches", "GuitarSpeak", "off"},
+    {"Guitar Speak", "GuitarSpeakDeleteWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakSpaceWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakEnterWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakTabWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakPGUPWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakPGDNWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakUPWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakDNWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakESCWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakCloseWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakOBracketWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakCBracketWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakTildeaWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakForSlashWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakAltWhen", "0"},
+    {"Guitar Speak", "GuitarSpeakWhileTuning", "off"},
+    {"GUI Settings", "BackupProfile", "on"},
+    {"GUI Settings", "NumberOfBackups", "50"},
+    {"Toggle Switches", "PreventMidSongPause", "off"},
+    {"Toggle Switches", "FixBrokenTones", "off"},
 };
 
 char *rsm_trim(char *s) {

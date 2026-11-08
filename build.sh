@@ -27,7 +27,7 @@ for c in "$here"/src/*.c; do
 done
 clang -arch arm64 -dynamiclib -mmacosx-version-min=11.0 -install_name @rpath/rearmed-mods.dylib \
   -Wl,-undefined,dynamic_lookup $objs -lobjc -framework OpenGL -framework CoreText -framework CoreGraphics \
-  -framework CoreFoundation -framework CoreAudio -framework ImageIO -framework CoreImage -framework QuartzCore -o "$out/rearmed-mods.dylib"
+  -framework CoreFoundation -framework CoreAudio -framework ImageIO -framework CoreImage -framework QuartzCore -lz -o "$out/rearmed-mods.dylib"
 codesign --force -s - "$out/rearmed-mods.dylib" 2>/dev/null || true
 echo "rearmed-mods $version: $out/rearmed-mods.dylib"
 

@@ -40,9 +40,17 @@ static const rsm_mod *const MODS[] = {
     &rsm_mod_skyline,
     &rsm_mod_fretboard,
     &rsm_mod_camera,
+    &rsm_mod_extended_range,  // before the colors, which it changes
     &rsm_mod_colors,
     &rsm_mod_tone_host,
     &rsm_mod_sunlight,
+    &rsm_mod_nsp_timer,
+    &rsm_mod_secondary_monitor,
+    &rsm_mod_profile_backups,
+    &rsm_mod_game_note,  // before the two that use the note
+    &rsm_mod_current_note,
+    &rsm_mod_guitar_speak,
+    &rsm_mod_buggy_tones,
 };
 #define NMODS (sizeof MODS / sizeof MODS[0])
 

@@ -70,7 +70,19 @@ features for the Mac build, keeping RSMods' settings, names and behaviour:
   far plane, as on Windows).
 - **Text on screen** (song speed, loop, song timer, volume) is rendered with Core Text and drawn after the game's
   frame through the overlay API, which also reads the frame for score screenshots.
-- **macOS APIs** where RSMods uses Windows ones: Core Audio for the input volume, ImageIO for screenshots.
+- **macOS APIs** where RSMods uses Windows ones: Core Audio for the input volume, ImageIO for screenshots, AppKit for
+  the window's screen.
+- **The game's files where RSMods reads its memory.** Extended Range needs the arrangement's tuning, which RSMods reads
+  from the game's tuner; the Mac build has no name for that, but each arrangement's manifest in the song's archive has
+  it. The library reads the archives' encrypted tables of contents (PSARC, AES-CFB) with the game's own key, found by
+  name (`key_psarc_hex`), lists every archive's manifests once on a thread, and reads the song's when its key changes.
+  `ProfileToLoad` reads the profile list, `LocalProfiles.json` (AES-ECB and zlib, the game's `key_profile`), where
+  RSMods reads the highlighted name from memory.
+- **The note the game hears**, as RSMods reads it: the game's DetectionService and its pitch detection, named in RS
+  Re-ARMed (`detection_service`, `detection_note`), for Show Current Note and Guitar Speak.
+- **A value found by what it is.** RSMods' Non-Stop Play timer writes a constant at a known address. Both games read it
+  from their mapped image at run time, and each image has that value (10.99f as a double) once: the library scans the
+  image for it and writes it.
 - **RSMods.ini** is read with the same keys and defaults, and re-read when it changes.
 
 Each mod's source names the game functions and data it uses; their addresses are in RS Re-ARMed's `tools/targets`.

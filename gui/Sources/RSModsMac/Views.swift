@@ -29,6 +29,7 @@ struct ContentView: View {
             FooterView()
         }
         .frame(minWidth: 860, minHeight: 600)
+        .task { store.backUpProfiles() }  // Backup Profile: when the app opens, as RSMods' app does
     }
 }
 
@@ -185,6 +186,7 @@ struct ModTogglesTab: View {
                 HighwaySettings().tabItem { Text("Highway") }
                 AutomationSettings().tabItem { Text("Automation") }
                 MiscSettings().tabItem { Text("Misc") }
+                GuitarSpeakSettings().tabItem { Text("Guitar Speak") }
             }
         }
     }
@@ -329,6 +331,25 @@ struct HighwaySettings: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                ModSettingsGroup(title: "Extended Range", mod: "ExtendedRange") {
+                    Picker("Lowest string at or below", selection: store.binding(Section.settings, "ExtendedRangeModeAt")) {
+                        ForEach(Catalog.extendedRangeTunings, id: \.value) { Text($0.label).tag($0.value) }
+                    }
+                    Picker("Colors", selection: store.binding(Section.toggles, "CustomStringColors")) {
+                        Text("The game's colorblind colors").tag("0")
+                        Text("ZZ's colors").tag("1")
+                        Text("Your colorblind string colors (Colors tab)").tag("2")
+                    }
+                    Toggle("Drop tunings count from their tuning (C# Drop B at B)",
+                           isOn: store.toggle(ModToggle(label: "", key: "ExtendedRangeDropTuning", help: "")))
+                    Toggle("A bass charted with its top two strings at E counts by its four",
+                           isOn: store.toggle(ModToggle(label: "", key: "ExtendedRangeFixBassTuning", help: "")))
+                    Text("In a song tuned this low, and in its tuner. The tuning is read from the song's archive. The Toggle Extended Range key turns it on or off for a song.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .toggleStyle(.checkbox)
             }
             .padding(8)
         }
@@ -370,9 +391,19 @@ struct AutomationSettings: View {
                         .disabled(store.enumerationMode != "automatic")
                 }
                 ModSettingsGroup(title: "Auto Load Profile", mod: "ForceProfileLoad") {
-                    Text("At startup, the game goes into the last used profile (the top of the profile list).")
+                    HStack {
+                        Text("Profile")
+                        TextField("The last used one", text: store.binding(Section.toggles, "ProfileToLoad"))
+                    }
+                    Text("At startup, the game goes into this profile, by its name in the game; left empty, into the last used one (the top of the profile list).")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                ModSettingsGroup(title: "Custom NSP Timer", mod: "UseCustomNSPTimer") {
+                    NumberField(label: "Time between songs in Non-Stop Play",
+                                value: store.number("CustomNSPTimeLimit", scale: 1000),
+                                range: 2...60, step: 0.1, unit: "seconds")
                 }
             }
             .padding(8)
@@ -440,10 +471,100 @@ struct MiscSettings: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                ModSettingsGroup(title: "Start On Secondary Monitor", mod: "SecondaryMonitor") {
+                    HStack {
+                        Menu("Choose Screen") {
+                            ForEach(Array(NSScreen.screens.enumerated()), id: \.offset) { _, screen in
+                                Button(screen.localizedName) {
+                                    let corner = Screens.topLeft(of: screen)
+                                    store.set(Section.settings, "SecondaryMonitorXPosition", String(corner.x))
+                                    store.set(Section.settings, "SecondaryMonitorYPosition", String(corner.y))
+                                }
+                            }
+                        }
+                        .fixedSize()
+                        Spacer()
+                    }
+                    NumberField(label: "Left", value: store.number("SecondaryMonitorXPosition"), range: -20000...20000,
+                                unit: "points")
+                    NumberField(label: "Top", value: store.number("SecondaryMonitorYPosition"), range: -20000...20000,
+                                unit: "points")
+                    Text("The screen's top left corner, from the top left of the main screen. The game's window moves there when the game starts; best with the game in a window, at that screen's size.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ModSettingsGroup(title: "Show Current Note", mod: "ShowCurrentNoteOnScreen") {
+                    Text("The note you play, as the game hears it: in a song left of the middle, elsewhere at the top. Needs RS Re-ARMed 1.11.0.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ModSettingsGroup(title: "Backup Profile", mod: "BackupProfile") {
+                    NumberField(label: "Backups kept from opening this app", value: store.number(
+                        "NumberOfBackups", section: Section.guiSettings), range: 1...500, unit: "")
+                    HStack {
+                        Button("Back Up Now") { store.backUpProfiles(evenIfOff: true) }
+                        Button("Show Backups") {
+                            NSWorkspace.shared.open(FileManager.default.fileExists(atPath: store.backupsFolder.path)
+                                                    ? store.backupsFolder : store.gameFolder)
+                        }
+                    }
+                    Text("In Profile_AutoBackups in the game folder: one when this app opens, and while the game runs one every 10 minutes when the profiles changed (the last hour, 6 hourly, 4 quarter-daily and 30 daily are kept). To restore one, quit the game and copy its files back into the save folder (howto.txt says where).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(8)
         }
         .onAppear { devices = AudioDevices.inputNames() }
+    }
+}
+
+enum Screens {
+    // A screen's top left corner as Windows has it (RSMods' SecondaryMonitorX/YPosition): from the main screen's top
+    // left, y down, in points
+    static func topLeft(of screen: NSScreen) -> (x: Int, y: Int) {
+        let mainHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+        return (Int(screen.frame.minX), Int(mainHeight - screen.frame.maxY))
+    }
+}
+
+struct GuitarSpeakSettings: View {
+    @EnvironmentObject var store: SettingsStore
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                ModSettingsGroup(title: "Guitar Speak", mod: "GuitarSpeak") {
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+                        ForEach(Catalog.guitarSpeakKeys, id: \.key) { row in
+                            GridRow {
+                                Text(row.label)
+                                Picker("", selection: store.binding(Section.guitarSpeak, row.key)) {
+                                    Text("None").tag("0")
+                                    ForEach(24...96, id: \.self) { midi in
+                                        Text("\(Catalog.noteName(midi)) (\(midi))").tag(String(midi))
+                                    }
+                                }
+                                .labelsHidden()
+                                .frame(width: 120)
+                            }
+                        }
+                    }
+                    Toggle("Also in the tuners (wrong notes can get in the way of tuning)",
+                           isOn: Binding(get: { store.value(Section.guitarSpeak, "GuitarSpeakWhileTuning").lowercased() == "on" },
+                                         set: { store.set(Section.guitarSpeak, "GuitarSpeakWhileTuning", $0 ? "on" : "off") }))
+                        .toggleStyle(.checkbox)
+                    Text("In the menus, each new note you play presses the key set to it (E3, the low E's 12th fret, is 52). Off in songs, lessons and calibration. The notes are the ones the game hears; needs RS Re-ARMed 1.11.0.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(8)
+        }
     }
 }
 

@@ -72,8 +72,9 @@ int rsm_hook(const char *name, rc_hook_pre_fn pre, rc_hook_post_fn post);
 
 // The Gamebryo scene graph and render steps (rsmods_scene.c): an object's name, and hiding by name. Hide (on) or
 // show the objects with these names (NULL-terminated; "name*" a prefix) for owner, how: the culled bit (objects in
-// the scene tree), scale 0 (objects drawn directly) or a render step off. Call every tick.
-enum { RSM_CULL, RSM_COLLAPSE, RSM_STEP_OFF };
+// the scene tree), scale 0 (objects drawn directly), scale 0 for objects with a parent only (ones the game culls and
+// shows itself, whose parentless templates it may copy), or a render step off. Call every tick.
+enum { RSM_CULL, RSM_COLLAPSE, RSM_STEP_OFF, RSM_COLLAPSE_PLACED };
 int rsm_scene_name(uint64_t obj, char *out, size_t n);
 void rsm_scene_hide(const char *owner, const char *const *names, int how, int on);
 void rsm_scene_tick(void);  // the core, after the mods' ticks
@@ -148,12 +149,32 @@ extern const rsm_mod rsm_mod_riff_repeater, rsm_mod_looping, rsm_mod_song_previe
     rsm_mod_volume, rsm_mod_autoload, rsm_mod_enumeration,
     rsm_mod_input_volume, rsm_mod_screenshot_scores, rsm_mod_two_rtc, rsm_mod_background_audio, rsm_mod_linear_rr,
     rsm_mod_loft, rsm_mod_scene_dump, rsm_mod_hide_nodes, rsm_mod_headstock, rsm_mod_lyrics, rsm_mod_skyline,
-    rsm_mod_fretboard, rsm_mod_camera, rsm_mod_colors, rsm_mod_tone_host, rsm_mod_sunlight;
+    rsm_mod_fretboard, rsm_mod_camera, rsm_mod_colors, rsm_mod_tone_host, rsm_mod_sunlight, rsm_mod_nsp_timer,
+    rsm_mod_secondary_monitor, rsm_mod_profile_backups, rsm_mod_extended_range, rsm_mod_game_note,
+    rsm_mod_current_note, rsm_mod_guitar_speak, rsm_mod_buggy_tones;
 
 // The guitar fader while ToneHost holds the game's own at 0: 1 and the value; otherwise 0 (mod_tone_host.c)
 int rsm_guitar_fader(float *value);
 
 // In a song with Sunlight on: the venue goes, as with the loft off (mod_sunlight.c)
 int rsm_sunlight_hides_venue(void);
+
+// The extended range colors are on now (mod_extended_range.c; mod_colors.c applies them)
+int rsm_extended_range(void);
+
+// The note the game hears the player play, while Show Current Note or GuitarSpeak is on (rsmods_game_note.c): MIDI, or
+// -1; *plucks (may be NULL) a count that goes up with each new note, as RSMods' GuitarSpeak counts them
+int rsm_guitar_note(unsigned *plucks);
+// "E2", with RSMods' names (C C# D Eb E F F# G Ab A Bb B; MIDI 0 is C-1)
+void rsm_note_name(int midi, char *out, size_t n);
+
+// The player's profiles (rsmods_profiles.c). The save folder in use (Steam Cloud's <account>/221680/remote) and its
+// account; 0 if none is found.
+int rsm_save_folder(char *out, size_t n, unsigned long long *account);
+// LocalProfiles.json of a save folder, decrypted with the game's key: malloc'ed JSON, or NULL
+char *rsm_profiles_json(const char *folder);
+char *rsm_profiles_decode(const uint8_t *data, size_t n, const uint8_t key[32]);
+// The profiles' names (PlayerName), in the file's order: last used first, as the game lists them; how many
+int rsm_profiles_names(const char *json, char names[][64], int max);
 
 #endif

@@ -105,13 +105,33 @@ final class SettingsStore: ObservableObject {
         }
     }
 
-    // A whole number in [Mod Settings]
-    func number(_ key: String, scale: Double = 1) -> Binding<Double> {
+    // A whole number in [Mod Settings], or another section
+    func number(_ key: String, scale: Double = 1, section: String = Section.settings) -> Binding<Double> {
         Binding(get: {
-            (Double(self.value(Section.settings, key)) ?? 0) / scale
+            (Double(self.value(section, key)) ?? 0) / scale
         }, set: { v in
-            self.set(Section.settings, key, String(Int((v * scale).rounded())))
+            self.set(section, key, String(Int((v * scale).rounded())))
         })
+    }
+
+    // MARK: Profile backups
+
+    var backupsFolder: URL { gameFolder.appendingPathComponent(ProfileBackups.rootName, isDirectory: true) }
+
+    // Backs up the profiles of both editions (each into its own game folder), off the main thread: when the app opens
+    // with Backup Profile on, and with Back Up Now
+    func backUpProfiles(evenIfOff: Bool = false) {
+        guard evenIfOff || isOn("BackupProfile") else { return }
+        let folders = [home.appendingPathComponent("game", isDirectory: true), learnPlayFolder]
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        let keep = Int(value(Section.guiSettings, "NumberOfBackups")) ?? 50
+        DispatchQueue.global(qos: .utility).async {
+            let made = folders.flatMap { ProfileBackups.backUp(gameFolder: $0, keep: keep) }
+            DispatchQueue.main.async {
+                self.status = made.isEmpty ? "The profiles haven't changed since their last backup"
+                                           : "Backed up the profiles (\(made.count) save folder\(made.count == 1 ? "" : "s"))"
+            }
+        }
     }
 
     // Keys bound to more than one action

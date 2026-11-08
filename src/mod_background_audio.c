@@ -8,6 +8,10 @@
 // In Learn & Play the point is where the window's focus reaches the game (the input layer) and WM_ACTIVATE carries
 // what it is told: the game's pause and Wwise's sink going away (0x149ee1c) come from that message, so neither happens.
 // There is no such byte in that game: app_focus has no address there, which the log says once.
+//
+// RSMods: prevent the pause mid song (PreventMidSongPause; dllmain.cpp's WndProc): in a song the game is told it keeps
+// the focus, the same way, so another app coming to the front doesn't pause it. (RSMods' other half, the window kept on
+// top, is switched off in RSMods itself: ensureForcedTopMode.)
 #include <stdatomic.h>
 
 #include "rsmods.h"
@@ -23,7 +27,7 @@ static void hold_focus_byte(void) {
 }
 
 static void tick(void) {
-  int on = rsm_on("AllowAudioInBackground");
+  int on = rsm_on("AllowAudioInBackground") || (rsm_on("PreventMidSongPause") && rsm_menu_in(RSM_SONG_MODES));
   atomic_store(&g_on, on);
   if (on) hold_focus_byte();
   g_lost = 0;  // the pause comes in the same call as the focus loss, never a frame later

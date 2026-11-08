@@ -252,10 +252,11 @@ static int name_matches(const char *pattern, const char *name) {
   return nl == pl && !strncmp(name, pattern, pl);
 }
 
-// The owner whose rules cover this object (steps only for RSM_STEP_OFF rules, objects for the others)
-static int owner_of(const char *name, int kind) {
+// An owner whose rules cover this object (steps only for RSM_STEP_OFF rules, objects for the others): with `on`, one
+// that hides now. Two owners may name the same object (the loft and the green screen wall the back wall).
+static int owner_of(const char *name, int kind, int on) {
   for (int o = 0; o < g_nowner; o++) {
-    if ((g_owner[o].how == RSM_STEP_OFF) != (kind == RSM_KIND_STEP)) continue;
+    if ((g_owner[o].how == RSM_STEP_OFF) != (kind == RSM_KIND_STEP) || (on && !g_owner[o].on)) continue;
     for (int i = 0; i < g_owner[o].nnames; i++)
       if (name_matches(g_owner[o].names[i], name)) return o;
   }
@@ -274,7 +275,7 @@ static void collect(uint64_t obj, int kind, const char *cls, void *ctx) {
   scan_result *r = ctx;
   char name[64];
   if (r->n == MAX_HIDDEN || !read_name(obj, kind, name, sizeof name) || !*name) return;
-  if (owner_of(name, kind) < 0) return;  // owners only change on the game thread; the next scan fixes a stale read
+  if (owner_of(name, kind, 0) < 0) return;  // owners only change on the game thread; the next scan fixes a stale read
   r->obj[r->n] = obj;
   r->kind[r->n] = kind;
   snprintf(r->name[r->n], 64, "%s", name);
@@ -355,7 +356,9 @@ static void hide(int i, int how) {
     uint8_t active;
     if (!safe_read(obj + (uint64_t)RC_OFF(ni_step_active), &active, 1) || !active) return;
     *(volatile uint8_t *)(uintptr_t)(obj + (uint64_t)RC_OFF(ni_step_active)) = 0;
-  } else if (how == RSM_COLLAPSE) {
+  } else if (how == RSM_COLLAPSE || how == RSM_COLLAPSE_PLACED) {
+    uint64_t parent = 0;
+    if (how == RSM_COLLAPSE_PLACED && (!safe_ptr(obj + (uint64_t)RC_OFF(ni_parent), &parent) || !parent)) return;
     float s[2];
     const uint64_t local = obj + (uint64_t)RC_OFF(ni_local_scale), world = obj + (uint64_t)RC_OFF(ni_world_scale);
     if (!safe_read(local, &s[0], 4) || !safe_read(world, &s[1], 4)) return;
@@ -378,7 +381,7 @@ static void show(int i) {
   uint64_t obj = g_found[i].obj;
   if (g_found[i].how == RSM_STEP_OFF) {
     *(volatile uint8_t *)(uintptr_t)(obj + (uint64_t)RC_OFF(ni_step_active)) = 1;
-  } else if (g_found[i].how == RSM_COLLAPSE) {
+  } else if (g_found[i].how == RSM_COLLAPSE || g_found[i].how == RSM_COLLAPSE_PLACED) {
     put_f32(obj + (uint64_t)RC_OFF(ni_local_scale), g_found[i].scale[0]);
     put_f32(obj + (uint64_t)RC_OFF(ni_world_scale), g_found[i].scale[1]);
   } else {
@@ -420,8 +423,8 @@ void rsm_scene_tick(void) {
       i--;
       continue;
     }
-    int o = owner_of(name, g_found[i].kind);
-    if (o >= 0 && g_owner[o].on)
+    int o = owner_of(name, g_found[i].kind, 1);
+    if (o >= 0)
       hide(i, g_owner[o].how);
     else if (g_found[i].set_by_us)
       show(i);

@@ -11,11 +11,15 @@ $cc "$here/tests/test_sunlight.c" -lobjc -framework CoreFoundation -framework Co
 $cc "$here/tests/test_colors.c" -o "$out/test_colors"
 $cc "$here/tests/test_gate.c" -o "$out/test_gate"
 $cc "$here/tests/test_gain.c" -o "$out/test_gain"
+$cc -O1 "$here/tests/test_tuning.c" "$here/src/rsmods_tuning.c" -lz -o "$out/test_tuning"
+$cc "$here/tests/test_profiles.c" "$here/src/rsmods_profiles.c" -lz -o "$out/test_profiles"
 "$out/test_ini"
 "$out/test_colors"
 "$out/test_gate"
 "$out/test_gain"
 "$out/test_sunlight"
+"$out/test_tuning"
+"$out/test_profiles"
 
 cd "$here/gui"
 swift test

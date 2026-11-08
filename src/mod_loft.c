@@ -13,6 +13,11 @@
 // (rsm_scene_hide). Some cameras (the back wall's) get their frustum once, when the scene is built: every camera
 // the hook has seen is kept, and while the loft is off those still at 10000 are set directly too, after a safe
 // read shows they are still NiCameras.
+//
+// RSMods: the green screen wall (GreenScreenWall = on): only the wall behind the stage goes black, the amps and the rest
+// stay. RSMods skips the wall's draw (one mesh, textured loft_concrete_wall_b and portal_wall_ao); here the back wall's
+// objects are culled, the wall with its trim and wiring (backwall_*). RSMods also takes it for the loft in lessons, which
+// keep the loft: there, when the loft would be off, the wall goes instead.
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 #include <pthread.h>
@@ -163,7 +168,7 @@ static void restore(void) {
 }
 
 static void tick(void) {
-  int want_off = 0;
+  int want_off = 0, wall_off = rsm_on("GreenScreenWall");
   const char *extra = rsm_get("Mod Settings", "LoftExtraFar");
   g_nextra = 0;
   for (const char *p = extra; p && *p && g_nextra < MAX_EXTRA;) {
@@ -179,7 +184,7 @@ static void tick(void) {
     if (!when || !strcasecmp(when, "manual"))
       want_off = g_manual_off;
     else if (rsm_menu_in(LESSONS))
-      want_off = 0;
+      wall_off = 1;  // the loft stays in lessons, its wall goes
     else if (!strcasecmp(when, "startup"))
       want_off = 1;
     else
@@ -195,6 +200,8 @@ static void tick(void) {
                                          "GearPlacementNode", "GRVenueActor", "GRVenueActorAlpha", "fret_board",
                                          "Guitar_NeckBack", NULL};
   rsm_scene_hide("loft", BACKDROP, RSM_CULL, want_off);
+  static const char *const WALL[] = {"backwall_*", NULL};
+  rsm_scene_hide("green_screen_wall", WALL, RSM_CULL, wall_off && !want_off);
   // What is left of the venue's light: the post effects lay a haze around the strings. Songs only: the menus need them.
   static const char *const POST_EFFECTS[] = {"PostEffectsStep", NULL};
   rsm_scene_hide("loft_post_effects", POST_EFFECTS, RSM_STEP_OFF, want_off && rsm_menu_in(RSM_SONG_MODES));
