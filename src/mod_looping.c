@@ -7,8 +7,10 @@
 // or opening Riff Repeater, clears it.
 // Rewinding (AllowRewind): the rewind key moves the song back RewindBy + RewindLeadup ms.
 //
-// Not ported yet: RSMods also resets the game's "grey note" time (notes before it are greyed out and not
-// detected), at a rewind and while paused in a loop; that field is not found in the Mac build yet.
+// Both reset the game's grey-note time, as RSMods does: notes before it are grey and not detected, and the game sets
+// it to where the song pauses. While paused with a loop it is the loop's start, so the notes of the loop count again
+// when the song resumes before them; a rewind sets it RewindLeadup ms before where the song goes back to
+// (rsmods_note_stats.c).
 #include <stdio.h>
 
 #include "rsmods.h"
@@ -38,6 +40,11 @@ static void tick(void) {
   snprintf(t, sizeof t, "Loop: %s - %s", a, b);
   rsm_text(t, 0.5f, 50.f / 1080, 0.028f, RSM_ALIGN_CENTER, 0xffffffff);
 
+  if (rsm_menu_in(RSM_LAS_PAUSE)) {
+    float want = g_start < 0 ? 0.f : (float)g_start, grey;
+    if (rsm_grey_time(&grey) && grey != want && rsm_set_grey_time(want))
+      rsm_log("looping: notes from %.2f s count again (the grey-note time was %.2f s)", want, grey);
+  }
   if (g_cooldown > 0) {
     g_cooldown--;
     return;
@@ -86,7 +93,9 @@ static void key(const rsm_key_event *e) {
     if (to < 0) to = 0;
     rsm_song_seek_ms((int32_t)to);
     g_cooldown = 15;
-    rsm_log("rewind: %.2f s -> %.2f s", now, to / 1000.0);
+    float grey = (float)(to - leadup) / 1000.f;
+    int reset = rsm_set_grey_time(grey);
+    rsm_log("rewind: %.2f s -> %.2f s%s", now, to / 1000.0, reset ? ", grey-note time reset" : "");
   }
 }
 

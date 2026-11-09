@@ -36,7 +36,8 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   and the render API, and the note and highway colors need its Metal renderer. Without them those mods stay off and the
   rest works. Sunlight needs the Metal renderer too.
 - Show Current Note and Guitar Speak need RS Re-ARMed 1.11.0, which names the note the game hears; with an older one
-  those two stay off.
+  those two stay off. Show Current Accuracy, and the grey-note reset of looping and rewinding, need it too, for the
+  game's note counts; it names them on the Mac, not yet in Learn & Play.
 - macOS 13 or later for the app.
 - To build from source: the Xcode command line tools (`xcode-select --install`), with Swift 5.9 or later.
 
@@ -111,13 +112,16 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     at the top. Control + loop start clears the loop, Control + loop end clears its end. Leaving the song or
     opening Riff Repeater clears it.
   * `AllowLooping`, `[Mod Settings] LoopingLeadUp` (0), `[Keybinds] LoopStartKey` (Y), `LoopEndKey` (U)
-  * Different: RSMods also resets the game's "grey note" time while paused in a loop, so notes in the loop stay
-    active. Not on macOS yet: after a pause, notes you already passed may stay grey.
+  * While paused in a loop the game's grey-note time is the loop's start, as RSMods sets it: notes before that time
+    are grey and not detected, and the game sets it to where the song paused, so the notes of the loop count again.
+    Needs RS Re-ARMed 1.11.0, on the Mac. In a run the time went back to the loop's start at each pause in the loop;
+    how the notes look after it hasn't been watched yet.
 
 * **Allow Rewinding**
   * The rewind key moves the song back `RewindBy` + `RewindLeadup` ms.
   * `AllowRewind`, `[Mod Settings] RewindBy` (5000), `RewindLeadup` (2000), `[Keybinds] RewindKey` (Z)
-  * Different: the "grey note" reset is not on macOS yet, as with looping.
+  * The grey-note time goes back too, `RewindLeadup` ms before where the song goes, as RSMods does, so the notes
+    from there count again. Needs RS Re-ARMed 1.11.0, on the Mac.
 
 * **Show Song Timer**
   * The song position at the top right: in every song (`ShowSongTimerWhen = automatic`) or shown and hidden with
@@ -290,6 +294,17 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * The notes are the game's, as for Show Current Note, and a new note is what RSMods counts as one: another note, or a
     note after the last one ended. Needs RS Re-ARMed 1.11.0. Not yet checked in the game.
 
+* **Show Current Accuracy**
+  * In a song, once it plays, the notes you hit out of the notes played so far, as `87.50%`, under the song timer
+    (100% before the first note).
+  * `DisplayCurrentAccuracy`
+  * The counts are the game's own, the ones RSMods reads on Windows; on the Mac one set serves Learn a Song and Score
+    Attack. RS Re-ARMed 1.11.0 names them on the Mac; Learn & Play's aren't matched yet, so there it stays off, and the
+    log says so. Seen in Learn a Song on the Mac; the counts were read in Learn a Song and Score Attack, playing and
+    paused.
+  * Different: RSMods shows 0.00% in the song's other menus (Riff Repeater, the tuner, the mixer); here nothing shows
+    there.
+
 * **Backup Profile**
   * Your profiles are backed up to `Profile_AutoBackups/<account>/` in the game folder: by the game, at most every 10
     minutes and only when they changed (the last hour, 6 hourly, 4 quarter-daily and 30 daily are kept), and by the app
@@ -333,9 +348,7 @@ memory after each scene loads. It takes a second or two after a song starts.
 
 From RSMods, not ported yet. Each needs a hook point or a name of RS Re-ARMed that it doesn't have yet:
 
-- Show Current Accuracy: the game's note counts
 - Custom Song List Titles and the extra song lists: code changes where the game names and counts its song lists
-- The "grey note" reset of looping and rewinding: the game's grey-out timer
 - RSMods' file tools Custom Tunings and the default tones: they rewrite the game's `cache.psarc`, which RS Re-ARMed
   keeps (its own cache overlay would be the place)
 

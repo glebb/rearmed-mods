@@ -151,7 +151,7 @@ extern const rsm_mod rsm_mod_riff_repeater, rsm_mod_looping, rsm_mod_song_previe
     rsm_mod_loft, rsm_mod_scene_dump, rsm_mod_hide_nodes, rsm_mod_headstock, rsm_mod_lyrics, rsm_mod_skyline,
     rsm_mod_fretboard, rsm_mod_camera, rsm_mod_colors, rsm_mod_tone_host, rsm_mod_sunlight, rsm_mod_nsp_timer,
     rsm_mod_secondary_monitor, rsm_mod_profile_backups, rsm_mod_extended_range, rsm_mod_game_note,
-    rsm_mod_current_note, rsm_mod_guitar_speak, rsm_mod_buggy_tones;
+    rsm_mod_current_note, rsm_mod_guitar_speak, rsm_mod_buggy_tones, rsm_mod_accuracy;
 
 // The guitar fader while ToneHost holds the game's own at 0: 1 and the value; otherwise 0 (mod_tone_host.c)
 int rsm_guitar_fader(float *value);
@@ -165,6 +165,11 @@ int rsm_extended_range(void);
 // The note the game hears the player play, while Show Current Note or GuitarSpeak is on (rsmods_game_note.c): MIDI, or
 // -1; *plucks (may be NULL) a count that goes up with each new note, as RSMods' GuitarSpeak counts them
 int rsm_guitar_note(unsigned *plucks);
+// The player's note counts and grey-note time, in a song's own menus (playing or paused) (rsmods_note_stats.c): 1 and
+// the values, or 0 where they aren't read. Notes before the grey-note time (seconds) are grey and not detected.
+int rsm_note_counts(int *hits, int *misses);
+int rsm_grey_time(float *seconds);
+int rsm_set_grey_time(float seconds);
 // "E2", with RSMods' names (C C# D Eb E F F# G Ab A Bb B; MIDI 0 is C-1)
 void rsm_note_name(int midi, char *out, size_t n);
 

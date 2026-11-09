@@ -86,6 +86,8 @@ static const char DEFAULT_INI[] =
     "ShowCurrentNoteOnScreen = off\n"
     "; Play notes to press keys in the menus: the notes are in [Guitar Speak]\n"
     "GuitarSpeak = off\n"
+    "; In a song, the notes hit out of the notes played so far, at the top right\n"
+    "DisplayCurrentAccuracy = off\n"
     "; Keep an input device at OverrideInputVolume percent (17 is the game's default). The device: part of its\n"
     "; name as macOS shows it (Audio MIDI Setup), e.g. Rocksmith; empty = the default input. Several devices:\n"
     "; separated by ';', each optionally = its own percent: Rocksmith USB Guitar Adapter; Rocksmith Game (OBS) = 100\n"
@@ -302,6 +304,7 @@ static const struct {
     {"Keybinds", "ToggleExtendedRangeKey", "E"},
     {"Toggle Switches", "ShowCurrentNoteOnScreen", "off"},
     {"Toggle Switches", "GuitarSpeak", "off"},
+    {"Toggle Switches", "DisplayCurrentAccuracy", "off"},
     {"Guitar Speak", "GuitarSpeakDeleteWhen", "0"},
     {"Guitar Speak", "GuitarSpeakSpaceWhen", "0"},
     {"Guitar Speak", "GuitarSpeakEnterWhen", "0"},

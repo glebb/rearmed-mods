@@ -51,6 +51,7 @@ static const rsm_mod *const MODS[] = {
     &rsm_mod_current_note,
     &rsm_mod_guitar_speak,
     &rsm_mod_buggy_tones,
+    &rsm_mod_accuracy,
 };
 #define NMODS (sizeof MODS / sizeof MODS[0])
 

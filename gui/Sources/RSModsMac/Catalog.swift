@@ -48,9 +48,9 @@ enum Catalog {
         ModToggle(label: "Autoload Last Used Profile", key: "ForceProfileLoad",
                   help: "Goes straight into the last used profile at startup."),
         ModToggle(label: "Allow Rewinding", key: "AllowRewind",
-                  help: "The rewind key moves the song back."),
+                  help: "The rewind key moves the song back, and the notes from there count again. The notes need RS Re-ARMed 1.11.0."),
         ModToggle(label: "Enable Looping", key: "AllowLooping",
-                  help: "Set a loop with the loop keys in Learn a Song and Non-Stop Play."),
+                  help: "Set a loop with the loop keys in Learn a Song and Non-Stop Play. Pausing in a loop makes its notes count again (needs RS Re-ARMed 1.11.0)."),
         ModToggle(label: "Linear Riff Repeater", key: "LinearRiffRepeater",
                   help: "The Riff Repeater slider's percent is the song speed (normally 68% plays at about 50%)."),
         ModToggle(label: "Bypass 2+ RTC MessageBox", key: "BypassTwoRTCMessageBox",
@@ -104,6 +104,8 @@ enum Catalog {
                   help: "Shows the note you are playing on screen."),
         ModToggle(label: "Guitar Speak", key: "GuitarSpeak",
                   help: "Play notes on your guitar to press keys in the game's menus."),
+        ModToggle(label: "Show Current Accuracy", key: "DisplayCurrentAccuracy",
+                  help: "In a song, the notes you hit out of the notes played so far, under the song timer. Needs RS Re-ARMed 1.11.0."),
         ModToggle(label: "Backup Profile", key: "BackupProfile",
                   help: "Backs up your profiles when this app opens, and every 10 minutes while the game runs (when they changed).",
                   section: Section.guiSettings),
@@ -117,8 +119,7 @@ enum Catalog {
 
     // Mods of the Windows GUI that the Mac library doesn't have yet
     static let notYetOnMac = [
-        "Show Current Accuracy", "Custom Song List Titles", "Auto Tune Song", "Fast Song Scan",
-        "Fast Profile Load/Save",
+        "Custom Song List Titles", "Auto Tune Song", "Fast Song Scan", "Fast Profile Load/Save",
     ]
 
     static let modKeybinds: [Keybind] = [
@@ -206,6 +207,7 @@ enum Catalog {
             "RemoveFingerprints": "off", "GreenScreenWall": "off", "UseCustomNSPTimer": "off", "SecondaryMonitor": "off",
             "ExtendedRange": "off", "ExtendedRangeDropTuning": "off", "ExtendedRangeFixBassTuning": "off",
             "ShowCurrentNoteOnScreen": "off", "GuitarSpeak": "off", "PreventMidSongPause": "off", "FixBrokenTones": "off",
+            "DisplayCurrentAccuracy": "off",
         ],
         Section.settings: [
             "RRSpeedInterval": "2", "LoopingLeadUp": "0", "RewindBy": "5000", "RewindLeadup": "2000",

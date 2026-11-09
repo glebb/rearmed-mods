@@ -80,6 +80,12 @@ features for the Mac build, keeping RSMods' settings, names and behaviour:
   RSMods reads the highlighted name from memory.
 - **The note the game hears**, as RSMods reads it: the game's DetectionService and its pitch detection, named in RS
   Re-ARMed (`detection_service`, `detection_note`), for Show Current Note and Guitar Speak.
+- **The note counts and the grey-note time**, where RSMods reads them: Player 1's counts of notes hit and missed, and the
+  track whose grey-note time is how far notes are grey. RSMods follows pointers from the UI manager; on the Mac the
+  steady way there is through the song's menu (`song_menu_game`, `player_note_stats`, `track_grey_time`), found by
+  scanning the game's memory while a song played and paused, and checked in later runs. The library follows it only in a
+  song's own menus, reading each pointer with a check that the memory is there. For Show Current Accuracy and the
+  grey-note reset of looping and rewinding.
 - **A value found by what it is.** RSMods' Non-Stop Play timer writes a constant at a known address. Both games read it
   from their mapped image at run time, and each image has that value (10.99f as a double) once: the library scans the
   image for it and writes it.
