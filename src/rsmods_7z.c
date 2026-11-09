@@ -604,7 +604,10 @@ static int parse_streams(cur *c, folder **out, size_t *nout, char *why, size_t w
         if (c->bad) FAIL("7z: substreams");
         if (s == K_END) break;
         if (s == K_NUM_STREAMS) {
-          for (uint64_t i = 0; i < nf; i++) f[i].streams = c_num(c);
+          // a folder of several files is a solid archive, which this doesn't read: refused here, so the counts below
+          // stay small whatever the archive says
+          for (uint64_t i = 0; i < nf; i++)
+            if ((f[i].streams = c_num(c)) > 1) FAIL("7z: a solid archive");
         } else if (s == K_SIZE) {
           for (uint64_t i = 0; i < nf; i++)
             for (uint64_t k = 1; k < f[i].streams; k++) c_num(c);
@@ -633,7 +636,6 @@ static int parse_streams(cur *c, folder **out, size_t *nout, char *why, size_t w
   if (c->bad) FAIL("7z: the header ends early");
   if (!f || !sizes || npack != nf) FAIL("7z: one packed stream a folder expected");
   for (uint64_t i = 0, off = 32 + pack_pos; i < nf; i++) {
-    if (f[i].streams > 1) FAIL("7z: a solid archive");
     f[i].pack_off = off;
     f[i].pack_len = sizes[i];
     off += sizes[i];
@@ -712,6 +714,7 @@ static int parse_names(rsm_7z *z, const uint8_t *p, size_t len) {
       }
     }
     name[k] = 0;
+    free(z->names[f]);  // names given twice: the later ones
     if (!(z->names[f] = strdup(name))) return 0;
   }
   return 1;
@@ -874,7 +877,7 @@ uint8_t *rsm_7z_rewrite(const rsm_7z *z, int n, const int *files, const uint8_t 
       continue;
     }
     if (f->pack_off > z->n || f->pack_len > z->n - f->pack_off) goto done;
-    if (!f->has_crc) {  // the CRCs are all written: one this archive hasn't, from its data
+    if (!f->has_crc && f->streams) {  // a file's CRC is always written: one this archive hasn't, from its data
       uint8_t *d = unpack(z->d, z->n, f);
       if (!d) goto done;
       f->crc = (uint32_t)crc32(0, d, (uInt)f->unpack);
@@ -883,8 +886,12 @@ uint8_t *rsm_7z_rewrite(const rsm_7z *z, int n, const int *files, const uint8_t 
     }
     put_bytes(&body, z->d + f->pack_off, (size_t)f->pack_len);
   }
-  // The header: the packed streams from 0, one coder a folder, the CRCs in the substreams, the files' properties as
-  // they were (the same files, in the same order)
+  // The header: the packed streams from 0, one coder a folder, the files' CRCs in the substreams, the files' properties
+  // as they were (the same files, in the same order). A folder holds one file unless the header says otherwise: a
+  // folder without one (which the archive may have) needs each folder's count, or the files after it would take the
+  // wrong folders.
+  int one_each = 1;
+  for (size_t i = 0; i < nf; i++) one_each &= nfo[i].streams == 1;
   put_u8(&h, K_HEADER);
   put_u8(&h, K_MAIN);
   put_u8(&h, K_PACK);
@@ -910,9 +917,14 @@ uint8_t *rsm_7z_rewrite(const rsm_7z *z, int n, const int *files, const uint8_t 
   for (size_t i = 0; i < nf; i++) put_num(&h, nfo[i].unpack);
   put_u8(&h, K_END);
   put_u8(&h, K_SUBSTREAMS);
+  if (!one_each) {
+    put_u8(&h, K_NUM_STREAMS);
+    for (size_t i = 0; i < nf; i++) put_num(&h, nfo[i].streams);
+  }
   put_u8(&h, K_CRC);
   put_u8(&h, 1);
-  for (size_t i = 0; i < nf; i++) put_u32(&h, nfo[i].crc);
+  for (size_t i = 0; i < nf; i++)
+    if (nfo[i].streams) put_u32(&h, nfo[i].crc);
   put_u8(&h, K_END);
   put_u8(&h, K_END);
   put_u8(&h, K_FILES);

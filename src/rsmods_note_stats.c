@@ -139,8 +139,12 @@ int rsm_grey_time(float *seconds) {
   return 1;
 }
 
+// Not before the song's start: a rewind there would otherwise ask for up to RewindLeadup before it, a time find() takes
+// for no track (plausible_time), which would hide the counts until the game set the time again at the next pause
 int rsm_set_grey_time(float seconds) {
   const char *t;
+  if (!isfinite(seconds) || seconds > MAX_TIME) return 0;
+  if (seconds < 0) seconds = 0;
   if (!find(NULL, &t)) return 0;
   RC_ST(float, t + RC_OFF(track_grey_time), seconds);
   return 1;

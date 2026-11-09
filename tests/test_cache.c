@@ -149,6 +149,18 @@ static void test_tones(void) {
   out = rsm_tones_edit(TONES, c + 2, 1, &applied);
   CHECK(out && applied == 0 && !strcmp(out, TONES));
   free(out);
+  // a key the file has many times, more than the changes asked for: every one of them, nothing written past its end
+  enum { TWICE = 40 };
+  static char many[TWICE * 96 + 128];
+  size_t k = (size_t)snprintf(many, sizeof many, "{ \"Static\" : { \"ToneManager\" : { \"Tones\" : [");
+  for (int i = 0; i < TWICE; i++)
+    k += (size_t)snprintf(many + k, sizeof many - k, "%s{ \"Key\" : \"ToneDefault\", \"GearList\" : { \"Amp\" : 1 }, "
+                          "\"Volume\" : \"-1\" }", i ? ", " : "");
+  snprintf(many + k, sizeof many - k, "] } } }");
+  out = rsm_tones_edit(many, (rsm_tone_change[]){{"ToneDefault", &t[0]}}, 1, &applied);
+  CHECK(out && applied == TWICE && count(out, "\"Amp_X\"") == TWICE && count(out, "\"-12.000000\"") == TWICE);
+  CHECK(out && !strstr(out, "\"Amp\" : 1") && !strstr(out, "\"-1\""));
+  free(out);
   CHECK(rsm_tones_edit("{ \"Static\" : {} }", c, 1, &applied) == NULL);
 }
 

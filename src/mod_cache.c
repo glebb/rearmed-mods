@@ -6,9 +6,10 @@
 // stays changed until it is restored.
 //
 // Here cache.psarc stays as it is. The game opens cache7.7z and cache4.7z by name through FrontEnd_OpenFile, a hook
-// point (frontend_open_file). The first time, the library writes its own in rearmed-mods/ in the game folder: the
-// game's, with those files changed and every other file's packed bytes as they are (rsmods_7z.c), from RS Re-ARMed's
-// overlay (Update/patcharchives.psarc, which has its menu entries) when that has the archive, else from cache.psarc.
+// point (frontend_open_file). At the first of those opens in a run, the library writes its own in rearmed-mods/ in the
+// game folder, again at every start (a quarter of a second, most of it the localization): the game's, with those files
+// changed and every other file's packed bytes as they are (rsmods_7z.c), from RS Re-ARMed's overlay
+// (Update/patcharchives.psarc, which has its menu entries) when that has the archive, else from cache.psarc.
 // Then the game opens those. On the Mac RS Re-ARMed's hook asks for PatchUpdate/<name> through the hook point; in
 // Learn & Play its override opens the overlay itself and the hook sees the name: the library takes either. With both
 // mods off, or nothing to change, the game opens its own as before. A change takes effect at the next start, as the

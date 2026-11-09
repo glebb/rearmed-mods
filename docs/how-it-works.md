@@ -102,9 +102,10 @@ features for the Mac build, keeping RSMods' settings, names and behaviour:
   default tones by rewriting `cache.psarc`: the tunings (`manifests/tuning.database.json`) and the tones
   (`manifests/tonemanager.database.json`) in `cache7.7z`, and the localization, which names the tunings
   (`localization/maingame.csv`), in `cache4.7z`. The game opens those archives by name through `FrontEnd_OpenFile`, a
-  hook point (`frontend_open_file`). The first time, the library writes its own, from RS Re-ARMed's overlay
-  (`Update/patcharchives.psarc`, with its menu entries) when that has the archive, else from `cache.psarc`, and the game
-  opens those instead. On the Mac they are in `rearmed-mods/` in the game folder: the hook opens one there and gives the
+  hook point (`frontend_open_file`). At the first of those opens in a run, the library writes its own, from RS
+  Re-ARMed's overlay (`Update/patcharchives.psarc`, with its menu entries) when that has the archive, else from
+  `cache.psarc`, and the game opens those instead. They are made again at every start, so a change of the settings or
+  of the overlay is in the next one; it takes about a quarter of a second, most of it the localization. On the Mac they are in `rearmed-mods/` in the game folder: the hook opens one there and gives the
   game that stream (RS Re-ARMed's hook asks for `PatchUpdate/<name>` through the hook point again, and the library's
   hook answers that call), and when it can't, the game opens its own. In Learn & Play a mod can't call the function (it
   takes its path in a register, which the runtime's calls by name refuse), so the hook changes the path the game asked
@@ -113,7 +114,8 @@ features for the Mac build, keeping RSMods' settings, names and behaviour:
   Re-ARMed's drive layout). The archives have one file per folder, each packed with
   LZMA: the library keeps every other file's packed bytes, unpacks the files it changes (an LZMA decoder after the
   LZMA specification's) and packs the changed ones as LZMA literals, which any LZMA decoder reads, with the header
-  packed as the game's are. A tuning's name is `$[<id>]<name>` with a localization line of its own: the tuner's list
+  packed as the game's are. An archive of another shape (a folder of several files, a coder other than LZMA, LZMA2
+  or none) is refused as its header is read, with a line in the log, and the game opens its own. A tuning's name is `$[<id>]<name>` with a localization line of its own: the tuner's list
   shows `$[-1]<name>` as the text, but a song's details look the id up and show `#-1#`.
 - **RSMods.ini** is read with the same keys and defaults, and re-read when it changes.
 

@@ -21,8 +21,8 @@ typedef struct {
 int rsm_tuning_parse(const char *name, const char *value, rsm_tuning *out);
 // tuning.database.json with these tunings added, named "$[<id>]<name>" (the game looks the name up by the id in its
 // localization: "$[-1]" without one, which only the tuner's list shows as the text); a tuning of the game's with the
-// same strings, or the same key, gives way to it, as does a later one of these with the same strings. malloc'ed; NULL
-// if the file isn't as expected.
+// same strings, or the same key, gives way to it, as does a later one of these with the same strings or name.
+// malloc'ed; NULL if the file isn't as expected.
 char *rsm_tunings_edit(const char *json, const rsm_tuning *t, int n);
 // The game's localization (localization/maingame.csv: "id,English,French,Spanish,Italian,German,Japanese,...,", a
 // line a text, CRLF) with a line for each tuning, its name in every language, under an id the file hasn't from 37500
@@ -49,8 +49,8 @@ typedef struct {
   const rsm_tone *tone;
 } rsm_tone_change;
 
-// tonemanager.database.json with the tones' GearList and Volume those of the profile's tones. *applied: how many of
-// the keys it has. malloc'ed; NULL if the file isn't as expected.
+// tonemanager.database.json with the tones' GearList and Volume those of the profile's tones (every tone of a key, if
+// the file has one twice). *applied: how many tones it changed. malloc'ed; NULL if the file isn't as expected.
 char *rsm_tones_edit(const char *json, const rsm_tone_change *c, int n, int *applied);
 
 #endif

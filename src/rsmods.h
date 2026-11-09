@@ -172,7 +172,7 @@ int rsm_guitar_note(unsigned *plucks);
 // the values, or 0 where they aren't read. Notes before the grey-note time (seconds) are grey and not detected.
 int rsm_note_counts(int *hits, int *misses);
 int rsm_grey_time(float *seconds);
-int rsm_set_grey_time(float seconds);
+int rsm_set_grey_time(float seconds);  // a time before the song's start is its start
 // "E2", with RSMods' names (C C# D Eb E F F# G Ab A Bb B; MIDI 0 is C-1)
 void rsm_note_name(int midi, char *out, size_t n);
 

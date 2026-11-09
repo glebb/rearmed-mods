@@ -121,8 +121,9 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
 * **Allow Rewinding**
   * The rewind key moves the song back `RewindBy` + `RewindLeadup` ms.
   * `AllowRewind`, `[Mod Settings] RewindBy` (5000), `RewindLeadup` (2000), `[Keybinds] RewindKey` (Z)
-  * The grey-note time goes back too, `RewindLeadup` ms before where the song goes, as RSMods does, so the notes
-    from there count again. Needs RS Re-ARMed 1.11.0 (in Learn & Play, in Learn a Song).
+  * The grey-note time goes back too, `RewindLeadup` ms before where the song goes (near the song's start, to the
+    start), as RSMods does, so the notes from there count again. Needs RS Re-ARMed 1.11.0 (in Learn & Play, in Learn a
+    Song).
 
 * **Show Song Timer**
   * The song position at the top right: in every song (`ShowSongTimerWhen = automatic`) or shown and hidden with
@@ -330,8 +331,9 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * As RSMods, it adds the tunings to the game's `manifests/tuning.database.json`, and each name to the localization
     (`localization/maingame.csv`) under an id the file hasn't from 37500 on. RSMods' app writes them into `cache.psarc`;
     here `cache.psarc` stays as it is, and the library gives the game its own copies of the two archives they are in
-    when the game opens them ([below](#how-it-works)). From the game's next start, as it reads them once. Checked on
-    the Mac: B Standard and C# Drop B songs are named so in the song list.
+    when the game opens them ([below](#how-it-works)), made again at every start (about a quarter of a second). From
+    the game's next start, as it reads them once. Checked on the Mac: B Standard and C# Drop B songs are named so in
+    the song list.
   * Different: RSMods' app has its own list (with a few more tunings) and no switch; here the list is in
     `RSMods.ini`, and the switch turns it off without restoring anything. In Learn & Play the library's archives are in
     its game folder's `Update` folder (`rearmed-mods-cache7.7z`, `rearmed-mods-cache4.7z`), next to RS Re-ARMed's.
@@ -500,7 +502,8 @@ and its mod stays off.
 runs the library's tests (`tests/`: `RSMods.ini`, key names, the color maths, Sunlight's colors, archives and tunings made
 in the test with a key of its own, the profile list and the backups, the song list titles put in the game's strings, with
 either game's pointers, LZMA and a 7z archive made by liblzma (`tests/make_7z_vectors.py` makes them again) and written
-again, the tuning, localization and tone edits) and the app's
+again, archives laid out in the test for a folder without a file and counts the reader refuses, the tuning,
+localization and tone edits, a tone key the file has many times) and the app's
 (`gui/Tests`: settings, a section that is a list, install and update for both editions, the app's profile backups). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,
 the same key names, and no two actions on one default key. A mod's work in the game is checked by playing it.
 

@@ -9,8 +9,8 @@
 //
 // Both reset the game's grey-note time, as RSMods does: notes before it are grey and not detected, and the game sets
 // it to where the song pauses. While paused with a loop it is the loop's start, so the notes of the loop count again
-// when the song resumes before them; a rewind sets it RewindLeadup ms before where the song goes back to
-// (rsmods_note_stats.c).
+// when the song resumes before them; a rewind sets it RewindLeadup ms before where the song goes back to, or to the
+// song's start (rsmods_note_stats.c).
 #include <stdio.h>
 
 #include "rsmods.h"

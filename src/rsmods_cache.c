@@ -388,9 +388,8 @@ char *rsm_tones_edit(const char *json, const rsm_tone_change *c, int n, int *app
   const char *tm = st ? get(st, "ToneManager", NULL) : NULL;
   const char *tones = tm ? get(tm, "Tones", NULL) : NULL, *v, *e;
   if (!tones || *tones != '[') return NULL;
-  span *spans = calloc((size_t)(2 * n + 1), sizeof *spans);
-  int ns = 0, found = 0, r;
-  if (!spans) return NULL;
+  span *spans = NULL;  // two a tone changed, however many tones have a key: the file may have one twice
+  int ns = 0, cap = 0, found = 0, r;
   for (const char *cur = tones; (r = next_element(&cur, &v, &e)) == 1;) {
     char key[64];
     if (*v != '{' || !string_of(get(v, "Key", NULL), key, sizeof key)) continue;
@@ -399,17 +398,28 @@ char *rsm_tones_edit(const char *json, const rsm_tone_change *c, int n, int *app
       const char *gend, *vend;
       const char *gear = get(v, "GearList", &gend), *vol = get(v, "Volume", &vend);
       if (!gear) break;
+      if (ns + 2 > cap) {
+        int more = cap ? cap * 2 : 16;
+        span *grown = realloc(spans, (size_t)more * sizeof *grown);
+        if (!grown) {
+          r = -1;
+          break;
+        }
+        spans = grown;
+        cap = more;
+      }
       spans[ns++] = (span){gear, gend, c[i].tone->gear, c[i].tone->gear_len};
       if (vol && c[i].tone->volume) spans[ns++] = (span){vol, vend, c[i].tone->volume, c[i].tone->volume_len};
       found++;
       break;
     }
+    if (r < 0) break;
   }
   if (r < 0) {
     free(spans);
     return NULL;
   }
-  qsort(spans, (size_t)ns, sizeof *spans, by_position);
+  if (ns) qsort(spans, (size_t)ns, sizeof *spans, by_position);
   text out = {0};
   const char *p = json;
   for (int i = 0; i < ns; i++) {

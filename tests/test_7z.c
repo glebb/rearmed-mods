@@ -1,7 +1,9 @@
 // rsmods_7z.c: LZMA and LZMA2 made by liblzma, a 7z archive laid out as the game's are, and the archive written again
-// with a file changed (tests/vectors_7z.h, from make_7z_vectors.py).
+// with a file changed (tests/vectors_7z.h, from make_7z_vectors.py); archives laid out here for a folder without a file
+// and for counts the reader refuses.
 #include <stdlib.h>
 #include <string.h>
+#include <zlib.h>
 
 #include "check.h"
 #include "rsmods_7z.h"
@@ -171,9 +173,110 @@ static void test_archive(void) {
   free(b);
 }
 
+// ------------------------------------------------------------------------------------------------
+// Archives laid out by hand, for what the game's don't have: stored (copy) folders, the header not packed
+// ------------------------------------------------------------------------------------------------
+typedef struct {
+  uint8_t b[512];
+  size_t n;
+} bytes;
+
+static void put(bytes *o, const void *p, size_t n) {
+  memcpy(o->b + o->n, p, n);
+  o->n += n;
+}
+static void put8(bytes *o, uint8_t v) { put(o, &v, 1); }
+static void put32(bytes *o, uint32_t v) {
+  for (int k = 0; k < 4; k++) put8(o, (uint8_t)(v >> (8 * k)));
+}
+static void put64(bytes *o, uint64_t v) {
+  for (int k = 0; k < 8; k++) put8(o, (uint8_t)(v >> (8 * k)));
+}
+static void putnum(bytes *o, uint64_t v) {  // 7z's number, as 7-Zip writes it
+  int n = 0;
+  while (n < 8 && v >= 1ull << (7 * (n + 1))) n++;
+  if (n == 8) {
+    put8(o, 0xFF);
+    put64(o, v);
+    return;
+  }
+  put8(o, (uint8_t)(((0xFF00u >> n) & 0xFF) | (v >> (8 * n))));
+  for (int k = 0; k < n; k++) put8(o, (uint8_t)(v >> (8 * k)));
+}
+
+// Two stored folders, "XXXX" with no file in it and then "hello", the one file (a.txt). `count`: the second folder's
+// count of files (1 in a good archive), with a sizes property after the counts when `sizes`.
+static uint8_t *empty_folder_archive(uint64_t count, int sizes, size_t *len) {
+  static const char packed[] = "XXXXhello";
+  bytes h = {{0}, 0}, out = {{0}, 0};
+  put8(&h, 0x01);                                        // header
+  put8(&h, 0x04);                                        // main streams
+  put8(&h, 0x06), putnum(&h, 0), putnum(&h, 2);          // pack info: from 0, two streams
+  put8(&h, 0x09), putnum(&h, 4), putnum(&h, 5), put8(&h, 0x00);
+  put8(&h, 0x07), put8(&h, 0x0B), putnum(&h, 2), put8(&h, 0);  // two folders
+  for (int i = 0; i < 2; i++) putnum(&h, 1), put8(&h, 0x01), put8(&h, 0x00);  // one coder: copy
+  put8(&h, 0x0C), putnum(&h, 4), putnum(&h, 5), put8(&h, 0x00);
+  put8(&h, 0x08), put8(&h, 0x0D), putnum(&h, 0), putnum(&h, count);  // substreams: 0 files, then count
+  if (sizes) put8(&h, 0x09);  // a size for each file but a folder's last (none here, as count says)
+  put8(&h, 0x0A), put8(&h, 1), put32(&h, (uint32_t)crc32(0, (const Bytef *)"hello", 5));
+  put8(&h, 0x00), put8(&h, 0x00);
+  put8(&h, 0x05), putnum(&h, 1);  // one file
+  static const uint8_t name[] = {0, 'a', 0, '.', 0, 't', 0, 'x', 0, 't', 0, 0, 0};
+  put8(&h, 0x11), putnum(&h, sizeof name), put(&h, name, sizeof name);
+  put8(&h, 0x00), put8(&h, 0x00);
+  bytes start = {{0}, 0};
+  put64(&start, sizeof packed - 1), put64(&start, h.n), put32(&start, (uint32_t)crc32(0, h.b, (uInt)h.n));
+  put(&out, "7z\xBC\xAF\x27\x1C\x00\x04", 8);
+  put32(&out, (uint32_t)crc32(0, start.b, (uInt)start.n));
+  put(&out, start.b, start.n);
+  put(&out, packed, sizeof packed - 1);
+  put(&out, h.b, h.n);
+  uint8_t *a = malloc(out.n);
+  memcpy(a, out.b, out.n);
+  *len = out.n;
+  return a;
+}
+
+static void test_empty_folder(void) {
+  char why[128] = "";
+  size_t n = 0, n1 = 0, n2 = 0;
+  uint8_t *a = empty_folder_archive(1, 0, &n);
+  rsm_7z *z = rsm_7z_open(a, n, why, sizeof why);
+  CHECK(z != NULL);
+  if (!z) {
+    fprintf(stderr, "open: %s\n", why);
+    free(a);
+    return;
+  }
+  CHECK(rsm_7z_files(z) == 1 && file_is(z, "a.txt", (const uint8_t *)"hello", 5));
+  // written again, unchanged and with the file changed: it is still the second folder's
+  uint8_t *w1 = rsm_7z_rewrite(z, 0, NULL, NULL, NULL, &n1);
+  rsm_7z *z1 = w1 ? rsm_7z_open(w1, n1, why, sizeof why) : NULL;
+  CHECK(z1 && file_is(z1, "a.txt", (const uint8_t *)"hello", 5));
+  const uint8_t *data[] = {(const uint8_t *)"changed"};
+  size_t lens[] = {7};
+  uint8_t *w2 = rsm_7z_rewrite(z, 1, (int[]){0}, data, lens, &n2);
+  rsm_7z *z2 = w2 ? rsm_7z_open(w2, n2, why, sizeof why) : NULL;
+  CHECK(z2 && file_is(z2, "a.txt", (const uint8_t *)"changed", 7));
+  rsm_7z_close(z2);
+  rsm_7z_close(z1);
+  free(w2);
+  free(w1);
+  rsm_7z_close(z);
+  free(a);
+  // a folder of several files (solid), or of a count no archive has: refused at once, the sizes never read
+  a = empty_folder_archive(2, 0, &n);
+  CHECK(rsm_7z_open(a, n, why, sizeof why) == NULL && strstr(why, "solid"));
+  free(a);
+  a = empty_folder_archive(1ull << 62, 1, &n);
+  CHECK(rsm_7z_open(a, n, why, sizeof why) == NULL && strstr(why, "solid"));
+  free(a);
+}
+
 int main(void) {
   test_decode();
   test_encode();
   test_archive();
+  test_empty_folder();
   return check_done("7z");
 }
