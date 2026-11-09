@@ -187,6 +187,7 @@ struct ModTogglesTab: View {
                 AutomationSettings().tabItem { Text("Automation") }
                 MiscSettings().tabItem { Text("Misc") }
                 GuitarSpeakSettings().tabItem { Text("Guitar Speak") }
+                SongListSettings().tabItem { Text("Song Lists") }
             }
         }
     }
@@ -564,6 +565,40 @@ struct GuitarSpeakSettings: View {
                 }
             }
             .padding(8)
+        }
+    }
+}
+
+// [SongListTitles]: RSMods' song list names, SongListTitle_1 to _20 (its app's "Song Lists" box)
+struct SongListSettings: View {
+    @EnvironmentObject var store: SettingsStore
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                ModSettingsGroup(title: "Custom Song List Titles", mod: "CustomSongListTitles") {
+                    titles(1...6)
+                    DisclosureGroup("Song lists 7 to 20") {
+                        titles(7...20).padding(.top, 4)
+                    }
+                    Text("The names the game's menus give your song lists: such as Learn a Song's song list filter and Non-Stop Play's choice of list. A list left empty keeps the game's name. Lists 7 to 20 are in a profile only when RSMods' app on Windows added them. Needs RS Re-ARMed 1.11.0.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(8)
+        }
+    }
+
+    private func titles(_ lists: ClosedRange<Int>) -> some View {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+            ForEach(Array(lists), id: \.self) { n in
+                GridRow {
+                    Text("Song List \(n)")
+                    TextField("SONG LIST \(n)", text: store.binding(Section.songListTitles, "SongListTitle_\(n)"))
+                }
+            }
         }
     }
 }

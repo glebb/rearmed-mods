@@ -13,6 +13,8 @@ $cc "$here/tests/test_gate.c" -o "$out/test_gate"
 $cc "$here/tests/test_gain.c" -o "$out/test_gain"
 $cc -O1 "$here/tests/test_tuning.c" "$here/src/rsmods_tuning.c" -lz -o "$out/test_tuning"
 $cc "$here/tests/test_profiles.c" "$here/src/rsmods_profiles.c" -lz -o "$out/test_profiles"
+$cc "$here/tests/test_song_list_titles.c" -o "$out/test_song_list_titles"
+$cc -DGUEST32 "$here/tests/test_song_list_titles.c" -o "$out/test_song_list_titles32"
 "$out/test_ini"
 "$out/test_colors"
 "$out/test_gate"
@@ -20,6 +22,8 @@ $cc "$here/tests/test_profiles.c" "$here/src/rsmods_profiles.c" -lz -o "$out/tes
 "$out/test_sunlight"
 "$out/test_tuning"
 "$out/test_profiles"
+"$out/test_song_list_titles"
+"$out/test_song_list_titles32"
 
 cd "$here/gui"
 swift test

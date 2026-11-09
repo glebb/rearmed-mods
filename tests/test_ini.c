@@ -35,6 +35,7 @@ int main(void) {
   CHECK(strstr(read_ini(), "[Toggle Switches]") != NULL);
   CHECK(!rsm_on("ToneHost") && !rsm_on("Sunlight") && !rsm_on("CameraDirector"));
   CHECK(rsm_long("SunlightMode", -1) == 1);
+  CHECK(!rsm_on("CustomSongListTitles") && !strcmp(rsm_get("SongListTitles", "SongListTitle_20"), ""));
 
   // what the file lacks comes from the defaults; names ignore case; the last of a key wins
   write_ini("[toggle switches]\nsunlight = ON\nToneHost = off\nToneHost = on\n[Mod Settings]\nCameraZoom = 120\nBad = x\n");

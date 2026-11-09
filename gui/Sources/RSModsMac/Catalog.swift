@@ -13,6 +13,7 @@ enum Section {
     static let highwayColors = "Highway Colors"
     static let guitarSpeak = "Guitar Speak"
     static let guiSettings = "GUI Settings"
+    static let songListTitles = "SongListTitles"
 }
 
 struct ModToggle: Identifiable {
@@ -106,6 +107,8 @@ enum Catalog {
                   help: "Play notes on your guitar to press keys in the game's menus."),
         ModToggle(label: "Show Current Accuracy", key: "DisplayCurrentAccuracy",
                   help: "In a song, the notes you hit out of the notes played so far, under the song timer. Needs RS Re-ARMed 1.11.0."),
+        ModToggle(label: "Custom Song List Titles", key: "CustomSongListTitles",
+                  help: "Your own names for the song lists, set in the Song Lists tab. Needs RS Re-ARMed 1.11.0."),
         ModToggle(label: "Backup Profile", key: "BackupProfile",
                   help: "Backs up your profiles when this app opens, and every 10 minutes while the game runs (when they changed).",
                   section: Section.guiSettings),
@@ -119,7 +122,7 @@ enum Catalog {
 
     // Mods of the Windows GUI that the Mac library doesn't have yet
     static let notYetOnMac = [
-        "Custom Song List Titles", "Auto Tune Song", "Fast Song Scan", "Fast Profile Load/Save",
+        "Auto Tune Song", "Fast Song Scan", "Fast Profile Load/Save",
     ]
 
     static let modKeybinds: [Keybind] = [
@@ -207,7 +210,7 @@ enum Catalog {
             "RemoveFingerprints": "off", "GreenScreenWall": "off", "UseCustomNSPTimer": "off", "SecondaryMonitor": "off",
             "ExtendedRange": "off", "ExtendedRangeDropTuning": "off", "ExtendedRangeFixBassTuning": "off",
             "ShowCurrentNoteOnScreen": "off", "GuitarSpeak": "off", "PreventMidSongPause": "off", "FixBrokenTones": "off",
-            "DisplayCurrentAccuracy": "off",
+            "DisplayCurrentAccuracy": "off", "CustomSongListTitles": "off",
         ],
         Section.settings: [
             "RRSpeedInterval": "2", "LoopingLeadUp": "0", "RewindBy": "5000", "RewindLeadup": "2000",

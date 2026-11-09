@@ -86,6 +86,12 @@ features for the Mac build, keeping RSMods' settings, names and behaviour:
   scanning the game's memory while a song played and paused, and checked in later runs. The library follows it only in a
   song's own menus, reading each pointer with a check that the memory is there. For Show Current Accuracy and the
   grey-note reset of looping and rewinding.
+- **A hook point where RSMods changes code.** RSMods' Custom Song List Titles changes three places in the function
+  that names a song list for the menus (it builds the localized "SONG LIST", a space and the list's number). RS
+  Re-ARMed makes that function a hook point (`song_list_name`), and the library's hook after it puts the title in the
+  name, an efd string: in its own buffer when the title fits, else in one from the game's allocator (`efd_alloc`), the
+  old one freed by the game's string destructor (`efd_str_destroy`), as the game's strings are. Non-Stop Play's extra
+  song lists aren't ported: their limits are constants in the middle of two larger functions.
 - **A value found by what it is.** RSMods' Non-Stop Play timer writes a constant at a known address. Both games read it
   from their mapped image at run time, and each image has that value (10.99f as a double) once: the library scans the
   image for it and writes it.

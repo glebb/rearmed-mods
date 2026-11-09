@@ -80,7 +80,7 @@ and, if you like, `RSMods.ini` in the game folder.
 
 The settings are in `RSMods.ini` in the game folder, one for each edition: the same sections (`[Toggle Switches]`,
 `[Mod Settings]`, `[Keybinds]`, `[Audio Keybindings]`, `[String Colors]`, `[Highway Colors]`, `[Guitar Speak]`,
-`[GUI Settings]`) and keys as RSMods on
+`[SongListTitles]`, `[GUI Settings]`) and keys as RSMods on
 Windows, so an `RSMods.ini` from Windows works too.
 The mods re-read the file while the game runs: a change takes effect within a second, no restart.
 
@@ -305,6 +305,20 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * Different: RSMods shows 0.00% in the song's other menus (Riff Repeater, the tuner, the mixer); here nothing shows
     there.
 
+* **Custom Song List Titles**
+  * Your own names for the song lists in the game's menus, such as Learn a Song's song list filter and Non-Stop Play's
+    choice of list. A list without one keeps the game's name (SONG LIST 1 and so on); All Songs and Favorites keep theirs.
+  * `CustomSongListTitles`, `[SongListTitles]` `SongListTitle_1` to `SongListTitle_20` (empty). The app's Song Lists tab
+    sets them.
+  * As RSMods, the title takes the place of the name the game builds for a list, the localized "SONG LIST" and its number.
+    RSMods changes that function's code; here a hook point on it (RS Re-ARMed 1.11.0) puts the title in after it. Lists 7
+    to 20 are the ones RSMods' app on Windows adds to a profile: they get their titles too, but Non-Stop Play still offers
+    only the first six ([below](#not-on-macos-yet)). Seen on the Mac in Learn a Song's song list filter, the song list
+    chosen there and Non-Stop Play's choice of list, with short titles and titles longer than the game's name; not yet
+    in Learn & Play.
+  * Different: RSMods has no switch, its titles are always on, and a list without one is called SONG LIST, with no
+    number.
+
 * **Backup Profile**
   * Your profiles are backed up to `Profile_AutoBackups/<account>/` in the game folder: by the game, at most every 10
     minutes and only when they changed (the last hour, 6 hourly, 4 quarter-daily and 30 daily are kept), and by the app
@@ -348,7 +362,9 @@ memory after each scene loads. It takes a second or two after a song starts.
 
 From RSMods, not ported yet. Each needs a hook point or a name of RS Re-ARMed that it doesn't have yet:
 
-- Custom Song List Titles and the extra song lists: code changes where the game names and counts its song lists
+- The extra song lists in Non-Stop Play: RSMods lets it offer every song list a profile has, not only the first six.
+  Its menu has eight places and its song pool eight cases, fixed inside two larger functions, which no hook point
+  reaches. (The lists themselves are added by RSMods' app on Windows; the rest of the game shows them.)
 - RSMods' file tools Custom Tunings and the default tones: they rewrite the game's `cache.psarc`, which RS Re-ARMed
   keeps (its own cache overlay would be the place)
 
@@ -377,9 +393,11 @@ Re-ARMed has no original machine code at run time: the game is translated to C a
 works from what RS Re-ARMed gives mods, and has no address of a game, which is why one file runs on both editions:
 
 - **Hook points**, by name: the library runs code before and after some game functions (each frame, key events, Wwise
-  audio events, the game's focus, the camera frustum, the Riff Repeater speed conversion, the two-cable check).
+  audio events, the game's focus, the camera frustum, the Riff Repeater speed conversion, the two-cable check, the tone
+  change, a song list's name).
 - **The game's own functions and data**, by name: Wwise for speed, volume, seeking and the song position, the UI manager
-  for the current menu, the DLC coordinator for enumeration, the color manager for string colors.
+  for the current menu, the DLC coordinator for enumeration, the color manager for string colors, the game's allocator
+  and string destructor for the song list titles.
 - **Hiding parts of the picture**: the game's Gamebryo scene objects and render steps are found by name in memory (from
   their run-time type information) and culled, collapsed or switched off.
 - **The overlay API** for text on screen and reading the frame, and **the render API** for note and highway colors.
@@ -447,7 +465,8 @@ and its mod stays off.
 ```
 
 runs the library's tests (`tests/`: `RSMods.ini`, key names, the color maths, Sunlight's colors, archives and tunings made
-in the test with a key of its own, the profile list and the backups) and the app's
+in the test with a key of its own, the profile list and the backups, the song list titles put in the game's strings, with
+either game's pointers) and the app's
 (`gui/Tests`: settings, install and update for both editions, the app's profile backups). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,
 the same key names, and no two actions on one default key. A mod's work in the game is checked by playing it.
 

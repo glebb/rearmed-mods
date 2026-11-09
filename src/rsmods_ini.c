@@ -88,6 +88,8 @@ static const char DEFAULT_INI[] =
     "GuitarSpeak = off\n"
     "; In a song, the notes hit out of the notes played so far, at the top right\n"
     "DisplayCurrentAccuracy = off\n"
+    "; The song lists get your own names, from [SongListTitles]\n"
+    "CustomSongListTitles = off\n"
     "; Keep an input device at OverrideInputVolume percent (17 is the game's default). The device: part of its\n"
     "; name as macOS shows it (Audio MIDI Setup), e.g. Rocksmith; empty = the default input. Several devices:\n"
     "; separated by ';', each optionally = its own percent: Rocksmith USB Guitar Adapter; Rocksmith Game (OBS) = 100\n"
@@ -150,6 +152,30 @@ static const char DEFAULT_INI[] =
     "GuitarSpeakForSlashWhen = 0\n"
     "GuitarSpeakAltWhen = 0\n"
     "GuitarSpeakWhileTuning = off\n"
+    "\n"
+    "[SongListTitles]\n"
+    "; With CustomSongListTitles = on: the name of each of the profile's song lists (7 to 20: lists added to a profile\n"
+    "; with RSMods on Windows). Empty = the game's name.\n"
+    "SongListTitle_1 = \n"
+    "SongListTitle_2 = \n"
+    "SongListTitle_3 = \n"
+    "SongListTitle_4 = \n"
+    "SongListTitle_5 = \n"
+    "SongListTitle_6 = \n"
+    "SongListTitle_7 = \n"
+    "SongListTitle_8 = \n"
+    "SongListTitle_9 = \n"
+    "SongListTitle_10 = \n"
+    "SongListTitle_11 = \n"
+    "SongListTitle_12 = \n"
+    "SongListTitle_13 = \n"
+    "SongListTitle_14 = \n"
+    "SongListTitle_15 = \n"
+    "SongListTitle_16 = \n"
+    "SongListTitle_17 = \n"
+    "SongListTitle_18 = \n"
+    "SongListTitle_19 = \n"
+    "SongListTitle_20 = \n"
     "\n"
     "[GUI Settings]\n"
     "; Back up the profiles to Profile_AutoBackups in the game folder while the game runs (when they changed, at most\n"
@@ -325,6 +351,7 @@ static const struct {
     {"GUI Settings", "NumberOfBackups", "50"},
     {"Toggle Switches", "PreventMidSongPause", "off"},
     {"Toggle Switches", "FixBrokenTones", "off"},
+    {"Toggle Switches", "CustomSongListTitles", "off"},
 };
 
 char *rsm_trim(char *s) {
