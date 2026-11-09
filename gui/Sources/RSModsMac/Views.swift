@@ -571,19 +571,28 @@ struct GuitarSpeakSettings: View {
     }
 }
 
-// [SongListTitles]: RSMods' song list names, SongListTitle_1 to _20 (its app's "Song Lists" box)
+// [SongListTitles]: RSMods' song list names, SongListTitle_1 to _20 (its app's "Song Lists" box), and More Song Lists
+// (its app's Profile Edits: Add New SongList, Remove Newest SongList), which the library applies to the profiles
 struct SongListSettings: View {
     @EnvironmentObject var store: SettingsStore
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
+                ModSettingsGroup(title: "More Song Lists", mod: "MoreSongLists") {
+                    NumberField(label: "Song lists in each profile", value: store.number("NumberOfSongLists"),
+                                range: 6...20, unit: "")
+                    Text("When the game starts, each of your profiles gets this many song lists: empty ones after the last, or with a lower number the last ones go while they are empty (a list with songs stays: take its songs out in the game first). Learn a Song and the song list editor show them; Non-Stop Play offers the first six.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 ModSettingsGroup(title: "Custom Song List Titles", mod: "CustomSongListTitles") {
                     titles(1...6)
                     DisclosureGroup("Song lists 7 to 20") {
                         titles(7...20).padding(.top, 4)
                     }
-                    Text("The names the game's menus give your song lists: such as Learn a Song's song list filter and Non-Stop Play's choice of list. A list left empty keeps the game's name. Lists 7 to 20 are in a profile only when RSMods' app on Windows added them. Needs RS Re-ARMed 1.11.0.")
+                    Text("The names the game's menus give your song lists: such as Learn a Song's song list filter and Non-Stop Play's choice of list. A list left empty keeps the game's name. Lists 7 to 20 are in a profile when More Song Lists (or RSMods' app on Windows) added them. Needs RS Re-ARMed 1.11.0.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

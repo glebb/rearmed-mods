@@ -111,6 +111,8 @@ enum Catalog {
                   help: "In a song, the notes you hit out of the notes played so far, under the song timer. Needs RS Re-ARMed 1.11.0; in Learn & Play not in Score Attack."),
         ModToggle(label: "Custom Song List Titles", key: "CustomSongListTitles",
                   help: "Your own names for the song lists, set in the Song Lists tab. Needs RS Re-ARMed 1.11.0."),
+        ModToggle(label: "More Song Lists", key: "MoreSongLists",
+                  help: "Your profiles get up to 20 song lists (the Song Lists tab). When the game starts."),
         ModToggle(label: "Custom Tunings", key: "CustomTunings",
                   help: "The game names your tunings (the Tunings tab) where it showed CUSTOM TUNING. From the game's next start."),
         ModToggle(label: "Change Default Tones", key: "DefaultTones",
@@ -256,6 +258,7 @@ enum Catalog {
             "ExtendedRange": "off", "ExtendedRangeDropTuning": "off", "ExtendedRangeFixBassTuning": "off",
             "ShowCurrentNoteOnScreen": "off", "GuitarSpeak": "off", "PreventMidSongPause": "off", "FixBrokenTones": "off",
             "DisplayCurrentAccuracy": "off", "CustomSongListTitles": "off", "CustomTunings": "off", "DefaultTones": "off",
+            "MoreSongLists": "off",
         ],
         Section.defaultTones: [
             "Rhythm": "", "Lead": "", "Bass": "", "TempleOfBends": "", "ScaleWarriors": "", "StringSkipSaloon": "",
@@ -267,7 +270,7 @@ enum Catalog {
             "VolumeControlInterval": "5", "CheckForNewSongsInterval": "5000", "OverrideInputVolume": "17",
             "CameraZoom": "100", "CameraHeight": "0", "CameraSide": "0", "CameraTilt": "0", "SunlightMode": "1",
             "SeparateNoteColorsMode": "0", "CustomNSPTimeLimit": "10000", "SecondaryMonitorXPosition": "0",
-            "SecondaryMonitorYPosition": "0", "ExtendedRangeModeAt": "-5",
+            "SecondaryMonitorYPosition": "0", "ExtendedRangeModeAt": "-5", "NumberOfSongLists": "6",
         ],
         Section.keybinds: [
             "RRSpeedKey": "R", "LoopStartKey": "Y", "LoopEndKey": "U", "RewindKey": "Z", "ShowSongTimerKey": "I",

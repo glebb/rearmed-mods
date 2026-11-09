@@ -90,6 +90,9 @@ static const char DEFAULT_INI[] =
     "DisplayCurrentAccuracy = off\n"
     "; The song lists get your own names, from [SongListTitles]\n"
     "CustomSongListTitles = off\n"
+    "; Every profile gets NumberOfSongLists song lists (6 to 20) when the game starts: empty ones after the last, or\n"
+    "; the last ones removed while they are empty (a list with songs stays)\n"
+    "MoreSongLists = off\n"
     "; The game knows the tunings of [Custom Tunings] by name, where it showed CUSTOM TUNING (from the next start)\n"
     "CustomTunings = off\n"
     "; The game's default tones (slot 1 of the tone stick, and each Guitarcade game's) are your saved tones named in\n"
@@ -137,6 +140,7 @@ static const char DEFAULT_INI[] =
     "SecondaryMonitorXPosition = 0\n"
     "SecondaryMonitorYPosition = 0\n"
     "ExtendedRangeModeAt = -5\n"
+    "NumberOfSongLists = 6\n"
     "\n"
     "[Guitar Speak]\n"
     "; The MIDI note (0-96; E3, the low E's 12th fret, is 52) that presses each key; 0 = none. The close note stops\n"
@@ -160,7 +164,7 @@ static const char DEFAULT_INI[] =
     "\n"
     "[SongListTitles]\n"
     "; With CustomSongListTitles = on: the name of each of the profile's song lists (7 to 20: lists added to a profile\n"
-    "; with RSMods on Windows). Empty = the game's name.\n"
+    "; by MoreSongLists or RSMods' app on Windows). Empty = the game's name.\n"
     "SongListTitle_1 = \n"
     "SongListTitle_2 = \n"
     "SongListTitle_3 = \n"
@@ -388,6 +392,8 @@ static const struct {
     {"Toggle Switches", "PreventMidSongPause", "off"},
     {"Toggle Switches", "FixBrokenTones", "off"},
     {"Toggle Switches", "CustomSongListTitles", "off"},
+    {"Toggle Switches", "MoreSongLists", "off"},
+    {"Mod Settings", "NumberOfSongLists", "6"},
     {"Toggle Switches", "CustomTunings", "off"},
     {"Toggle Switches", "DefaultTones", "off"},
     {"Default Tones", "Rhythm", ""},

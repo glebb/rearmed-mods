@@ -7,7 +7,10 @@
 // account as RS_STEAM_ID (a SteamID64); of its folders the one written last is the one in use.
 //
 // LocalProfiles.json is as the profiles are: "EVAS", a 20-byte header (the last word the plain size), then AES-256-ECB
-// of zlib data (RSMods' Profiles.cs). The key is the game's own (key_profile).
+// of zlib data (RSMods' Profiles.cs). The key is the game's own (key_profile). The game's plain data is the JSON and
+// its terminating zero, compressed at level 9 (78 DA), in whole blocks (after the stream, what was in its buffer).
+// More Song Lists (mod_song_lists.c) writes a profile so too, with zeros after the stream as RSMods' app does: checked
+// on four of the Mac's profiles, the same bytes up to the stream's end.
 #include <CommonCrypto/CommonCryptor.h>
 #include <dirent.h>
 #include <stdio.h>
@@ -118,6 +121,139 @@ char *rsm_profiles_json(const char *folder) {
   size_t n = fread(buf, 1, sizeof buf, f);
   fclose(f);
   return rsm_profiles_decode(buf, n, (const uint8_t *)(uintptr_t)RC_A(a));
+}
+
+uint8_t *rsm_profiles_encode(const char *json, const uint8_t header[16], const uint8_t key[32], size_t *n) {
+  uLong plain = (uLong)strlen(json) + 1;  // with its terminating zero, as the game writes it
+  uLong bound = compressBound(plain);
+  size_t cap = ((size_t)bound + 15) & ~(size_t)15;
+  uint8_t *z = calloc(1, cap), *out = malloc(20 + cap);
+  uLongf zn = bound;
+  size_t moved = 0;
+  if (!z || !out || compress2(z, &zn, (const Bytef *)json, plain, 9) != Z_OK) goto fail;
+  size_t whole = ((size_t)zn + 15) & ~(size_t)15;  // the last block padded with zeros (calloc)
+  memcpy(out, header, 16);
+  for (int i = 0; i < 4; i++) out[16 + i] = (uint8_t)(plain >> (8 * i));
+  if (CCCrypt(kCCEncrypt, kCCAlgorithmAES, kCCOptionECBMode, key, 32, NULL, z, whole, out + 20, whole, &moved) !=
+          kCCSuccess ||
+      moved != whole)
+    goto fail;
+  free(z);
+  *n = 20 + whole;
+  return out;
+fail:
+  free(z);
+  free(out);
+  return NULL;
+}
+
+// ------------------------------------------------------------------------------------------------
+// A profile's song lists: SongListsRoot.SongLists, an array of arrays of song keys
+// ------------------------------------------------------------------------------------------------
+static const char *skip_ws(const char *p) {
+  while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+  return p;
+}
+
+// The end of the string at p (its opening quote), or NULL
+static const char *skip_string(const char *p) {
+  for (p++; *p && *p != '"'; p++)
+    if (*p == '\\' && p[1]) p++;
+  return *p ? p + 1 : NULL;
+}
+
+// The end of the JSON value at p, or NULL
+static const char *skip_value(const char *p) {
+  p = skip_ws(p);
+  if (*p == '"') return skip_string(p);
+  if (*p == '[' || *p == '{') {
+    int depth = 0;
+    for (; *p; p++) {
+      if (*p == '"') {
+        if (!(p = skip_string(p))) return NULL;
+        p--;
+      } else if (*p == '[' || *p == '{') {
+        depth++;
+      } else if ((*p == ']' || *p == '}') && --depth == 0) {
+        return p + 1;
+      }
+    }
+    return NULL;
+  }
+  const char *s = p;  // a number, true, false or null
+  while (*p && *p != ',' && *p != '}' && *p != ']' && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') p++;
+  return p > s ? p : NULL;
+}
+
+// The value of a member of the object at p, or NULL
+static const char *member(const char *p, const char *key) {
+  size_t kn = strlen(key);
+  p = skip_ws(p);
+  if (*p != '{') return NULL;
+  for (p = skip_ws(p + 1); *p == '"'; p = skip_ws(p + 1)) {
+    const char *end = skip_string(p);
+    if (!end) return NULL;
+    int match = (size_t)(end - p - 2) == kn && !memcmp(p + 1, key, kn);
+    p = skip_ws(end);
+    if (*p != ':') return NULL;
+    p = skip_ws(p + 1);
+    if (match) return p;
+    if (!(p = skip_value(p))) return NULL;
+    p = skip_ws(p);
+    if (*p != ',') return NULL;  // the object's end, or not JSON
+  }
+  return NULL;
+}
+
+char *rsm_song_lists_edit(const char *json, int want, int *had, int *now) {
+  enum { MAX = 256 };
+  const char *ends[MAX];
+  int empty[MAX], n = 0;
+  *had = *now = -1;
+  if (want < 1) return NULL;
+  const char *root = member(json, "SongListsRoot");
+  const char *p = root ? member(root, "SongLists") : NULL;
+  if (!p || *p != '[') return NULL;
+  const char *after = p + 1;  // where a list is added: after the last one, or the array's [
+  for (p = skip_ws(p + 1); *p != ']'; p = skip_ws(p)) {
+    if (n) {
+      if (*p != ',') return NULL;
+      p = skip_ws(p + 1);
+    }
+    if (*p != '[' || n == MAX) return NULL;
+    const char *end = skip_value(p);
+    if (!end) return NULL;
+    empty[n] = *skip_ws(p + 1) == ']';
+    ends[n++] = after = p = end;
+  }
+  *had = *now = n;
+  size_t len = strlen(json);
+  if (n < want) {  // empty lists after the last, as the game writes them
+    static const char LIST[] = ",\n\n[\n]";
+    size_t at = (size_t)(after - json), add = (size_t)(want - n) * (sizeof LIST - 1) - (n ? 0 : 1);
+    char *out = malloc(len + add + 1), *o = out;
+    if (!out) return NULL;
+    memcpy(o, json, at);
+    o += at;
+    for (int i = n; i < want; i++) {
+      const char *l = i ? LIST : LIST + 1;
+      memcpy(o, l, strlen(l));
+      o += strlen(l);
+    }
+    memcpy(o, json + at, len - at + 1);
+    *now = want;
+    return out;
+  }
+  int keep = n;
+  while (keep > want && empty[keep - 1]) keep--;  // from the end, while empty: a list with songs stays
+  if (keep == n) return NULL;
+  size_t from = (size_t)(ends[keep - 1] - json), to = (size_t)(ends[n - 1] - json);
+  char *out = malloc(len - (to - from) + 1);
+  if (!out) return NULL;
+  memcpy(out, json, from);
+  memcpy(out + from, json + to, len - to + 1);
+  *now = keep;
+  return out;
 }
 
 // A JSON string at p (after its opening quote) into out; the end of it, or NULL

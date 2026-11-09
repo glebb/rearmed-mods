@@ -46,6 +46,7 @@ static const rsm_mod *const MODS[] = {
     &rsm_mod_sunlight,
     &rsm_mod_nsp_timer,
     &rsm_mod_secondary_monitor,
+    &rsm_mod_song_lists,  // on the first frame, before the backups' thread starts
     &rsm_mod_profile_backups,
     &rsm_mod_game_note,  // before the two that use the note
     &rsm_mod_current_note,

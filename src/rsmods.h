@@ -154,7 +154,8 @@ extern const rsm_mod rsm_mod_riff_repeater, rsm_mod_looping, rsm_mod_song_previe
     rsm_mod_loft, rsm_mod_scene_dump, rsm_mod_hide_nodes, rsm_mod_headstock, rsm_mod_lyrics, rsm_mod_skyline,
     rsm_mod_fretboard, rsm_mod_camera, rsm_mod_colors, rsm_mod_tone_host, rsm_mod_sunlight, rsm_mod_nsp_timer,
     rsm_mod_secondary_monitor, rsm_mod_profile_backups, rsm_mod_extended_range, rsm_mod_game_note,
-    rsm_mod_current_note, rsm_mod_guitar_speak, rsm_mod_buggy_tones, rsm_mod_accuracy, rsm_mod_song_list_titles;
+    rsm_mod_current_note, rsm_mod_guitar_speak, rsm_mod_buggy_tones, rsm_mod_accuracy, rsm_mod_song_list_titles,
+    rsm_mod_song_lists;
 
 // The guitar fader while ToneHost holds the game's own at 0: 1 and the value; otherwise 0 (mod_tone_host.c)
 int rsm_guitar_fader(float *value);
@@ -182,6 +183,13 @@ int rsm_save_folder(char *out, size_t n, unsigned long long *account);
 // LocalProfiles.json of a save folder, decrypted with the game's key: malloc'ed JSON, or NULL
 char *rsm_profiles_json(const char *folder);
 char *rsm_profiles_decode(const uint8_t *data, size_t n, const uint8_t key[32]);
+// A profile file of the JSON as the game writes one, with the first 16 bytes of `header` (an existing file's: "EVAS",
+// its version and account); malloc'ed, its size in *n, or NULL
+uint8_t *rsm_profiles_encode(const char *json, const uint8_t header[16], const uint8_t key[32], size_t *n);
+// A profile's JSON with `want` song lists (SongListsRoot.SongLists): empty lists added after the last, or lists after
+// `want` removed from the end while they are empty. Malloc'ed, or NULL when nothing changes or the profile has no song
+// lists. *had: the lists it has (-1: none found), *now: the lists after the edit.
+char *rsm_song_lists_edit(const char *json, int want, int *had, int *now);
 // The profiles' names (PlayerName), in the file's order: last used first, as the game lists them; how many
 int rsm_profiles_names(const char *json, char names[][64], int max);
 

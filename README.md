@@ -82,8 +82,8 @@ and, if you like, `RSMods.ini` in the game folder.
 The settings are in `RSMods.ini` in the game folder, one for each edition: the same sections (`[Toggle Switches]`,
 `[Mod Settings]`, `[Keybinds]`, `[Audio Keybindings]`, `[String Colors]`, `[Highway Colors]`, `[Guitar Speak]`,
 `[SongListTitles]`, `[GUI Settings]`) and keys as RSMods on
-Windows, so an `RSMods.ini` from Windows works too. Custom Tunings and the default tones, which RSMods keeps in its app,
-have `[Custom Tunings]` and `[Default Tones]` here.
+Windows, so an `RSMods.ini` from Windows works too. Custom Tunings, the default tones and the number of song lists,
+which RSMods keeps in its app, have `[Custom Tunings]`, `[Default Tones]` and `NumberOfSongLists` here.
 The mods re-read the file while the game runs: a change takes effect within a second, no restart.
 
 **Re-ARMed Mods.app** (in `gui/`) edits it like the Windows RSMods GUI: an **Enable / Disable Mods** tab with each mod's
@@ -315,12 +315,31 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     sets them.
   * As RSMods, the title takes the place of the name the game builds for a list, the localized "SONG LIST" and its number.
     RSMods changes that function's code; here a hook point on it (RS Re-ARMed 1.11.0) puts the title in after it. Lists 7
-    to 20 are the ones RSMods' app on Windows adds to a profile: they get their titles too, but Non-Stop Play still offers
-    only the first six ([below](#not-on-macos-yet)). Seen on the Mac in Learn a Song's song list filter, the song list
-    chosen there and Non-Stop Play's choice of list, with short titles and titles longer than the game's name; not yet
-    in Learn & Play.
+    to 20 are the ones [More Song Lists](#more-song-lists) (or RSMods' app on Windows) adds to a profile: they get their
+    titles too, but Non-Stop Play still offers only the first six ([below](#not-on-macos-yet)). Seen on the Mac in
+    Learn a Song's song list filter, the song list chosen there and Non-Stop Play's choice of list, with short titles
+    and titles longer than the game's name; not yet in Learn & Play.
   * Different: RSMods has no switch, its titles are always on, and a list without one is called SONG LIST, with no
     number.
+
+* **More Song Lists**
+  * Your profiles get more song lists than the game's six, up to 20. The game's menus size themselves from a
+    profile's lists (Learn a Song's song list filter, the song list editor, adding a song to a list: RSMods' notes, on
+    Windows), and Custom Song List Titles names them. Non-Stop Play still offers the first six
+    ([below](#not-on-macos-yet)).
+  * `MoreSongLists`, `[Mod Settings] NumberOfSongLists` (6 to 20; 6). The app's Song Lists tab sets the number.
+  * As RSMods' app (Profile Edits, Add New SongList), an empty list is added after the last in the profile's
+    `SongListsRoot`; the rest of the game sizes itself from that list. When the game starts, on its first frame
+    and before it reads a profile, the library gives every profile in the save folder in use that many lists, and
+    writes a profile only when it changes, as the game writes one (checked on four of the Mac's profiles: the same
+    bytes up to the data's end), and only once the new file reads back. The game then saves the lists as its own.
+    Checked on the Mac: four profiles went from 6 to 8 lists at the start, Learn a Song had them, and the game's own
+    save of a profile kept all 8. Not yet in Learn & Play.
+  * Different: RSMods' app changes the profile you choose, a list at a time, and removes the newest list whatever is in
+    it. Here the number is for every profile; with a lower number the last lists go only while they are empty (a
+    list with songs stays: take its songs out in the game first). Off, the profiles stay as they are. A profile
+    made while the game runs gets its lists at the next start. With [Backup Profile](#backup-profile) on, the app
+    backs the profiles up when it opens, before the game's next start changes them.
 
 * **Custom Tunings**
   * The game knows your tunings by name: a song in B Standard is B Standard in the song list, the song's details and
@@ -396,7 +415,7 @@ From RSMods, not ported yet. It needs a hook point of RS Re-ARMed that it doesn'
 
 - The extra song lists in Non-Stop Play: RSMods lets it offer every song list a profile has, not only the first six.
   Its menu has eight places and its song pool eight cases, fixed inside two larger functions, which no hook point
-  reaches. (The lists themselves are added by RSMods' app on Windows; the rest of the game shows them.)
+  reaches. (The lists themselves are added by [More Song Lists](#more-song-lists); the rest of the game shows them.)
 
 Not planned: what only exists on Windows or is about particular hardware (Twitch and Crowd Control integrations, the
 Oculus crash fix, ASIO, the in-game settings menu, controllers, ultrawide screens (RS Re-ARMed draws any screen shape),
@@ -432,7 +451,9 @@ works from what RS Re-ARMed gives mods, and has no address of a game, which is w
   their run-time type information) and culled, collapsed or switched off.
 - **The overlay API** for text on screen and reading the frame, and **the render API** for note and highway colors.
 - **The game's files**, where RSMods reads the game's memory: a song's tunings from its archive (Extended Range), the
-  profile list from `LocalProfiles.json` (`ProfileToLoad`), both decrypted with the game's own keys, found by name.
+  profile list from `LocalProfiles.json` (`ProfileToLoad`), both decrypted with the game's own keys, found by name;
+  and, where RSMods' app edits a profile, the profiles' song lists (More Song Lists), written back as the game writes
+  them.
 - **A value in the game's image**, found by what it is: the Non-Stop Play countdown's 10.99 seconds.
 - **The game's archives, given again**: for Custom Tunings and the default tones the library writes its own
   `cache7.7z` and `cache4.7z` (in `rearmed-mods/` in the game folder, in Learn & Play in `Update/`) from the game's, with

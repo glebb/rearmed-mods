@@ -78,6 +78,15 @@ features for the Mac build, keeping RSMods' settings, names and behaviour:
   name (`key_psarc_hex`), lists every archive's manifests once on a thread, and reads the song's when its key changes.
   `ProfileToLoad` reads the profile list, `LocalProfiles.json` (AES-ECB and zlib, the game's `key_profile`), where
   RSMods reads the highlighted name from memory.
+- **The profiles, where RSMods' app edits them.** RSMods' app adds a song list to a profile (`SongListsRoot`, an
+  array of the lists' song keys, from which the game sizes its song list menus) and writes the profile back. The Mac
+  app can't read a profile (it hasn't the game's key), so More Song Lists is a setting the library applies: on the
+  game's first frame, which comes before the game reads a profile, it decodes every profile of the save folder in
+  use, adds empty lists or removes empty ones from the end, and writes a profile that changed as the game does: the
+  header kept with the new size, the JSON and its terminating zero at zlib level 9, AES-256-ECB in whole blocks
+  (`rsg_profile_encrypt`'s format; the game leaves what was in its buffer after the stream, the library zeros, as
+  RSMods' app). A profile re-encoded so is byte for byte the game's up to the stream's end (checked on four of the
+  Mac's). It is written only after the new file decodes to the edited JSON, to a new file renamed over the old.
 - **The note the game hears**, as RSMods reads it: the game's DetectionService and its pitch detection, named in RS
   Re-ARMed (`detection_service`, `detection_note`), for Show Current Note and Guitar Speak.
 - **The note counts and the grey-note time**, where RSMods reads them: Player 1's counts of notes hit and missed, and the
