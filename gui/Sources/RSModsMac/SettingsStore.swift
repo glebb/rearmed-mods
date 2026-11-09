@@ -51,6 +51,27 @@ final class SettingsStore: ObservableObject {
         save()
     }
 
+    // A section that is a list ([Custom Tunings]): its lines, and all of them at once
+    func entries(_ section: String) -> [(key: String, value: String)] { ini.entries(section) }
+
+    func setEntries(_ section: String, _ entries: [(key: String, value: String)]) {
+        reloadIfChanged()
+        guard ini.entries(section).map({ [$0.key, $0.value] }) != entries.map({ [$0.key, $0.value] }) else { return }
+        ini.setEntries(section, entries)
+        save()
+    }
+
+    // The tones saved in the profiles, as the library lists them when the game starts (rearmed-mods/tones.txt in the
+    // game folder: "guitar" or "bass", a tab, the name)
+    var profileTones: [(name: String, bass: Bool)] {
+        let url = gameFolder.appendingPathComponent("rearmed-mods/tones.txt")
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        return text.split(separator: "\n").compactMap { line in
+            let parts = line.split(separator: "\t", maxSplits: 1)
+            return parts.count == 2 ? (String(parts[1]), parts[0] == "bass") : nil
+        }
+    }
+
     func binding(_ section: String, _ key: String) -> Binding<String> {
         Binding(get: { self.value(section, key) }, set: { self.set(section, key, $0) })
     }

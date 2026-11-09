@@ -69,4 +69,29 @@ final class LibrarySourceTests: XCTestCase {
             XCTAssertTrue(library.contains(mod.section + "/" + mod.key), mod.key)
         }
     }
+
+    // Add Common Tunings adds the tunings of the library's default RSMods.ini
+    func testCommonTuningsAreTheLibrarysDefaultOnes() {
+        let section = source.components(separatedBy: "\"[Custom Tunings]\\n\"")[1].components(separatedBy: "\"\\n\"\n")[0]
+        let lines = matches(#""([^";=]+) = ([-0-9 ]+)\\n""#, in: section)
+        XCTAssertEqual(lines.map { $0[0] }, Catalog.commonTunings.map(\.name))
+        for (line, common) in zip(lines, Catalog.commonTunings) {
+            XCTAssertEqual(Catalog.tuningStrings(line[1]), common.strings, common.name)
+        }
+        XCTAssertEqual(Catalog.tuningNotes([-5, -5, -5, -5, -5, -5]), "B1 E2 A2 D3 F#3 B3")
+        XCTAssertNil(Catalog.tuningStrings("1 2 3"))
+        XCTAssertNil(Catalog.tuningStrings("1 2 3 4 5 x"))
+        XCTAssertEqual(Catalog.tuningStrings("-1,-1, -1 -1 -1 -1"), [-1, -1, -1, -1, -1, -1])
+    }
+
+    // The app's tone rows are the library's [Default Tones] keys, and the ones mod_cache.c sets
+    func testToneSlotsAreTheLibrarys() {
+        let app = Set(Catalog.toneSlots.map(\.key) + Catalog.guitarcadeTones.map(\.key))
+        let library = Set(libraryDefaults.filter { $0.section == Section.defaultTones }.map(\.key))
+        XCTAssertEqual(app, library)
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let mod = try! String(contentsOf: root.appendingPathComponent("src/mod_cache.c"), encoding: .utf8)
+        XCTAssertEqual(Set(matches(#"\{"([A-Za-z]+)", "(?:ToneDefault|gc_)[A-Za-z0-9_]*"\}"#, in: mod).map { $0[0] }), app)
+    }
 }

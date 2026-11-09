@@ -82,4 +82,54 @@ struct IniDocument: Equatable {
         lines.append("\(key) = \(value)")
         lines.append("")
     }
+
+    // Every line of a section, in the file's order: a section that is a list, such as [Custom Tunings]
+    func entries(_ section: String) -> [(key: String, value: String)] {
+        var current = ""
+        var out: [(key: String, value: String)] = []
+        for line in lines {
+            switch Self.parse(line) {
+            case .section(let name): current = name
+            case .entry(let k, let v) where Self.same(current, section): out.append((k, v))
+            default: break
+            }
+        }
+        return out
+    }
+
+    // The section's lines become these, where its first line was (its comments stay); a new section goes at the end
+    mutating func setEntries(_ section: String, _ entries: [(key: String, value: String)]) {
+        let new = entries.map { "\($0.key) = \($0.value)" }
+        var current = ""
+        var header: Int?
+        var first: Int?
+        var out: [String] = []
+        for line in lines {
+            switch Self.parse(line) {
+            case .section(let name):
+                current = name
+                if header == nil, Self.same(name, section) { header = out.count }
+                out.append(line)
+            case .entry where Self.same(current, section):
+                if first == nil { first = out.count }
+            default:
+                out.append(line)
+            }
+        }
+        if let at = first {
+            out.insert(contentsOf: new, at: at)
+        } else if let header {
+            var at = header + 1
+            while at < out.count, case .other = Self.parse(out[at]),
+                  !out[at].trimmingCharacters(in: .whitespaces).isEmpty { at += 1 }  // its comments first
+            out.insert(contentsOf: new, at: at)
+        } else {
+            if out.last == "" { out.removeLast() }
+            if let last = out.last, !last.trimmingCharacters(in: .whitespaces).isEmpty { out.append("") }
+            out.append("[\(section)]")
+            out.append(contentsOf: new)
+            out.append("")
+        }
+        lines = out
+    }
 }

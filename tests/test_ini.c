@@ -36,6 +36,15 @@ int main(void) {
   CHECK(!rsm_on("ToneHost") && !rsm_on("Sunlight") && !rsm_on("CameraDirector"));
   CHECK(rsm_long("SunlightMode", -1) == 1);
   CHECK(!rsm_on("CustomSongListTitles") && !strcmp(rsm_get("SongListTitles", "SongListTitle_20"), ""));
+  CHECK(!rsm_on("CustomTunings") && !rsm_on("DefaultTones") && !strcmp(rsm_get("Default Tones", "Lead"), ""));
+
+  // a section's lines in order (a '#' inside a key is no comment); past the last, none
+  const char *k, *v;
+  CHECK(rsm_ini_entry("Custom Tunings", 0, &k, &v) && !strcmp(k, "F Standard") && !strcmp(v, "1 1 1 1 1 1"));
+  CHECK(rsm_ini_entry("custom tunings", 1, &k, &v) && !strcmp(k, "C# Drop B") && !strcmp(v, "-5 -3 -3 -3 -3 -3"));
+  CHECK(rsm_ini_entry("Custom Tunings", 8, &k, &v) && !strcmp(k, "Open C"));
+  CHECK(!rsm_ini_entry("Custom Tunings", 9, &k, &v));
+  CHECK(!rsm_ini_entry("No Such Section", 0, &k, &v));
 
   // what the file lacks comes from the defaults; names ignore case; the last of a key wins
   write_ini("[toggle switches]\nsunlight = ON\nToneHost = off\nToneHost = on\n[Mod Settings]\nCameraZoom = 120\nBad = x\n");

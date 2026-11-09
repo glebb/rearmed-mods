@@ -90,6 +90,11 @@ static const char DEFAULT_INI[] =
     "DisplayCurrentAccuracy = off\n"
     "; The song lists get your own names, from [SongListTitles]\n"
     "CustomSongListTitles = off\n"
+    "; The game knows the tunings of [Custom Tunings] by name, where it showed CUSTOM TUNING (from the next start)\n"
+    "CustomTunings = off\n"
+    "; The game's default tones (slot 1 of the tone stick, and each Guitarcade game's) are your saved tones named in\n"
+    "; [Default Tones] (from the next start)\n"
+    "DefaultTones = off\n"
     "; Keep an input device at OverrideInputVolume percent (17 is the game's default). The device: part of its\n"
     "; name as macOS shows it (Audio MIDI Setup), e.g. Rocksmith; empty = the default input. Several devices:\n"
     "; separated by ';', each optionally = its own percent: Rocksmith USB Guitar Adapter; Rocksmith Game (OBS) = 100\n"
@@ -176,6 +181,37 @@ static const char DEFAULT_INI[] =
     "SongListTitle_18 = \n"
     "SongListTitle_19 = \n"
     "SongListTitle_20 = \n"
+    "\n"
+    "[Custom Tunings]\n"
+    "; With CustomTunings = on: a tuning's name = its strings' semitones from E standard, low string first. One with the\n"
+    "; same strings as one of the game's tunings takes that one's place.\n"
+    "F Standard = 1 1 1 1 1 1\n"
+    "C# Drop B = -5 -3 -3 -3 -3 -3\n"
+    "C Drop Bb = -6 -4 -4 -4 -4 -4\n"
+    "B Standard = -5 -5 -5 -5 -5 -5\n"
+    "B Drop A = -7 -5 -5 -5 -5 -5\n"
+    "Bb Standard = -6 -6 -6 -6 -6 -6\n"
+    "A Standard = -7 -7 -7 -7 -7 -7\n"
+    "Double Drop D = -2 0 0 0 0 -2\n"
+    "Open C = -4 -2 -2 0 1 0\n"
+    "\n"
+    "[Default Tones]\n"
+    "; With DefaultTones = on: the name of a tone saved in one of your profiles (the tone designer's Save), for each of\n"
+    "; the game's tones; empty keeps the game's. The Guitarcade games' are by their tones' names.\n"
+    "Rhythm = \n"
+    "Lead = \n"
+    "Bass = \n"
+    "TempleOfBends = \n"
+    "ScaleWarriors = \n"
+    "StringSkipSaloon = \n"
+    "ScaleRacer = \n"
+    "StarChordsLaser = \n"
+    "NinjaSlideN = \n"
+    "HurtlinHurdles = \n"
+    "HarmonicHeist = \n"
+    "DucksRedux = \n"
+    "RainbowLaser = \n"
+    "GoneWailin = \n"
     "\n"
     "[GUI Settings]\n"
     "; Back up the profiles to Profile_AutoBackups in the game folder while the game runs (when they changed, at most\n"
@@ -352,6 +388,22 @@ static const struct {
     {"Toggle Switches", "PreventMidSongPause", "off"},
     {"Toggle Switches", "FixBrokenTones", "off"},
     {"Toggle Switches", "CustomSongListTitles", "off"},
+    {"Toggle Switches", "CustomTunings", "off"},
+    {"Toggle Switches", "DefaultTones", "off"},
+    {"Default Tones", "Rhythm", ""},
+    {"Default Tones", "Lead", ""},
+    {"Default Tones", "Bass", ""},
+    {"Default Tones", "TempleOfBends", ""},
+    {"Default Tones", "ScaleWarriors", ""},
+    {"Default Tones", "StringSkipSaloon", ""},
+    {"Default Tones", "ScaleRacer", ""},
+    {"Default Tones", "StarChordsLaser", ""},
+    {"Default Tones", "NinjaSlideN", ""},
+    {"Default Tones", "HurtlinHurdles", ""},
+    {"Default Tones", "HarmonicHeist", ""},
+    {"Default Tones", "DucksRedux", ""},
+    {"Default Tones", "RainbowLaser", ""},
+    {"Default Tones", "GoneWailin", ""},
 };
 
 char *rsm_trim(char *s) {
@@ -474,6 +526,16 @@ void rsm_set(const char *section, const char *key, const char *value) {
   if (in) fclose(in);
   fclose(out);
   rename(INI_PATH ".new", INI_PATH);
+}
+
+int rsm_ini_entry(const char *section, int i, const char **key, const char **value) {
+  for (int k = 0; k < g_n; k++)
+    if (!strcasecmp(g_e[k].section, section) && i-- == 0) {
+      *key = g_e[k].key;
+      *value = g_e[k].value;
+      return 1;
+    }
+  return 0;
 }
 
 int rsm_on(const char *key) {

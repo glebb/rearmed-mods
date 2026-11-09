@@ -15,6 +15,8 @@ $cc -O1 "$here/tests/test_tuning.c" "$here/src/rsmods_tuning.c" -lz -o "$out/tes
 $cc "$here/tests/test_profiles.c" "$here/src/rsmods_profiles.c" -lz -o "$out/test_profiles"
 $cc "$here/tests/test_song_list_titles.c" -o "$out/test_song_list_titles"
 $cc -DGUEST32 "$here/tests/test_song_list_titles.c" -o "$out/test_song_list_titles32"
+$cc -O1 "$here/tests/test_7z.c" "$here/src/rsmods_7z.c" -lz -o "$out/test_7z"
+$cc "$here/tests/test_cache.c" "$here/src/rsmods_cache.c" -o "$out/test_cache"
 "$out/test_ini"
 "$out/test_colors"
 "$out/test_gate"
@@ -24,6 +26,8 @@ $cc -DGUEST32 "$here/tests/test_song_list_titles.c" -o "$out/test_song_list_titl
 "$out/test_profiles"
 "$out/test_song_list_titles"
 "$out/test_song_list_titles32"
+"$out/test_7z"
+"$out/test_cache"
 
 cd "$here/gui"
 swift test

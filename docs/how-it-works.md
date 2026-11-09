@@ -83,7 +83,10 @@ features for the Mac build, keeping RSMods' settings, names and behaviour:
 - **The note counts and the grey-note time**, where RSMods reads them: Player 1's counts of notes hit and missed, and the
   track whose grey-note time is how far notes are grey. RSMods follows pointers from the UI manager; on the Mac the
   steady way there is through the song's menu (`song_menu_game`, `player_note_stats`, `track_grey_time`), found by
-  scanning the game's memory while a song played and paused, and checked in later runs. The library follows it only in a
+  scanning the game's memory while a song played and paused, and checked in later runs. In Learn & Play, where such a
+  path held in two runs and not in a third, the counts are reached as RSMods reaches them, from the UI manager
+  (`ui_note_stats_0` to `_3`), and their track is the one with RSMods' grey-note time. Its Score Attack counts in
+  another object, which that path doesn't reach. The library follows it only in a
   song's own menus, reading each pointer with a check that the memory is there. For Show Current Accuracy and the
   grey-note reset of looping and rewinding.
 - **A hook point where RSMods changes code.** RSMods' Custom Song List Titles changes three places in the function
@@ -95,6 +98,23 @@ features for the Mac build, keeping RSMods' settings, names and behaviour:
 - **A value found by what it is.** RSMods' Non-Stop Play timer writes a constant at a known address. Both games read it
   from their mapped image at run time, and each image has that value (10.99f as a double) once: the library scans the
   image for it and writes it.
+- **The game's archives, given again.** RSMods' app changes three of the game's files for Custom Tunings and the
+  default tones by rewriting `cache.psarc`: the tunings (`manifests/tuning.database.json`) and the tones
+  (`manifests/tonemanager.database.json`) in `cache7.7z`, and the localization, which names the tunings
+  (`localization/maingame.csv`), in `cache4.7z`. The game opens those archives by name through `FrontEnd_OpenFile`, a
+  hook point (`frontend_open_file`). The first time, the library writes its own, from RS Re-ARMed's overlay
+  (`Update/patcharchives.psarc`, with its menu entries) when that has the archive, else from `cache.psarc`, and the game
+  opens those instead. On the Mac they are in `rearmed-mods/` in the game folder: the hook opens one there and gives the
+  game that stream (RS Re-ARMed's hook asks for `PatchUpdate/<name>` through the hook point again, and the library's
+  hook answers that call), and when it can't, the game opens its own. In Learn & Play a mod can't call the function (it
+  takes its path in a register, which the runtime's calls by name refuse), so the hook changes the path the game asked
+  for to the library's archive in `Update/`, `c:\rocksmith2014\update\rearmed-mods-<name>`: the form in which the game
+  opens RS Re-ARMed's overlay there through the same file system (`C:\Rocksmith2014` is the game folder in RS
+  Re-ARMed's drive layout). The archives have one file per folder, each packed with
+  LZMA: the library keeps every other file's packed bytes, unpacks the files it changes (an LZMA decoder after the
+  LZMA specification's) and packs the changed ones as LZMA literals, which any LZMA decoder reads, with the header
+  packed as the game's are. A tuning's name is `$[<id>]<name>` with a localization line of its own: the tuner's list
+  shows `$[-1]<name>` as the text, but a song's details look the id up and show `#-1#`.
 - **RSMods.ini** is read with the same keys and defaults, and re-read when it changes.
 
 Each mod's source names the game functions and data it uses; their addresses are in RS Re-ARMed's `tools/targets`.

@@ -37,6 +37,9 @@ int rsm_key(const char *key);
 int rsm_key_in(const char *section, const char *key);  // from another section ([Audio Keybindings])
 // Any value; NULL if absent. Valid until the next reload.
 const char *rsm_get(const char *section, const char *key);
+// The i-th line (from 0) of a section, in the file's order: 1 and its key and value, 0 past the last. Valid until the
+// next reload.
+int rsm_ini_entry(const char *section, int i, const char **key, const char **value);
 // Writes a value into RSMods.ini (it is read back with the next poll)
 void rsm_set(const char *section, const char *key, const char *value);
 // Re-reads RSMods.ini if it changed (at most once a second); returns 1 if it did.

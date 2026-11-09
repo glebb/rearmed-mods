@@ -37,7 +37,7 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   rest works. Sunlight needs the Metal renderer too.
 - Show Current Note and Guitar Speak need RS Re-ARMed 1.11.0, which names the note the game hears; with an older one
   those two stay off. Show Current Accuracy, and the grey-note reset of looping and rewinding, need it too, for the
-  game's note counts; it names them on the Mac, not yet in Learn & Play.
+  game's note counts (in Learn & Play: Learn a Song and its pause menu, not Score Attack).
 - macOS 13 or later for the app.
 - To build from source: the Xcode command line tools (`xcode-select --install`), with Swift 5.9 or later.
 
@@ -81,11 +81,12 @@ and, if you like, `RSMods.ini` in the game folder.
 The settings are in `RSMods.ini` in the game folder, one for each edition: the same sections (`[Toggle Switches]`,
 `[Mod Settings]`, `[Keybinds]`, `[Audio Keybindings]`, `[String Colors]`, `[Highway Colors]`, `[Guitar Speak]`,
 `[SongListTitles]`, `[GUI Settings]`) and keys as RSMods on
-Windows, so an `RSMods.ini` from Windows works too.
+Windows, so an `RSMods.ini` from Windows works too. Custom Tunings and the default tones, which RSMods keeps in its app,
+have `[Custom Tunings]` and `[Default Tones]` here.
 The mods re-read the file while the game runs: a change takes effect within a second, no restart.
 
 **Re-ARMed Mods.app** (in `gui/`) edits it like the Windows RSMods GUI: an **Enable / Disable Mods** tab with each mod's
-settings, a **Colors** tab and a **Keybindings** tab (click a key field, press a key). The switch at the bottom left goes
+settings (the tunings and the tones among them), a **Colors** tab and a **Keybindings** tab (click a key field, press a key). The switch at the bottom left goes
 between the two editions' settings. Or edit the file in any text editor.
 
 Keys are letters, digits, `F1`-`F20` or Windows `VK_` names (as RSMods writes them), mapped to the Mac keys.
@@ -114,14 +115,14 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * `AllowLooping`, `[Mod Settings] LoopingLeadUp` (0), `[Keybinds] LoopStartKey` (Y), `LoopEndKey` (U)
   * While paused in a loop the game's grey-note time is the loop's start, as RSMods sets it: notes before that time
     are grey and not detected, and the game sets it to where the song paused, so the notes of the loop count again.
-    Needs RS Re-ARMed 1.11.0, on the Mac. In a run the time went back to the loop's start at each pause in the loop;
-    how the notes look after it hasn't been watched yet.
+    Needs RS Re-ARMed 1.11.0 (in Learn & Play, in Learn a Song). In a run on the Mac the time went back to the loop's
+    start at each pause in the loop; how the notes look after it hasn't been watched yet.
 
 * **Allow Rewinding**
   * The rewind key moves the song back `RewindBy` + `RewindLeadup` ms.
   * `AllowRewind`, `[Mod Settings] RewindBy` (5000), `RewindLeadup` (2000), `[Keybinds] RewindKey` (Z)
   * The grey-note time goes back too, `RewindLeadup` ms before where the song goes, as RSMods does, so the notes
-    from there count again. Needs RS Re-ARMed 1.11.0, on the Mac.
+    from there count again. Needs RS Re-ARMed 1.11.0 (in Learn & Play, in Learn a Song).
 
 * **Show Song Timer**
   * The song position at the top right: in every song (`ShowSongTimerWhen = automatic`) or shown and hidden with
@@ -299,9 +300,9 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     (100% before the first note).
   * `DisplayCurrentAccuracy`
   * The counts are the game's own, the ones RSMods reads on Windows; on the Mac one set serves Learn a Song and Score
-    Attack. RS Re-ARMed 1.11.0 names them on the Mac; Learn & Play's aren't matched yet, so there it stays off, and the
-    log says so. Seen in Learn a Song on the Mac; the counts were read in Learn a Song and Score Attack, playing and
-    paused.
+    Attack. RS Re-ARMed 1.11.0 names them. Seen in Learn a Song on the Mac; the counts were read in Learn a Song and
+    Score Attack, playing and paused. In Learn & Play they are reached by RSMods' own path, in Learn a Song, playing
+    and paused; its Score Attack counts in another object, which that path doesn't reach, so there nothing shows.
   * Different: RSMods shows 0.00% in the song's other menus (Riff Repeater, the tuner, the mixer); here nothing shows
     there.
 
@@ -318,6 +319,34 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     in Learn & Play.
   * Different: RSMods has no switch, its titles are always on, and a list without one is called SONG LIST, with no
     number.
+
+* **Custom Tunings**
+  * The game knows your tunings by name: a song in B Standard is B Standard in the song list, the song's details and
+    the tuner, not CUSTOM TUNING.
+  * `CustomTunings`, `[Custom Tunings]`: one line a tuning, its name = the six strings' semitones from E standard, low
+    string first (`B Standard = -5 -5 -5 -5 -5 -5`). A new `RSMods.ini` has nine common ones (F Standard, C# Drop B,
+    C Drop Bb, B Standard, B Drop A, Bb Standard, A Standard, Double Drop D, Open C); the app's Tunings tab edits them,
+    and Add Common Tunings adds those to a list. A tuning with the same strings as one of the game's takes its place.
+  * As RSMods, it adds the tunings to the game's `manifests/tuning.database.json`, and each name to the localization
+    (`localization/maingame.csv`) under an id the file hasn't from 37500 on. RSMods' app writes them into `cache.psarc`;
+    here `cache.psarc` stays as it is, and the library gives the game its own copies of the two archives they are in
+    when the game opens them ([below](#how-it-works)). From the game's next start, as it reads them once. Checked on
+    the Mac: B Standard and C# Drop B songs are named so in the song list.
+  * Different: RSMods' app has its own list (with a few more tunings) and no switch; here the list is in
+    `RSMods.ini`, and the switch turns it off without restoring anything. In Learn & Play the library's archives are in
+    its game folder's `Update` folder (`rearmed-mods-cache7.7z`, `rearmed-mods-cache4.7z`), next to RS Re-ARMed's.
+
+* **Change Default Tones**
+  * The game's default tones, slot 1 of the tone stick when the game loads up (Rhythm, Lead and Bass) and each
+    Guitarcade game's, become tones you saved in your profiles.
+  * `DefaultTones`, `[Default Tones]` `Rhythm`, `Lead`, `Bass`, and the Guitarcade games' by their tones' names
+    (`TempleOfBends` to `GoneWailin`): a tone's name as you saved it (the tone designer's Save); empty keeps the
+    game's. The app's Tones tab lists your saved tones: the library writes their names to `rearmed-mods/tones.txt` in
+    the game folder when the game starts.
+  * As RSMods, the game's tone (`manifests/tonemanager.database.json`) takes the saved tone's gear; the emulated bass's
+    is left alone, as in RSMods. From the game's next start. The library logs the tones it set; not yet checked by ear.
+  * Different: the tone's volume comes with it, so it sounds as it does where you saved it. The Guitarcade games'
+    tones are found by their keys.
 
 * **Backup Profile**
   * Your profiles are backed up to `Profile_AutoBackups/<account>/` in the game folder: by the game, at most every 10
@@ -360,13 +389,11 @@ memory after each scene loads. It takes a second or two after a song starts.
 
 ## Not on macOS yet
 
-From RSMods, not ported yet. Each needs a hook point or a name of RS Re-ARMed that it doesn't have yet:
+From RSMods, not ported yet. It needs a hook point of RS Re-ARMed that it doesn't have yet:
 
 - The extra song lists in Non-Stop Play: RSMods lets it offer every song list a profile has, not only the first six.
   Its menu has eight places and its song pool eight cases, fixed inside two larger functions, which no hook point
   reaches. (The lists themselves are added by RSMods' app on Windows; the rest of the game shows them.)
-- RSMods' file tools Custom Tunings and the default tones: they rewrite the game's `cache.psarc`, which RS Re-ARMed
-  keeps (its own cache overlay would be the place)
 
 Not planned: what only exists on Windows or is about particular hardware (Twitch and Crowd Control integrations, the
 Oculus crash fix, ASIO, the in-game settings menu, controllers, ultrawide screens (RS Re-ARMed draws any screen shape),
@@ -394,7 +421,7 @@ works from what RS Re-ARMed gives mods, and has no address of a game, which is w
 
 - **Hook points**, by name: the library runs code before and after some game functions (each frame, key events, Wwise
   audio events, the game's focus, the camera frustum, the Riff Repeater speed conversion, the two-cable check, the tone
-  change, a song list's name).
+  change, a song list's name, the opening of a game file).
 - **The game's own functions and data**, by name: Wwise for speed, volume, seeking and the song position, the UI manager
   for the current menu, the DLC coordinator for enumeration, the color manager for string colors, the game's allocator
   and string destructor for the song list titles.
@@ -404,6 +431,9 @@ works from what RS Re-ARMed gives mods, and has no address of a game, which is w
 - **The game's files**, where RSMods reads the game's memory: a song's tunings from its archive (Extended Range), the
   profile list from `LocalProfiles.json` (`ProfileToLoad`), both decrypted with the game's own keys, found by name.
 - **A value in the game's image**, found by what it is: the Non-Stop Play countdown's 10.99 seconds.
+- **The game's archives, given again**: for Custom Tunings and the default tones the library writes its own
+  `cache7.7z` and `cache4.7z` (in `rearmed-mods/` in the game folder, in Learn & Play in `Update/`) from the game's, with
+  the files they change, and gives them to the game when it opens those archives. `cache.psarc` isn't changed.
 - macOS APIs where Windows ones were used: Core Audio (input volume), ImageIO (screenshots), Core Image (Sunlight), AppKit
   (the window on another screen).
 
@@ -439,6 +469,9 @@ src/rsmods_scene.c       the scene graph and render steps: finding and hiding by
 src/rsmods_tuning.c, .h  PSARC archives, the manifests' tunings, the Extended Range rule (no game: tested as is)
 src/rsmods_game_note.c   the note the game hears, from its pitch detection
 src/rsmods_profiles.c    the save folder and LocalProfiles.json
+src/rsmods_7z.c, .h      the 7z archives of cache.psarc and their LZMA: read a file, write one again with files changed
+src/rsmods_cache.c, .h   Custom Tunings' and the default tones' edits of the game's files, a profile's tones
+src/mod_cache.c          the archives the game is given for those two
 src/mod_*.c              one file per mod
 include/rs-rearmed/      RS Re-ARMed's runtime headers (MIT)
 gui/                     Re-ARMed Mods.app: settings and installer (SwiftUI); build-app.sh --zip makes the release
@@ -466,8 +499,9 @@ and its mod stays off.
 
 runs the library's tests (`tests/`: `RSMods.ini`, key names, the color maths, Sunlight's colors, archives and tunings made
 in the test with a key of its own, the profile list and the backups, the song list titles put in the game's strings, with
-either game's pointers) and the app's
-(`gui/Tests`: settings, install and update for both editions, the app's profile backups). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,
+either game's pointers, LZMA and a 7z archive made by liblzma (`tests/make_7z_vectors.py` makes them again) and written
+again, the tuning, localization and tone edits) and the app's
+(`gui/Tests`: settings, a section that is a list, install and update for both editions, the app's profile backups). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,
 the same key names, and no two actions on one default key. A mod's work in the game is checked by playing it.
 
 ## Credits

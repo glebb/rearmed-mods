@@ -188,6 +188,8 @@ struct ModTogglesTab: View {
                 MiscSettings().tabItem { Text("Misc") }
                 GuitarSpeakSettings().tabItem { Text("Guitar Speak") }
                 SongListSettings().tabItem { Text("Song Lists") }
+                TuningSettings().tabItem { Text("Tunings") }
+                ToneSettings().tabItem { Text("Tones") }
             }
         }
     }
@@ -600,6 +602,154 @@ struct SongListSettings: View {
                 }
             }
         }
+    }
+}
+
+// [Custom Tunings]: the tunings the game names, a name and six strings each (RSMods' app's Custom Tunings tab)
+struct TuningSettings: View {
+    @EnvironmentObject var store: SettingsStore
+
+    private var tunings: [(key: String, value: String)] { store.entries(Section.customTunings) }
+    private var missingCommon: [(name: String, strings: [Int])] {
+        let have = Set(tunings.map { $0.key.lowercased() })
+        return Catalog.commonTunings.filter { !have.contains($0.name.lowercased()) }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                ModSettingsGroup(title: "Custom Tunings", mod: "CustomTunings") {
+                    Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 4) {
+                        GridRow {
+                            Text("Name")
+                            ForEach(Catalog.stringNames, id: \.self) { Text($0) }
+                            Text("Notes")
+                            Text("")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        ForEach(Array(tunings.enumerated()), id: \.offset) { i, t in
+                            GridRow {
+                                TextField("Name", text: name(i)).frame(width: 120)
+                                ForEach(0..<6, id: \.self) { s in
+                                    TextField("", value: string(i, s), format: .number)
+                                        .multilineTextAlignment(.trailing)
+                                        .frame(width: 34)
+                                }
+                                Text(Catalog.tuningStrings(t.value).map(Catalog.tuningNotes) ?? "not six numbers")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Button {
+                                    var all = tunings
+                                    all.remove(at: i)
+                                    store.setEntries(Section.customTunings, all)
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Remove this tuning")
+                            }
+                        }
+                    }
+                    HStack {
+                        Button("Add Tuning") {
+                            store.setEntries(Section.customTunings, tunings + [("New Tuning", "0 0 0 0 0 0")])
+                        }
+                        Button("Add Common Tunings") {
+                            store.setEntries(Section.customTunings,
+                                             tunings + missingCommon.map { ($0.name, Catalog.tuningValue($0.strings)) })
+                        }
+                        .disabled(missingCommon.isEmpty)
+                        .help(missingCommon.map(\.name).joined(separator: ", "))
+                    }
+                    Text("The name the game shows for a song's arrangement in that tuning, where it showed CUSTOM TUNING: in the song lists, the song's details and the tuner. Each string is its semitones from E standard, low E first: B Standard is -5 on all six. A tuning with the same strings as one of the game's own takes its place. From the game's next start.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(8)
+        }
+    }
+
+    // A name can't hold '=', nor start like a comment or a section
+    private func name(_ i: Int) -> Binding<String> {
+        Binding(get: { i < tunings.count ? tunings[i].key : "" }, set: { new in
+            guard i < tunings.count else { return }
+            var all = tunings
+            var clean = new.replacingOccurrences(of: "=", with: "")
+            while let c = clean.first, c == ";" || c == "#" || c == "[" || c == " " { clean.removeFirst() }
+            all[i].key = clean
+            store.setEntries(Section.customTunings, all)
+        })
+    }
+
+    private func string(_ i: Int, _ s: Int) -> Binding<Int> {
+        Binding(get: {
+            guard i < tunings.count, let strings = Catalog.tuningStrings(tunings[i].value) else { return 0 }
+            return strings[s]
+        }, set: { v in
+            guard i < tunings.count else { return }
+            var all = tunings
+            var strings = Catalog.tuningStrings(all[i].value) ?? [0, 0, 0, 0, 0, 0]
+            strings[s] = max(-24, min(24, v))
+            all[i].value = Catalog.tuningValue(strings)
+            store.setEntries(Section.customTunings, all)
+        })
+    }
+}
+
+// [Default Tones]: the game's default tones, from the tones saved in the profiles (RSMods' app's Change Default Tones
+// and Change Default Guitarcade Tones)
+struct ToneSettings: View {
+    @EnvironmentObject var store: SettingsStore
+
+    var body: some View {
+        let tones = store.profileTones
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                ModSettingsGroup(title: "Default Tones", mod: "DefaultTones") {
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+                        ForEach(Catalog.toneSlots, id: \.key) { slot in
+                            GridRow {
+                                Text(slot.label)
+                                picker(slot.key, tones.filter { $0.bass == slot.bass }.map(\.name))
+                            }
+                        }
+                    }
+                    DisclosureGroup("Guitarcade") {
+                        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+                            ForEach(Catalog.guitarcadeTones, id: \.key) { game in
+                                GridRow {
+                                    Text(game.label)
+                                    picker(game.key, tones.filter { !$0.bass }.map(\.name))
+                                }
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                    Text((tones.isEmpty ? "No saved tones are listed yet: the list is made from your profiles when the game starts with the mods. " : "")
+                         + "A tone you saved in one of your profiles (the tone designer's Save) for each of the game's: Rhythm, Lead and Bass are the tones on slot 1 of the tone stick when the game loads up. A tone saved since the game last started is listed after its next start. From the game's next start.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(8)
+        }
+    }
+
+    private func picker(_ key: String, _ names: [String]) -> some View {
+        let current = store.value(Section.defaultTones, key)
+        return Picker("", selection: store.binding(Section.defaultTones, key)) {
+            Text("The game's tone").tag("")
+            ForEach(names, id: \.self) { Text($0).tag($0) }
+            if !current.isEmpty && !names.contains(current) {
+                Text("\(current) (not in the profiles)").tag(current)
+            }
+        }
+        .labelsHidden()
+        .frame(width: 220)
     }
 }
 

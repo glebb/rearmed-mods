@@ -14,6 +14,8 @@ enum Section {
     static let guitarSpeak = "Guitar Speak"
     static let guiSettings = "GUI Settings"
     static let songListTitles = "SongListTitles"
+    static let customTunings = "Custom Tunings"
+    static let defaultTones = "Default Tones"
 }
 
 struct ModToggle: Identifiable {
@@ -106,9 +108,13 @@ enum Catalog {
         ModToggle(label: "Guitar Speak", key: "GuitarSpeak",
                   help: "Play notes on your guitar to press keys in the game's menus."),
         ModToggle(label: "Show Current Accuracy", key: "DisplayCurrentAccuracy",
-                  help: "In a song, the notes you hit out of the notes played so far, under the song timer. Needs RS Re-ARMed 1.11.0."),
+                  help: "In a song, the notes you hit out of the notes played so far, under the song timer. Needs RS Re-ARMed 1.11.0; in Learn & Play not in Score Attack."),
         ModToggle(label: "Custom Song List Titles", key: "CustomSongListTitles",
                   help: "Your own names for the song lists, set in the Song Lists tab. Needs RS Re-ARMed 1.11.0."),
+        ModToggle(label: "Custom Tunings", key: "CustomTunings",
+                  help: "The game names your tunings (the Tunings tab) where it showed CUSTOM TUNING. From the game's next start."),
+        ModToggle(label: "Change Default Tones", key: "DefaultTones",
+                  help: "Tones saved in your profiles become the game's default tones (the Tones tab). From the game's next start."),
         ModToggle(label: "Backup Profile", key: "BackupProfile",
                   help: "Backs up your profiles when this app opens, and every 10 minutes while the game runs (when they changed).",
                   section: Section.guiSettings),
@@ -195,6 +201,45 @@ enum Catalog {
         ("Fret Numbers", "CustomFretNubmers"),  // spelled so on Windows too
     ]
 
+    // [Custom Tunings]: the tunings the library's default RSMods.ini has (DEFAULT_INI in rsmods_ini.c), for Add Common
+    // Tunings. The strings' semitones from E standard, low E first.
+    static let commonTunings: [(name: String, strings: [Int])] = [
+        ("F Standard", [1, 1, 1, 1, 1, 1]), ("C# Drop B", [-5, -3, -3, -3, -3, -3]),
+        ("C Drop Bb", [-6, -4, -4, -4, -4, -4]), ("B Standard", [-5, -5, -5, -5, -5, -5]),
+        ("B Drop A", [-7, -5, -5, -5, -5, -5]), ("Bb Standard", [-6, -6, -6, -6, -6, -6]),
+        ("A Standard", [-7, -7, -7, -7, -7, -7]), ("Double Drop D", [-2, 0, 0, 0, 0, -2]),
+        ("Open C", [-4, -2, -2, 0, 1, 0]),
+    ]
+    static let openStrings = [40, 45, 50, 55, 59, 64]  // E standard, MIDI: E2 A2 D3 G3 B3 E4
+
+    // A [Custom Tunings] value: six whole numbers, spaces or commas between (rsm_tuning_parse); nil otherwise
+    static func tuningStrings(_ value: String) -> [Int]? {
+        let parts = value.split(whereSeparator: { $0 == " " || $0 == "," || $0 == "\t" })
+        let numbers = parts.compactMap { Int($0) }
+        guard parts.count == 6, numbers.count == 6, numbers.allSatisfy({ (-24...24).contains($0) }) else { return nil }
+        return numbers
+    }
+
+    static func tuningValue(_ strings: [Int]) -> String { strings.map(String.init).joined(separator: " ") }
+
+    // The notes of a tuning, low string first: "B1 E2 A2 D3 F#3 B3"
+    static func tuningNotes(_ strings: [Int]) -> String {
+        zip(openStrings, strings).map { noteName($0 + $1) }.joined(separator: " ")
+    }
+
+    // [Default Tones]: the game's tones the mod sets (DefaultTones in mod_cache.c), and which a bass tone suits
+    static let toneSlots: [(label: String, key: String, bass: Bool)] = [
+        ("Rhythm", "Rhythm", false), ("Lead", "Lead", false), ("Bass", "Bass", true),
+    ]
+    // Each Guitarcade game's tone, by the name the game gives it
+    static let guitarcadeTones: [(label: String, key: String)] = [
+        ("Temple of Bends", "TempleOfBends"), ("Scale Warriors", "ScaleWarriors"),
+        ("String Skip Saloon", "StringSkipSaloon"), ("Scale Racer", "ScaleRacer"),
+        ("Star Chords Laser", "StarChordsLaser"), ("Ninja Slide N", "NinjaSlideN"),
+        ("Hurtlin' Hurdles", "HurtlinHurdles"), ("Harmonic Heist", "HarmonicHeist"), ("Ducks Redux", "DucksRedux"),
+        ("Rainbow Laser", "RainbowLaser"), ("Gone Wailin'", "GoneWailin"),
+    ]
+
     // The mods' defaults for keys RSMods.ini lacks (DEFAULTS in rsmods_ini.c)
     static let defaults: [String: [String: String]] = [
         Section.toggles: [
@@ -210,7 +255,12 @@ enum Catalog {
             "RemoveFingerprints": "off", "GreenScreenWall": "off", "UseCustomNSPTimer": "off", "SecondaryMonitor": "off",
             "ExtendedRange": "off", "ExtendedRangeDropTuning": "off", "ExtendedRangeFixBassTuning": "off",
             "ShowCurrentNoteOnScreen": "off", "GuitarSpeak": "off", "PreventMidSongPause": "off", "FixBrokenTones": "off",
-            "DisplayCurrentAccuracy": "off", "CustomSongListTitles": "off",
+            "DisplayCurrentAccuracy": "off", "CustomSongListTitles": "off", "CustomTunings": "off", "DefaultTones": "off",
+        ],
+        Section.defaultTones: [
+            "Rhythm": "", "Lead": "", "Bass": "", "TempleOfBends": "", "ScaleWarriors": "", "StringSkipSaloon": "",
+            "ScaleRacer": "", "StarChordsLaser": "", "NinjaSlideN": "", "HurtlinHurdles": "", "HarmonicHeist": "",
+            "DucksRedux": "", "RainbowLaser": "", "GoneWailin": "",
         ],
         Section.settings: [
             "RRSpeedInterval": "2", "LoopingLeadUp": "0", "RewindBy": "5000", "RewindLeadup": "2000",

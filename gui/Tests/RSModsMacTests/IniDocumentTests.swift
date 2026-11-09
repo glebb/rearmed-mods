@@ -45,4 +45,25 @@ final class IniDocumentTests: XCTestCase {
         d.set("A", "k", "1")
         XCTAssertEqual(d.text, "[A]\nk = 1\n")
     }
+
+    // A section that is a list ([Custom Tunings]): read in order, written all at once in its place
+    func testAListSection() {
+        let list = "[A]\nk = 1\n\n[Custom Tunings]\n; how to write one\nB Standard = -5 -5 -5 -5 -5 -5\n"
+            + "C# Drop B = -5 -3 -3 -3 -3 -3\n\n[Z]\nz = 2\n"
+        var d = IniDocument(text: list)
+        let e = d.entries("custom tunings")
+        XCTAssertEqual(e.map(\.key), ["B Standard", "C# Drop B"])
+        XCTAssertEqual(e.first?.value, "-5 -5 -5 -5 -5 -5")
+        d.setEntries("Custom Tunings", [("Open C", "-4 -2 -2 0 1 0"), ("B Standard", "-5 -5 -5 -5 -5 -5")])
+        XCTAssertEqual(d.text, "[A]\nk = 1\n\n[Custom Tunings]\n; how to write one\nOpen C = -4 -2 -2 0 1 0\n"
+            + "B Standard = -5 -5 -5 -5 -5 -5\n\n[Z]\nz = 2\n")
+        d.setEntries("Custom Tunings", [])
+        XCTAssertEqual(d.text, "[A]\nk = 1\n\n[Custom Tunings]\n; how to write one\n\n[Z]\nz = 2\n")
+        d.setEntries("Custom Tunings", [("F Standard", "1 1 1 1 1 1")])  // after the section's comment
+        XCTAssertEqual(d.entries("Custom Tunings").map(\.key), ["F Standard"])
+        XCTAssertLessThan(d.lines.firstIndex(of: "; how to write one")!, d.lines.firstIndex(of: "F Standard = 1 1 1 1 1 1")!)
+        var n = IniDocument(text: "[A]\nk = 1\n")
+        n.setEntries("Custom Tunings", [("X", "0 0 0 0 0 0")])
+        XCTAssertEqual(n.text, "[A]\nk = 1\n\n[Custom Tunings]\nX = 0 0 0 0 0 0\n")
+    }
 }
