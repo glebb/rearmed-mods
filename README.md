@@ -37,7 +37,8 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   rest works. Sunlight needs the Metal renderer too.
 - Show Current Note and Guitar Speak need RS Re-ARMed 1.11.0, which names the note the game hears; with an older one
   those two stay off. Show Current Accuracy, and the grey-note reset of looping and rewinding, need it too, for the
-  game's note counts (in Learn & Play: Learn a Song and its pause menu, not Score Attack).
+  game's note counts (in Learn & Play: Learn a Song and its pause menu, not Score Attack), and so do Prevent Buggy
+  Tones and Custom Song List Titles, for its hook points on the tone change and a song list's name.
 - macOS 13 or later for the app.
 - To build from source: the Xcode command line tools (`xcode-select --install`), with Swift 5.9 or later.
 
