@@ -41,6 +41,8 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   Tones and Custom Song List Titles, for its hook points on the tone change and a song list's name.
 - Seven-String Guitar and Plain Packages need the RS Re-ARMed after 1.11.0, with its edits and mid points, and run in
   Learn & Play only for now; with an older one they stay off.
+- Song Stems needs RS Re-ARMed 1.12.0, for its hook point on the audio the game decodes, and macOS 15 or later for
+  its helper; without them it stays off and the songs play as they are.
 - macOS 13 or later for the app.
 - To build from source: the Xcode command line tools (`xcode-select --install`), with Swift 5.9 or later.
 
