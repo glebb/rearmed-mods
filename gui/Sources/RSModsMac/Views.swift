@@ -190,6 +190,7 @@ struct ModTogglesTab: View {
                 SongListSettings().tabItem { Text("Song Lists") }
                 TuningSettings().tabItem { Text("Tunings") }
                 ToneSettings().tabItem { Text("Tones") }
+                SevenStringSettings().tabItem { Text("7-String") }
             }
         }
     }
@@ -830,6 +831,7 @@ struct ColorCell: View {
     let key: String
     let fallback: String
     var showsGame = true
+    var resetHelp = "Back to the game's color"
 
     var body: some View {
         let value = store.colorValue(section, key)
@@ -847,8 +849,86 @@ struct ColorCell: View {
             }
             .buttonStyle(.borderless)
             .disabled(value == nil)
-            .help("Back to the game's color")
+            .help(resetHelp)
         }
+    }
+}
+
+// Seven-String Guitar's settings ([Seven String]): the low B's color, chord detection, tuning names and the headstock
+struct SevenStringSettings: View {
+    @EnvironmentObject var store: SettingsStore
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                ModSettingsGroup(title: "Seven-String Guitar", mod: "SevenString") {
+                    Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+                        GridRow {
+                            Text("")
+                            Text("Normal").font(.caption).foregroundStyle(.secondary)
+                            Text("Colorblind").font(.caption).foregroundStyle(.secondary)
+                        }
+                        GridRow {
+                            Text("Low B string")
+                            ColorCell(section: Section.sevenString, key: "string6_N", fallback: Catalog.lowBColor,
+                                      showsGame: false, resetHelp: "Back to light grey")
+                            ColorCell(section: Section.sevenString, key: "string6_CB",
+                                      fallback: store.colorValue(Section.sevenString, "string6_N") ?? Catalog.lowBColor,
+                                      showsGame: false, resetHelp: "Back to the normal color")
+                        }
+                    }
+                    Toggle("With Extended Range on, the low B takes its low string color", isOn: onOff("ExtendedRangeColor"))
+                    Divider()
+                    Picker("A 7- or 8-note chord counts as played", selection: store.binding(Section.sevenString, "ChordWideMisses")) {
+                        Text("Only with every note").tag("0")
+                        Text("With up to one note missed").tag("1")
+                        Text("With up to two notes missed").tag("2")
+                    }
+                    Divider()
+                    Toggle("Names for 7-string tunings", isOn: onOff("TuningNames"))
+                    HStack {
+                        Text("Before")
+                        TextField("", text: store.binding(Section.sevenString, "TuningNamePrefix")).frame(width: 80)
+                        Text("After")
+                        TextField("", text: store.binding(Section.sevenString, "TuningNameSuffix")).frame(width: 80)
+                        Text(example).font(.callout.monospaced()).foregroundStyle(.secondary)
+                    }
+                    .disabled(!onOff("TuningNames").wrappedValue)
+                    Divider()
+                    Toggle("Seven-peg headstock", isOn: onOff("Headstock7"))
+                    HStack {
+                        Text("Its wood")
+                        Slider(value: wood, in: 0.05...1, step: 0.05)
+                        Text(String(format: "%.2f", wood.wrappedValue)).font(.callout.monospaced()).frame(width: 40)
+                    }
+                    .disabled(!onOff("Headstock7").wrappedValue)
+                    Text("For 7-string charts, such as DotCharter's: a seventh string, its notes and chords, the fret grid, tuner and chord diagrams over seven strings, after rs7string. Six-string songs and bass stay as the game has them. The color changes while the game runs; the rest from its next start. DotCharter's unencrypted charts need Plain Packages too.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .toggleStyle(.checkbox)
+            }
+            .padding(8)
+        }
+    }
+
+    // An on/off key of [Seven String], on unless it says off
+    private func onOff(_ key: String) -> Binding<Bool> {
+        Binding(get: { store.value(Section.sevenString, key).lowercased() != "off" },
+                set: { store.set(Section.sevenString, key, $0 ? "on" : "off") })
+    }
+
+    private var wood: Binding<Double> {
+        Binding(get: { Double(store.value(Section.sevenString, "Headstock7Wood")) ?? 0.6 },
+                set: { store.set(Section.sevenString, "Headstock7Wood", String(format: "%.2f", $0)) })
+    }
+
+    // B STANDARD as the game names it with the prefix and suffix
+    private var example: String {
+        let prefix = store.value(Section.sevenString, "TuningNamePrefix").uppercased()
+        let suffix = store.value(Section.sevenString, "TuningNameSuffix").uppercased()
+        return (prefix.isEmpty ? "" : prefix + " ") + "B STANDARD" + (suffix.isEmpty ? "" : " " + suffix)
     }
 }
 

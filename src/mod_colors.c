@@ -31,6 +31,7 @@
 #include "color_math.h"
 #include "rs_render.h"
 #include "rsmods.h"
+#include "seven.h"
 
 typedef struct {
   uint8_t r, g, b;
@@ -107,6 +108,7 @@ static void fill_bands(uint8_t *px, int w, int h, const color *colors, int rows)
 static void set_ramps(const color *rows) {
   static uint8_t px[RAMP_W * RAMP_H * 4];
   fill_bands(px, RAMP_W, RAMP_H, rows, RAMP_ROWS);
+  seven_colours_ramp(px, RAMP_W, RAMP_H);  // the seventh string's lines, while Seven-String Guitar is on
   render_replace(g_rule[RAMP_A], RAMP_W, RAMP_H, px);
   render_replace(g_rule[RAMP_B], RAMP_W, RAMP_H, px);
 }
@@ -173,8 +175,9 @@ static void apply_notes(void) {
         rgb c = ZZ[ZZ_ENABLED][i];
         rows[8 + i] = (color){(uint8_t)(c.r * 255.0f + 0.5f), (uint8_t)(c.g * 255.0f + 0.5f), (uint8_t)(c.b * 255.0f + 0.5f)};
       }
-  } else {
-    render_replace(g_rule[RAMP_A], 0, 0, NULL);
+  } else {  // the game's ramps; with Seven-String Guitar, its note ramp with the seventh string's lines
+    const uint8_t *seven = seven_colours_game_ramp();
+    render_replace(g_rule[RAMP_A], seven ? RAMP_W : 0, seven ? RAMP_H : 0, seven);
     render_replace(g_rule[RAMP_B], 0, 0, NULL);
     return;
   }
@@ -380,6 +383,7 @@ static void read_settings(char *out, size_t n) {
                                              "CustomHighwayGutter", "CustomFretNubmers"};
   for (int i = 0; i < 5 && used < n; i++)
     used += (size_t)snprintf(out + used, n - used, " %s", rsm_get("Highway Colors", HIGHWAY_KEYS[i]) ?: "");
+  if (used < n) used += (size_t)snprintf(out + used, n - used, " %u", seven_colours_ramp_serial());  // the seventh string's
 }
 
 static void tick(void) {

@@ -16,6 +16,7 @@ enum Section {
     static let songListTitles = "SongListTitles"
     static let customTunings = "Custom Tunings"
     static let defaultTones = "Default Tones"
+    static let sevenString = "Seven String"
 }
 
 struct ModToggle: Identifiable {
@@ -126,6 +127,12 @@ enum Catalog {
                   help: "For a screen outdoors: the sunlight key goes through off, bright and daylight."),
         ModToggle(label: "Your Own Plug-in (ToneHost)", key: "ToneHost",
                   help: "rs-tonehost plays the guitar through your Audio Unit and follows the game's tones."),
+        ModToggle(label: "Seven-String Guitar", key: "SevenString",
+                  help: "A low B string for 7-string charts (DotCharter's), after rs7string: its settings are in the 7-String tab. From the game's next start.",
+                  note: "Learn & Play only, with the RS Re-ARMed after 1.11.0"),
+        ModToggle(label: "Plain Packages", key: "PlainPackages",
+                  help: "Unencrypted song archives, as DotCharter writes its 7-string charts, load as the encrypted ones do. From the game's next start.",
+                  note: "Learn & Play only, with the RS Re-ARMed after 1.11.0"),
     ]
 
     // Mods of the Windows GUI that the Mac library doesn't have yet
@@ -195,6 +202,8 @@ enum Catalog {
     static let stringNames = ["Low E", "A", "D", "G", "B", "High E"]
     static let defaultColors = ["FF4F5A", "E2C102", "1DACF9", "FF9216", "3FCC0C", "C825ED"]
     static let defaultColorblindColors = ["C12A2A", "A3F400", "1DACF9", "DB7F41", "00C68E", "7648A8"]
+    // Seven-String Guitar's low B while [Seven String] string6_N is empty (DEFAULT_RGB in seven_colours.c)
+    static let lowBColor = "C8C8C8"
 
     static let highwayColors: [(label: String, key: String)] = [
         ("Numbered Lanes", "CustomHighwayNumbered"),
@@ -258,7 +267,11 @@ enum Catalog {
             "ExtendedRange": "off", "ExtendedRangeDropTuning": "off", "ExtendedRangeFixBassTuning": "off",
             "ShowCurrentNoteOnScreen": "off", "GuitarSpeak": "off", "PreventMidSongPause": "off", "FixBrokenTones": "off",
             "DisplayCurrentAccuracy": "off", "CustomSongListTitles": "off", "CustomTunings": "off", "DefaultTones": "off",
-            "MoreSongLists": "off",
+            "MoreSongLists": "off", "SevenString": "off", "PlainPackages": "off",
+        ],
+        Section.sevenString: [
+            "string6_N": "", "string6_CB": "", "ExtendedRangeColor": "on", "ChordWideMisses": "2", "TuningNames": "on",
+            "TuningNamePrefix": "", "TuningNameSuffix": "7Str", "Headstock7": "on", "Headstock7Wood": "0.6",
         ],
         Section.defaultTones: [
             "Rhythm": "", "Lead": "", "Bass": "", "TempleOfBends": "", "ScaleWarriors": "", "StringSkipSaloon": "",

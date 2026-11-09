@@ -39,6 +39,8 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   those two stay off. Show Current Accuracy, and the grey-note reset of looping and rewinding, need it too, for the
   game's note counts (in Learn & Play: Learn a Song and its pause menu, not Score Attack), and so do Prevent Buggy
   Tones and Custom Song List Titles, for its hook points on the tone change and a song list's name.
+- Seven-String Guitar and Plain Packages need the RS Re-ARMed after 1.11.0, with its edits and mid points, and run in
+  Learn & Play only for now; with an older one they stay off.
 - macOS 13 or later for the app.
 - To build from source: the Xcode command line tools (`xcode-select --install`), with Swift 5.9 or later.
 
@@ -82,7 +84,7 @@ and, if you like, `RSMods.ini` in the game folder.
 The settings are in `RSMods.ini` in the game folder, one for each edition: the same sections (`[Toggle Switches]`,
 `[Mod Settings]`, `[Keybinds]`, `[Audio Keybindings]`, `[String Colors]`, `[Highway Colors]`, `[Guitar Speak]`,
 `[SongListTitles]`, `[GUI Settings]`) and keys as RSMods on
-Windows, so an `RSMods.ini` from Windows works too. Custom Tunings, the default tones and the number of song lists,
+Windows, so an `RSMods.ini` from Windows works too. Seven-String Guitar, which RSMods hasn't, has `[Seven String]`. Custom Tunings, the default tones and the number of song lists,
 which RSMods keeps in its app, have `[Custom Tunings]`, `[Default Tones]` and `NumberOfSongLists` here.
 The mods re-read the file while the game runs: a change takes effect within a second, no restart.
 
@@ -406,6 +408,39 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     isn't in the app: set it up from that folder.
   * `ToneHost`
 
+* **Seven-String Guitar** (not in RSMods)
+  * For 7-string charts, such as DotCharter's: the guitar gets a seventh string, a low B, and the chart plays on it.
+    Its lane and string have their own color; its notes and chords, with their techniques and chord frames, are drawn,
+    detected and scored; the fret grid and bars span seven strings; the tuner starts on the low B; the chord book's
+    diagrams get a seventh row; the tuning has its name (B STANDARD 7STR) in the song list, on the song's page and in
+    the tuner; and the guitar has a seven-peg headstock. Six-string songs and bass play as the game has them.
+  * `SevenString`, `[Seven String]` `string6_N` and `string6_CB` (the low B's color, normal and colorblind; empty: light
+    grey), `ExtendedRangeColor` (on: with Extended Range Support on, its low string color), `ChordWideMisses`
+    (2; 0 to 2: how many notes a chord of 7 or 8 may miss and still count), `TuningNames` (on), `TuningNamePrefix`
+    (empty), `TuningNameSuffix` (7Str), `Headstock7` (on), `Headstock7Wood` (0.6; 0.05 to 1, its wood's brightness).
+    The app's 7-String tab sets them. The color changes while the game runs; the switch and the rest from the next
+    start.
+  * A port of [rs7string](https://github.com/SomeeName/rs7string) by SomeeName, which patches the running Windows game.
+    Here the same changes are built into RS Re-ARMed as edits and mid points, and the library switches them on when the
+    game starts: Learn & Play only, with the RS Re-ARMed after 1.11.0. The chord diagrams and the headstock are built at
+    each start from your own game files by rs7string's recipes and programs (`data/rs7string`, checked against their
+    hashes); the three rebuilt menu files go in the game folder's `Update` folder (`rearmed-mods-<name>.gfx`).
+  * Checked in Learn & Play with DotCharter's Ave Mujica chart: seven strings, chord frames over the low B, and
+    B STANDARD 7STR in the song list, on the song's page and in the tuner; a six-string song plays as before. Played with
+    a guitar (2026-11-09): it works, with the song's chord diagrams and the seven-peg headstock shown.
+  * Different: all or nothing, as in rs7string: a part that can't start leaves the guitar with six strings, and the log
+    says why. rs7string's switches for its other code paths aren't here; its defaults are the behaviour.
+
+* **Plain Packages** (not in RSMods)
+  * Unencrypted song archives, as DotCharter writes its 7-string charts, load as the encrypted ones do: an archive
+    whose table of contents isn't encrypted, and song files that are compressed but not encrypted. Other archives and
+    song files load as before.
+  * `PlainPackages`, from the next start
+  * After rs7string's plain archive loading: Learn & Play only, with the RS Re-ARMed after 1.11.0. A plain song file has
+    no signature: RS Re-ARMed skips the check (unless `RS_MODS_BYPASS=0`). Checked with an unencrypted copy of the Ave
+    Mujica chart, which plays as the encrypted one does.
+  * Off, an unencrypted archive may stop the game once a profile is chosen (as in rs7string's tests).
+
 The hiding mods (loft, headstock, skyline, lyrics, frets, inlays, lane markers) find what they hide in the game's
 memory after each scene loads. It takes a second or two after a song starts.
 
@@ -535,8 +570,11 @@ the same key names, and no two actions on one default key. A mod's work in the g
   everyone who contributed: the features, their design, the settings and the default keys.
 - [RS Re-ARMed](https://github.com/bbelgg/rs-rearmed): the Mac build these mods run in, and its runtime headers in
   `include/rs-rearmed` (MIT).
+- [rs7string](https://github.com/SomeeName/rs7string) by SomeeName (MIT): Seven-String Guitar and Plain Packages, their
+  design, and the chord diagram recipes and headstock programs in `data/rs7string`.
 
 ## License
 
-[MIT](LICENSE), for this project's own code. `include/rs-rearmed` is RS Re-ARMed's, under its own MIT license. RSMods has no
+[MIT](LICENSE), for this project's own code. `include/rs-rearmed` is RS Re-ARMed's, and `data/rs7string` rs7string's,
+each under its own MIT license. RSMods has no
 license file, and this license gives no rights to RSMods itself.

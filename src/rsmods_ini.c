@@ -121,6 +121,11 @@ static const char DEFAULT_INI[] =
     "RainbowNotes = off\n"
     "; The strings do, with the rainbow strings key\n"
     "RainbowStrings = off\n"
+    "; A low B string for 7-string charts (DotCharter's), after rs7string: its settings are in [Seven String]. Learn &\n"
+    "; Play, with RS Re-ARMed's edits and mid points. From the next start.\n"
+    "SevenString = off\n"
+    "; Unencrypted song archives, as DotCharter writes its charts, load as the encrypted ones do. From the next start.\n"
+    "PlainPackages = off\n"
     "\n"
     "[Mod Settings]\n"
     "RRSpeedInterval = 2\n"
@@ -216,6 +221,24 @@ static const char DEFAULT_INI[] =
     "DucksRedux = \n"
     "RainbowLaser = \n"
     "GoneWailin = \n"
+    "\n"
+    "[Seven String]\n"
+    "; With SevenString = on. The low B string's color, RRGGBB, normal and colorblind (empty: light grey, the colorblind\n"
+    "; one as the normal one); with ExtendedRangeColor = on and ExtendedRange on, Extended Range's low string color.\n"
+    "string6_N = \n"
+    "string6_CB = \n"
+    "ExtendedRangeColor = on\n"
+    "; A chord of 7 or 8 notes counts as played with this many of its notes missed (0 to 2)\n"
+    "ChordWideMisses = 2\n"
+    "; A 7-string tuning's name, as B STANDARD 7STR: the prefix and suffix (ASCII, at most 31 characters each; an\n"
+    "; 8-string tuning's 7 becomes 8)\n"
+    "TuningNames = on\n"
+    "TuningNamePrefix = \n"
+    "TuningNameSuffix = 7Str\n"
+    "; A guitar with seven strings gets a seven-peg headstock, built from the game's own files; Headstock7Wood darkens\n"
+    "; its wood (0.05 to 1)\n"
+    "Headstock7 = on\n"
+    "Headstock7Wood = 0.6\n"
     "\n"
     "[GUI Settings]\n"
     "; Back up the profiles to Profile_AutoBackups in the game folder while the game runs (when they changed, at most\n"
@@ -410,6 +433,17 @@ static const struct {
     {"Default Tones", "DucksRedux", ""},
     {"Default Tones", "RainbowLaser", ""},
     {"Default Tones", "GoneWailin", ""},
+    {"Toggle Switches", "SevenString", "off"},
+    {"Toggle Switches", "PlainPackages", "off"},
+    {"Seven String", "string6_N", ""},
+    {"Seven String", "string6_CB", ""},
+    {"Seven String", "ExtendedRangeColor", "on"},
+    {"Seven String", "ChordWideMisses", "2"},
+    {"Seven String", "TuningNames", "on"},
+    {"Seven String", "TuningNamePrefix", ""},
+    {"Seven String", "TuningNameSuffix", "7Str"},
+    {"Seven String", "Headstock7", "on"},
+    {"Seven String", "Headstock7Wood", "0.6"},
 };
 
 char *rsm_trim(char *s) {

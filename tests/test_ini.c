@@ -37,6 +37,8 @@ int main(void) {
   CHECK(rsm_long("SunlightMode", -1) == 1);
   CHECK(!rsm_on("CustomSongListTitles") && !strcmp(rsm_get("SongListTitles", "SongListTitle_20"), ""));
   CHECK(!rsm_on("CustomTunings") && !rsm_on("DefaultTones") && !strcmp(rsm_get("Default Tones", "Lead"), ""));
+  CHECK(!rsm_on("SevenString") && !rsm_on("PlainPackages"));
+  CHECK(!strcmp(rsm_get("Seven String", "TuningNameSuffix"), "7Str") && !strcmp(rsm_get("Seven String", "string6_N"), ""));
 
   // a section's lines in order (a '#' inside a key is no comment); past the last, none
   const char *k, *v;
