@@ -32,6 +32,12 @@ struct IniDocument: Equatable {
 
     private static func same(_ a: String, _ b: String) -> Bool { a.caseInsensitiveCompare(b) == .orderedSame }
 
+    // A key or a value is one line: a line break pasted into a field would start a line of its own in the file, which
+    // the mods would read as another key or section
+    private static func oneLine(_ s: String) -> String {
+        s.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: .newlines).joined(separator: " ")
+    }
+
     func value(_ section: String, _ key: String) -> String? {
         var current = ""
         var found: String?
@@ -46,6 +52,7 @@ struct IniDocument: Equatable {
     }
 
     mutating func set(_ section: String, _ key: String, _ value: String) {
+        let value = Self.oneLine(value)
         var current = ""
         var header: Int?
         var lastInSection: Int?
@@ -99,7 +106,7 @@ struct IniDocument: Equatable {
 
     // The section's lines become these, where its first line was (its comments stay); a new section goes at the end
     mutating func setEntries(_ section: String, _ entries: [(key: String, value: String)]) {
-        let new = entries.map { "\($0.key) = \($0.value)" }
+        let new = entries.map { "\(Self.oneLine($0.key)) = \(Self.oneLine($0.value))" }
         var current = ""
         var header: Int?
         var first: Int?

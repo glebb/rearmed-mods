@@ -241,7 +241,7 @@ final class ModsLibrary: ObservableObject {
             p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
             p.arguments = ["-x", name]
             p.standardOutput = FileHandle.nullDevice
-            try? p.run()
+            guard (try? p.run()) != nil else { return false }  // waiting for a process that never ran would raise
             p.waitUntilExit()
             return p.terminationStatus == 0
         }

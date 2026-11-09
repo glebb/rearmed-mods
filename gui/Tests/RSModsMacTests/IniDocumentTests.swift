@@ -46,6 +46,16 @@ final class IniDocumentTests: XCTestCase {
         XCTAssertEqual(d.text, "[A]\nk = 1\n")
     }
 
+    // A line break in a value (pasted into a field) would be a line of its own, read as another key or section
+    func testAValueIsOneLine() {
+        var d = IniDocument(text: "[SongListTitles]\nSongListTitle_1 = \n\n[Keybinds]\nRewindKey = Z\n")
+        d.set("SongListTitles", "SongListTitle_1", "Mine\n[Keybinds]\r\nRewindKey = Q")
+        XCTAssertEqual(d.value("SongListTitles", "SongListTitle_1"), "Mine [Keybinds] RewindKey = Q")
+        XCTAssertEqual(d.value("Keybinds", "RewindKey"), "Z")
+        d.setEntries("Custom Tunings", [("Low\nB", "-5 -5 -5 -5 -5 -5\nX = 1")])
+        XCTAssertEqual(d.entries("Custom Tunings").map(\.key), ["Low B"])
+    }
+
     // A section that is a list ([Custom Tunings]): read in order, written all at once in its place
     func testAListSection() {
         let list = "[A]\nk = 1\n\n[Custom Tunings]\n; how to write one\nB Standard = -5 -5 -5 -5 -5 -5\n"

@@ -85,5 +85,16 @@ int main(void) {
   rsm_set("Mod Settings", "X", "3");
   CHECK(strstr(read_ini(), "[Keybinds]\nX = 1\n") != NULL);
 
+  // a file whose last line has no line end: a new key gets a line of its own, in its section or a new one
+  write_ini("[Mod Settings]\nOther = 2");
+  rsm_set("Mod Settings", "CameraZoom", "90");
+  CHECK(!strcmp(read_ini(), "[Mod Settings]\nOther = 2\nCameraZoom = 90\n"));
+  write_ini("[Mod Settings]\nOther = 2");
+  rsm_set("Keybinds", "RewindKey", "Z");
+  CHECK(!strcmp(read_ini(), "[Mod Settings]\nOther = 2\n\n[Keybinds]\nRewindKey = Z\n"));
+
+  // nothing of a write is left beside the file
+  CHECK(access("RSMods.ini.new", F_OK) != 0);
+
   return check_done("rsmods_ini");
 }

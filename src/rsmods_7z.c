@@ -343,7 +343,20 @@ static void put_u8(buf *b, uint8_t v) {
 }
 
 static void put_bytes(buf *b, const uint8_t *p, size_t n) {
-  for (size_t i = 0; i < n; i++) put_u8(b, p[i]);
+  if (b->oom || !n) return;
+  if (n > b->cap - b->n) {
+    size_t cap = b->cap ? b->cap : 4096;
+    while (cap - b->n < n && cap <= SIZE_MAX / 2) cap *= 2;
+    uint8_t *nb = cap - b->n < n ? NULL : realloc(b->b, cap);
+    if (!nb) {
+      b->oom = 1;
+      return;
+    }
+    b->b = nb;
+    b->cap = cap;
+  }
+  memcpy(b->b + b->n, p, n);
+  b->n += n;
 }
 
 static void put_u32(buf *b, uint32_t v) {
@@ -733,9 +746,11 @@ rsm_7z *rsm_7z_open(const uint8_t *data, size_t n, char *why, size_t why_len) {
   if (off > n - 32 || size > n - 32 - off) FAIL("7z: the header is past the end");
   if ((uint32_t)crc32(0, data + 32 + off, (uInt)size) != crc) FAIL("7z: the header's CRC");
   cur c = {data + 32 + off, (size_t)size, 0, 0};
-  while (c.n && c.b[0] == K_ENCODED_HEADER) {
+  // A packed header may unpack to another packed header; one that unpacks to itself would never end
+  for (int depth = 0; c.n && c.b[0] == K_ENCODED_HEADER; depth++) {
     folder *hf = NULL;
     size_t nhf = 0;
+    if (depth == 4) FAIL("7z: packed headers inside each other");
     c.i = 1;
     if (!parse_streams(&c, &hf, &nhf, why, why_len)) goto fail;
     uint8_t *h = nhf ? unpack(data, n, &hf[0]) : NULL;

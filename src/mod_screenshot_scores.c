@@ -30,12 +30,16 @@ static void tick(void) {
   g_taken = 1;
   const char *home = getenv("HOME");
   if (!home) return;
-  char dir[900], path[1024], stamp[32];
+  char dir[900], path[1024], stamp[32], name[128];
   snprintf(dir, sizeof dir, "%s/Pictures/RS Re-ARMed", home);
   mkdir(dir, 0755);
   time_t t = time(NULL);
   strftime(stamp, sizeof stamp, "%Y-%m-%d %H.%M.%S", localtime(&t));
-  snprintf(path, sizeof path, "%s/%s %s.png", dir, *rsm_song_key() ? rsm_song_key() : "score", stamp);
+  // The song key is a custom song's own text: as a file's name it stays in the folder
+  snprintf(name, sizeof name, "%s", *rsm_song_key() ? rsm_song_key() : "score");
+  for (char *p = name; *p; p++)
+    if (*p == '/' || *p == ':' || (unsigned char)*p < 0x20) *p = '_';
+  snprintf(path, sizeof path, "%s/%s %s.png", dir, name, stamp);
   rsm_screenshot(path);
 }
 

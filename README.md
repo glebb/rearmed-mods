@@ -177,7 +177,8 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * 8 seconds after a score screen opens (Learn a Song, Score Attack, Duet, Head-to-Head), the screen is saved.
   * `ScreenShotScores`
   * Different: RSMods presses F12 for a Steam screenshot. RS Re-ARMed runs without the Steam client, so the mod
-    saves the picture itself, as a PNG in `~/Pictures/RS Re-ARMed/` (`<song key> <date> <time>.png`).
+    saves the picture itself, as a PNG in `~/Pictures/RS Re-ARMed/` (`<song key> <date> <time>.png`; a `/` or `:`
+    in a custom song's key becomes `_`).
 
 * **Bypass 2+ Real Tone Cable Popup**
   * No popup when two Real Tone cables are connected.
@@ -404,8 +405,9 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
 
 * **Your Own Plug-in (ToneHost)** (not in RSMods)
   * `rs-tonehost`, an add-on in [`tonehost`](tonehost/README.md), plays the guitar through an Audio Unit, such as Helix
-    Native, and follows the game's tones. The game starts the host, and the game's guitar is silent while it runs; the
-    guitar fader and the volume keys still work. Without the host the game keeps its tones. It is built from source and
+    Native, and follows the game's tones. The game starts the host (again when it has ended: it ends by itself
+    while ToneHost is off), and the game's guitar is silent while it runs; the guitar fader and the volume keys still
+    work. Without the host the game keeps its tones. It is built from source and
     isn't in the app: set it up from that folder.
   * `ToneHost`
 
@@ -415,7 +417,8 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     (Guitar in Song or Bass in Song) with its own key, and stays for the songs after. Riff Repeater, rewinds and the
     game's volume sliders work as before.
   * `rs-stems`, an add-on in [`stems`](stems/README.md), separates each song with Demucs on the Neural Engine, a few
-    seconds before it starts, and keeps the songs you play most in a cache of a fixed size. The game starts it. Until a
+    seconds before it starts, and keeps the songs you play most in a cache of a fixed size. The game starts it, and again when it
+    has ended (it ends by itself while Song Stems is off). Until a
     song is ready, and without the add-on, the song plays as it is. The app carries it, with its model and Demucs'
     licence, and installs it with the mods on macOS 15 or later (its model is converted for it); the mod itself runs
     where the game does.
@@ -542,11 +545,16 @@ src/rsmods_overlay.c     text over the game
 src/rsmods_scene.c       the scene graph and render steps: finding and hiding by name, the dump
 src/rsmods_tuning.c, .h  PSARC archives, the manifests' tunings, the Extended Range rule (no game: tested as is)
 src/rsmods_game_note.c   the note the game hears, from its pitch detection
+src/rsmods_note_stats.c  the player's note counts and the grey-note time
 src/rsmods_profiles.c    the save folder and LocalProfiles.json
 src/rsmods_7z.c, .h      the 7z archives of cache.psarc and their LZMA: read a file, write one again with files changed
 src/rsmods_cache.c, .h   Custom Tunings' and the default tones' edits of the game's files, a profile's tones
 src/mod_cache.c          the archives the game is given for those two
 src/mod_*.c              one file per mod
+src/seven*.c, seven.h    Seven-String Guitar's parts (mod_seven_string.c turns them on)
+src/stems_mix.h          Song Stems' mix of a block, and which .wem a song's bank plays (no game: tested as is)
+data/rs7string/          rs7string's chord diagram recipes and headstock programs (MIT), compiled into the library
+tests/, test.sh          the library's tests, and the script that runs them and the app's
 include/rs-rearmed/      RS Re-ARMed's runtime headers (MIT)
 gui/                     Re-ARMed Mods.app: settings and installer (SwiftUI); build-app.sh --zip makes the release
 tonehost/                rs-tonehost: the add-on that hosts your own plug-in, and its Helix Native setup
@@ -572,13 +580,33 @@ and its mod stays off.
 ./test.sh
 ```
 
-runs the library's tests (`tests/`: `RSMods.ini`, key names, the color maths, Sunlight's colors, archives and tunings made
+runs the library's tests (`tests/`: `RSMods.ini`, a value written into one whose last line has no line end, key names,
+the color maths, Sunlight's colors, archives and tunings made
 in the test with a key of its own, the profile list and the backups, the song list titles put in the game's strings, with
 either game's pointers, LZMA and a 7z archive made by liblzma (`tests/make_7z_vectors.py` makes them again) and written
 again, archives laid out in the test for a folder without a file and counts the reader refuses, the tuning,
 localization and tone edits, a tone key the file has many times) and the app's
 (`gui/Tests`: settings, a section that is a list, install and update for both editions, the app's profile backups). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,
 the same key names, and no two actions on one default key. A mod's work in the game is checked by playing it.
+`stems/test.sh` has `rs-stems`' own tests, which need game data and the model ([`stems/README.md`](stems/README.md)).
+
+### Files from elsewhere
+
+A custom song is somebody else's file, and the library and its helpers read several kinds of them. What reads one checks
+every size and offset against the data it has before it uses it, and refuses the file, with a line in the log, when one
+doesn't fit; the game then goes on as without the mod:
+
+- `src/rsmods_tuning.c`: a song's archive (PSARC), for Extended Range's tunings and Song Stems' audio.
+- `src/seven_chords.c`: the RS7X block of a 7-string chart.
+- `stems/wwise_vorbis.c`: a song's `.wem`, in `rs-stems`, a process of its own. A header that names an offset past the
+  data, a sample rate outside 8 to 192 kHz, or more frames than its packets can hold (or than 2^28) is refused before
+  any memory is taken for it.
+- `src/rsmods_7z.c`, `src/rsmods_cache.c`, `src/rsmods_profiles.c`: the game's own `cache.psarc` and your profiles.
+- A song's key goes into file names (the score screenshots) only without `/` and `:`.
+
+`rs-stems` is started with none of the game's open files and without a test's key injector in its environment
+(`helper_env` in `src/mod_song_stems.c`). A new reader of such a file is to keep to the same rule; a damaged file is
+the test for it (`tests/test_7z.c` has archives the reader refuses).
 
 ## Credits
 

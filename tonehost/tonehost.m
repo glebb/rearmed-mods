@@ -489,8 +489,10 @@ static void command(char *line) {
   else if (*line) say("unknown command: %s", line);
 }
 
+// 0 (no plug-in has it) for anything but four characters
 static uint32_t fourcc(NSString *s) {
-  const char *c = s.UTF8String;
+  const char *c = [s isKindOfClass:NSString.class] ? s.UTF8String : NULL;
+  if (!c || strlen(c) != 4) return 0;
   return (uint32_t)c[0] << 24 | (uint32_t)c[1] << 16 | (uint32_t)c[2] << 8 | (uint32_t)c[3];
 }
 
@@ -502,6 +504,7 @@ int main(int argc, char **argv) { @autoreleasepool {
   NSDictionary *pl = c[@"plugin"];
   g_plugin = (AudioComponentDescription){fourcc(pl[@"type"]), fourcc(pl[@"subtype"]), fourcc(pl[@"manufacturer"]), 0, 0};
   g_channel = [c[@"input"][@"channel"] intValue];
+  if (g_channel < 0) g_channel = 0;  // the audio thread counts buffers up to it
   g_input_gain = powf(10.f, [c[@"input"][@"gain_db"] floatValue] / 20.f);
   if (c[@"fade_ms"]) g_fade_frames = (uint32_t)([c[@"fade_ms"] doubleValue] * RATE / 1000);
   UInt32 frames = c[@"buffer"] ? [c[@"buffer"] unsignedIntValue] : 128;

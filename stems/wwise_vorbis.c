@@ -20,6 +20,7 @@
 #define FAST_BITS 10  // codewords up to this long are found with one table lookup
 #define MAX_POSTS 256
 #define MAX_CH 8
+#define MAX_SONG_FRAMES (1u << 28)  // 93 minutes at 48 kHz: more than a header may ask memory for
 
 static uint32_t le16(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8; }
 static uint32_t le32(const uint8_t *p) { return le16(p) | le16(p + 2) << 16; }
@@ -317,6 +318,7 @@ static int read_floor(decoder *d, bitreader *b, floor1 *f, char *err, size_t err
   for (int j = 0; j <= maxclass; j++) {
     f->cdim[j] = (int)getbits(b, 3) + 1;
     f->csub[j] = (int)getbits(b, 2);
+    if (b->eop) FAIL("the setup header ends in a floor");
     f->cmaster[j] = f->csub[j] ? (int)getbits(b, 8) : -1;
     if (f->cmaster[j] >= d->ncb) FAIL("a floor's master book is out of range");
     for (int k = 0; k < 1 << f->csub[j]; k++) {
@@ -326,6 +328,7 @@ static int read_floor(decoder *d, bitreader *b, floor1 *f, char *err, size_t err
   }
   f->mult = (int)getbits(b, 2) + 1;
   int rangebits = (int)getbits(b, 4);
+  if (b->eop) FAIL("the setup header ends in a floor");
   f->x[0] = 0;
   f->x[1] = 1 << rangebits;
   f->posts = 2;
@@ -361,6 +364,7 @@ static int read_residue(decoder *d, bitreader *b, residue *r, char *err, size_t 
   r->psize = (int)getbits(b, 24) + 1;
   r->classifications = (int)getbits(b, 6) + 1;
   r->classbook = (int)getbits(b, 8);
+  if (b->eop) FAIL("the setup header ends in a residue");  // before the class book, which would be book -1
   if (r->type > 2 || r->classbook >= d->ncb) FAIL("a residue of type %d or book %d", r->type, r->classbook);
   int cascade[64];
   for (int j = 0; j < r->classifications; j++) {
@@ -721,11 +725,18 @@ static int read_header(const uint8_t *w, size_t len, decoder *d, wem_layout *l, 
   d->mod_packets = !(signal == 0x4a || signal == 0x4b || signal == 0x69 || signal == 0x70);
   l->setup = le32(vorb + 0x10);
   l->audio = le32(vorb + 0x14);
+  if (d->channels < 1 || d->channels > MAX_CH) FAIL("%d channels", d->channels);
+  if (d->rate < 8000 || d->rate > 192000) FAIL("%u Hz", d->rate);
+  if (vorb[0x28] < 6 || vorb[0x29] > 13 || vorb[0x28] > vorb[0x29])
+    FAIL("block sizes 2^%d and 2^%d", vorb[0x28], vorb[0x29]);
   d->bs[0] = 1 << vorb[0x28];
   d->bs[1] = 1 << vorb[0x29];
-  if (d->channels < 1 || d->channels > MAX_CH) FAIL("%d channels", d->channels);
-  if (vorb[0x28] < 6 || vorb[0x29] > 13 || d->bs[0] > d->bs[1]) FAIL("block sizes %d and %d", d->bs[0], d->bs[1]);
-  if (l->setup + 2 > l->data_size || l->audio > l->data_size) FAIL("the setup or audio is past the data");
+  // in size_t: the offsets are the file's own 32 bits, and one near the top would wrap past these checks
+  if ((size_t)l->setup + 2 > l->data_size || l->audio > l->data_size) FAIL("the setup or audio is past the data");
+  // A packet is three bytes or more and gives half a long block at most: a header that claims more frames than that
+  // is not believed, as the decoder takes memory for every frame it names
+  uint64_t most = ((uint64_t)(l->data_size - l->audio) / 3 + 1) * (uint64_t)(d->bs[1] / 2);
+  if (d->frames > MAX_SONG_FRAMES || d->frames > most) FAIL("%u frames, more than the file can hold", d->frames);
   return 0;
 }
 
@@ -801,7 +812,7 @@ int ww_decode(const uint8_t *wem, size_t len, const uint8_t *codebooks, size_t c
   const uint8_t *s = l.data + l.setup;
   size_t ssize = le16(s);
   int rc = -1;
-  if (l.setup + 2 + ssize > l.data_size) {
+  if ((size_t)l.setup + 2 + ssize > l.data_size) {
     snprintf(err, errlen, "the setup header is past the data");
     return -1;
   }
@@ -821,7 +832,7 @@ int ww_decode(const uint8_t *wem, size_t len, const uint8_t *codebooks, size_t c
     if (n > 0) have += (size_t)n;
     at += 2 + size;
   }
-  if (have < d.frames) memset(pcm + have * (size_t)d.channels, 0, (d.frames - have) * (size_t)d.channels * sizeof *pcm);
+  // what the packets didn't reach stays silent (calloc)
   out->pcm = pcm;
   out->rate = d.rate;
   out->channels = (uint32_t)d.channels;

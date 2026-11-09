@@ -1,6 +1,6 @@
 // rsmods_7z.c: LZMA and LZMA2 made by liblzma, a 7z archive laid out as the game's are, and the archive written again
 // with a file changed (tests/vectors_7z.h, from make_7z_vectors.py); archives laid out here for a folder without a file
-// and for counts the reader refuses.
+// and for counts the reader refuses, and a packed header that unpacks to itself.
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
@@ -273,10 +273,32 @@ static void test_empty_folder(void) {
   free(a);
 }
 
+// A packed header that unpacks to itself: a stored folder whose bytes are the packed header's own. The reader gives up
+// after a few rounds; it used to go round for ever.
+static void test_header_in_itself(void) {
+  char why[128] = "";
+  bytes h = {{0}, 0}, start = {{0}, 0}, out = {{0}, 0};
+  enum { SIZE = 18 };
+  put8(&h, 0x17);                                                   // packed header
+  put8(&h, 0x06), putnum(&h, 0), putnum(&h, 1);                     // pack info: from 0, one stream
+  put8(&h, 0x09), putnum(&h, SIZE), put8(&h, 0x00);                 // its size: this header's
+  put8(&h, 0x07), put8(&h, 0x0B), putnum(&h, 1), put8(&h, 0);       // one folder
+  putnum(&h, 1), put8(&h, 0x01), put8(&h, 0x00);                    // one coder: copy
+  put8(&h, 0x0C), putnum(&h, SIZE), put8(&h, 0x00), put8(&h, 0x00);
+  CHECK(h.n == SIZE);
+  put64(&start, 0), put64(&start, h.n), put32(&start, (uint32_t)crc32(0, h.b, (uInt)h.n));
+  put(&out, "7z\xBC\xAF\x27\x1C\x00\x04", 8);
+  put32(&out, (uint32_t)crc32(0, start.b, (uInt)start.n));
+  put(&out, start.b, start.n);
+  put(&out, h.b, h.n);
+  CHECK(rsm_7z_open(out.b, out.n, why, sizeof why) == NULL && strstr(why, "inside each other"));
+}
+
 int main(void) {
   test_decode();
   test_encode();
   test_archive();
   test_empty_folder();
+  test_header_in_itself();
   return check_done("7z");
 }

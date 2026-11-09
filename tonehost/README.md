@@ -26,7 +26,8 @@ tonehost/helix/setup.sh --input "HX Stomp" --channel 5 --output "HX Stomp"
 ```
 
 It asks you for one import and puts your Helix library back afterwards. Then set `ToneHost = on` in `RSMods.ini`: the
-game starts the host, and the host ends a few seconds after the game does, a crash included. `start.sh` and `stop.sh` in
+game starts the host (three times, 30 s apart, if it doesn't come; again when one that came has ended), and the host
+ends a few seconds after the game does, a crash included. `start.sh` and `stop.sh` in
 `RS Re-ARMed/tonehost` do it by hand; `"stay_after_game": true` keeps it running. Everything is in that folder.
 
 For another Audio Unit, set a sound in its own window and save it as a template's state:

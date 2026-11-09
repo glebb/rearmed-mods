@@ -541,7 +541,8 @@ const char *rsm_get(const char *section, const char *key) {
 }
 
 // Replaces every line of the key, as the reader takes the last, or adds it at the end of its section (the section at the end of the file if it has none).
-// The rest of the file stays as it is. Written to a new file first: the game may stop at any moment.
+// The rest of the file stays as it is. Written to a new file first: the game may stop at any moment. A file that
+// couldn't be written whole (a full disk) is thrown away, and RSMods.ini stays as it was.
 void rsm_set(const char *section, const char *key, const char *value) {
   FILE *in = fopen(INI_PATH, "r"), *out = fopen(INI_PATH ".new", "w");
   if (!out) {
@@ -549,13 +550,13 @@ void rsm_set(const char *section, const char *key, const char *value) {
     return;
   }
   char line[1024], cur[128] = "";
-  int done = 0;
+  int done = 0, ended = 1;  // ended: what is written so far ends its line (a file's last line may not)
   while (in && fgets(line, sizeof line, in)) {
     char copy[sizeof line];
     snprintf(copy, sizeof copy, "%s", line);
     char *s = rsm_trim(copy);
     if (*s == '[') {
-      if (!done && !strcasecmp(cur, section)) fprintf(out, "%s = %s\n", key, value), done = 1;
+      if (!done && !strcasecmp(cur, section)) fprintf(out, "%s%s = %s\n", ended ? "" : "\n", key, value), done = ended = 1;
       char *e = strchr(s, ']');
       if (e) *e = 0;
       snprintf(cur, sizeof cur, "%s", rsm_trim(s + 1));
@@ -564,21 +565,25 @@ void rsm_set(const char *section, const char *key, const char *value) {
       if (eq) {
         *eq = 0;
         if (!strcasecmp(rsm_trim(s), key)) {
-          fprintf(out, "%s = %s\n", key, value);
-          done = 1;
+          fprintf(out, "%s%s = %s\n", ended ? "" : "\n", key, value);
+          done = ended = 1;
           continue;
         }
       }
     }
     fputs(line, out);
+    size_t len = strlen(line);
+    ended = len && line[len - 1] == '\n';
   }
   if (!done) {
+    if (!ended) fputc('\n', out);
     if (strcasecmp(cur, section)) fprintf(out, "\n[%s]\n", section);
     fprintf(out, "%s = %s\n", key, value);
   }
+  int ok = !(in && ferror(in)) && !ferror(out);
   if (in) fclose(in);
-  fclose(out);
-  rename(INI_PATH ".new", INI_PATH);
+  ok = !fclose(out) && ok;
+  if (!ok || rename(INI_PATH ".new", INI_PATH)) remove(INI_PATH ".new");
 }
 
 int rsm_ini_entry(const char *section, int i, const char **key, const char **value) {

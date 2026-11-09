@@ -12,6 +12,7 @@
 #include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "rsmods.h"
@@ -26,17 +27,26 @@ static float g_fader = -1;    // what the game or a key asked for
 static char g_start[900];     // the host's start script
 static int g_starts;
 static double g_started_at;
+static pid_t g_starter;  // the start script run last, until it has ended and been waited for
 
 extern char **environ;
 
-// A host that doesn't come is tried again three times, not every second
+// The start script ends as soon as the host is launched: waited for, or it would stay in the process table for as long
+// as the game runs
+static void reap_starter(void) {
+  if (g_starter > 0 && waitpid(g_starter, NULL, WNOHANG) != 0) g_starter = 0;
+}
+
+// A host that doesn't come is tried again three times, 30 s apart, not every second. One that came counts from nothing
+// again (tick): the host ends by itself whenever ToneHost is turned off.
 static void start_host(void) {
-  if (g_starts >= 3 || (g_starts && rsm_now() - g_started_at < 30) || access(g_start, X_OK)) return;
+  if (g_starts >= 3 || (g_started_at > 0 && rsm_now() - g_started_at < 30) || access(g_start, X_OK)) return;
   g_starts++;
   g_started_at = rsm_now();
   char *argv[] = {"/bin/bash", g_start, NULL};
-  pid_t pid;
+  pid_t pid = 0;
   int e = posix_spawn(&pid, argv[0], NULL, NULL, argv, environ);
+  if (!e) g_starter = pid;
   rsm_log("tone host: starting it (%s)", e ? "failed" : "started");
 }
 
@@ -82,7 +92,14 @@ static int before_rtpc(rc_ctx *c, void *user) {
     g_len = 0;
   } else if (is_gear(name)) {
     if (!g_len) g_len = (size_t)snprintf(g_line, sizeof g_line, "gear");
-    if (g_len < sizeof g_line - 64) g_len += (size_t)snprintf(g_line + g_len, sizeof g_line - g_len, " %s=%g", name, value);
+    if (g_len < sizeof g_line - 64) {
+      // a knob that doesn't fit whole is left out: snprintf's result is what it would have written, not what it did
+      int w = snprintf(g_line + g_len, sizeof g_line - g_len, " %s=%g", name, value);
+      if (w > 0 && (size_t)w < sizeof g_line - g_len)
+        g_len += (size_t)w;
+      else
+        g_line[g_len] = 0;
+    }
   }
   return 0;
 }
@@ -119,11 +136,13 @@ static void tick(void) {
     set_fader(0.f);
   }
   if (++g_frames % 60) return;
+  reap_starter();
   send_text("\n", 1);
   if (g_fd < 0) {
     g_fd = open(g_path, O_WRONLY | O_NONBLOCK);  // fails with no reader: no host, no change
     if (g_fd >= 0) {
       rsm_log("tone host found");
+      g_starts = 0;
       if (g_last_len) send_text(g_last, g_last_len);
       if (g_fader >= 0) send_fader();
     } else

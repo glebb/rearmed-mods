@@ -24,6 +24,7 @@
 #include <strings.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "rsmods.h"
@@ -95,6 +96,7 @@ static int before_submit(rc_ctx *c, void *user) {
 static char g_home[700], g_cache[700], g_work[720], g_fifo[720];
 static int g_fd = -1, g_starts, g_said_missing;
 static double g_started_at, g_beat_at;
+static pid_t g_helper;  // the helper started last, until it has ended and been waited for
 static long g_budget_sent = -1;
 static char g_pending[2048];  // a command the helper hasn't taken yet (the tick's)
 static char g_last_cmd[2048]; // the last song asked for, sent again to a helper that has started again
@@ -147,14 +149,20 @@ static char **helper_env(void) {
       if (asprintf(&env[k], "DYLD_INSERT_LIBRARIES=%.*s", len, s) > 0) k++;
       continue;
     }
-    env[k++] = strdup(environ[i]);
+    if ((env[k] = strdup(environ[i]))) k++;
   }
   return env;
 }
 
-// A helper that doesn't come is tried again three times, not every second
+// A helper that has ended is waited for, or it would stay in the process table for as long as the game runs
+static void reap_helper(void) {
+  if (g_helper > 0 && waitpid(g_helper, NULL, WNOHANG) != 0) g_helper = 0;
+}
+
+// A helper that doesn't come is tried again three times, 30 s apart, not every second. One that came counts from
+// nothing again (heartbeat): the helper ends by itself whenever Song Stems is turned off.
 static void start_helper(void) {
-  if (g_starts >= 3 || (g_starts && rsm_now() - g_started_at < 30)) return;
+  if (g_starts >= 3 || (g_started_at > 0 && rsm_now() - g_started_at < 30)) return;
   char exe[760];
   snprintf(exe, sizeof exe, "%s/rs-stems", g_home);
   if (access(exe, X_OK)) {
@@ -166,10 +174,16 @@ static void start_helper(void) {
   posix_spawn_file_actions_t fa;
   posix_spawn_file_actions_init(&fa);
   for (int f = 0; f < 3; f++) posix_spawn_file_actions_addopen(&fa, f, "/dev/null", f ? O_WRONLY : O_RDONLY, 0);
+  // Nothing of the game's open files goes to the helper: only the three opened above
+  posix_spawnattr_t at;
+  posix_spawnattr_init(&at);
+  posix_spawnattr_setflags(&at, POSIX_SPAWN_CLOEXEC_DEFAULT);
   char *argv[] = {exe, "serve", NULL};
   char **env = helper_env();
-  pid_t pid;
-  int e = posix_spawn(&pid, exe, &fa, NULL, argv, env ? env : environ);
+  pid_t pid = 0;
+  int e = posix_spawn(&pid, exe, &fa, &at, argv, env ? env : environ);
+  if (!e) g_helper = pid;
+  posix_spawnattr_destroy(&at);
   posix_spawn_file_actions_destroy(&fa);
   if (env) {
     for (char **p = env; *p; p++) free(*p);
@@ -193,6 +207,7 @@ static int send_line(const char *s) {
 static void heartbeat(void) {
   if (rsm_now() - g_beat_at < 1.0) return;
   g_beat_at = rsm_now();
+  reap_helper();
   if (g_fd < 0) {
     g_fd = open(g_fifo, O_WRONLY | O_NONBLOCK);
     if (g_fd < 0) {
@@ -200,6 +215,7 @@ static void heartbeat(void) {
       return;
     }
     fcntl(g_fd, F_SETNOSIGPIPE, 1);  // a helper that ends doesn't take the game with it
+    g_starts = 0;
     g_budget_sent = -1;
     pthread_mutex_lock(&g_cmd_lock);
     if (!*g_pending) memcpy(g_pending, g_last_cmd, sizeof g_pending);  // a new helper doesn't know the song in play
@@ -610,11 +626,11 @@ static void tick(void) {
     return;
   }
   if (!g_started) {
-    g_started = 1;
     folders();
     pthread_t t;
-    pthread_create(&t, NULL, worker, NULL);
+    if (pthread_create(&t, NULL, worker, NULL)) return;  // no thread now: tried again with the next frame
     pthread_detach(t);
+    g_started = 1;
   }
   g_was_on = 1;
   heartbeat();

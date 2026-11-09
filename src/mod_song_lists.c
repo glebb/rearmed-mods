@@ -41,14 +41,14 @@ static uint8_t *read_profile(const char *path, size_t *n) {
   return d;
 }
 
-// To a new file, then renamed over the profile: the game may stop at any moment
+// To a new file, on the disk before it is renamed over the profile: the game, or the Mac, may stop at any moment
 static int write_profile(const char *folder, const char *name, const uint8_t *data, size_t n) {
   char path[1300], part[1400];
   snprintf(path, sizeof path, "%s/%s", folder, name);
   snprintf(part, sizeof part, "%s/.%s.rearmed-mods", folder, name);
   FILE *f = fopen(part, "wb");
   if (!f) return 0;
-  int ok = fwrite(data, 1, n, f) == n;
+  int ok = fwrite(data, 1, n, f) == n && !fflush(f) && !fsync(fileno(f));
   ok = !fclose(f) && ok;
   if (ok && !rename(part, path)) return 1;
   unlink(part);

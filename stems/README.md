@@ -23,7 +23,9 @@ Two pieces:
 
 ## The mod and the helper
 
-The game starts the helper (`rs-stems serve`) when `SongStems` is on and the helper is installed. The mod writes
+The game starts the helper (`rs-stems serve`) when `SongStems` is on and the helper is installed: with the network
+guard, if the game has it, and none of the game's open files. A helper that doesn't come is started three times, 30 s
+apart; one that came and has ended (the helper ends when `SongStems` is turned off) is started again. The mod writes
 commands to the FIFO `commands`, one a line, fields separated by a tab; the helper answers through files.
 
 | Line | |
@@ -109,7 +111,10 @@ out of the repository.
 The `.wem` is Wwise's Vorbis: the setup header names its codebooks by number in the game's library, and its packets leave
 out the bits a standard Vorbis packet starts with. `wwise_vorbis.c` decodes it directly (written from the Vorbis I
 specification, doing what libvorbis does where the specification leaves room), to within 1 LSB of vgmstream, the same
-length and the same frames.
+length and the same frames. A `.wem` comes from a song's archive, so from anybody: a header whose offsets are past the
+data, whose sample rate is outside 8 to 192 kHz, or that names more frames than its packets can hold (three bytes a
+packet at least, half a long block a packet at most) or than 2^28, and a setup header that ends early, are refused with
+a line in `rs-stems.log`, and the song plays as it is.
 
 The separation is demucs' own, `apply_model` with `shifts=0`: the song normalised by its mono mix, 7.8 s segments cut
 and cross-faded as demucs does, the spectrogram and the normalisations of each segment (`stems_dsp.c`) on the CPU with
