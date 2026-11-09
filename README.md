@@ -142,7 +142,8 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * `VolumeControl`, `[Mod Settings] VolumeControlInterval` (5), `[Audio Keybindings]`: master 5, song 6,
     player 1 7, player 2 8, microphone 9, voice-over 0, SFX S, mixer P, mute player 1 X, mute player 2 C,
     change selected volume B
-  * Different: the changed channel's volume hides again after 3 seconds.
+  * Different: the changed channel's volume hides again after 3 seconds. With Song Stems on, its part has a line too
+    (Guitar in Song or Bass in Song, `SongStemVolumeKey`, 4).
 
 * **Remove Song Previews**
   * No previews while you browse the song lists.
@@ -408,6 +409,20 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     isn't in the app: set it up from that folder.
   * `ToneHost`
 
+* **Song Stems** (not in RSMods)
+  * Takes the guitar or the bass out of the song you play, at a level of your own: 0% takes the part out, 100% is the
+    song as it is. A bass tone takes out the bass, any other tone the guitar. The level is a line of the volume mixer
+    (Guitar in Song or Bass in Song) with its own key, and stays for the songs after. Riff Repeater, rewinds and the
+    game's volume sliders work as before.
+  * `rs-stems`, an add-on in [`stems`](stems/README.md), separates each song with Demucs on the Neural Engine, a few
+    seconds before it starts, and keeps the songs you play most in a cache of a fixed size. The game starts it. Until a
+    song is ready, and without the add-on, the song plays as it is. The app carries it, with its model and Demucs'
+    licence, and installs it with the mods on macOS 15 or later (its model is converted for it); the mod itself runs
+    where the game does.
+  * `SongStems`, `[Mod Settings] SongStemsGuitarLevel` (0), `SongStemsBassLevel` (0), `SongStemsCacheMB` (500),
+    `[Audio Keybindings] SongStemVolumeKey` (4)
+  * Needs RS Re-ARMed 1.12.0 (the hook point `ak_src_submit` and the codebook names).
+
 * **Seven-String Guitar** (not in RSMods)
   * For 7-string charts, such as DotCharter's: the guitar gets a seventh string, a low B, and the chart plays on it.
     Its lane and string have their own color; its notes and chords, with their techniques and chord frames, are drawn,
@@ -535,6 +550,7 @@ src/mod_*.c              one file per mod
 include/rs-rearmed/      RS Re-ARMed's runtime headers (MIT)
 gui/                     Re-ARMed Mods.app: settings and installer (SwiftUI); build-app.sh --zip makes the release
 tonehost/                rs-tonehost: the add-on that hosts your own plug-in, and its Helix Native setup
+stems/                   rs-stems: the add-on that takes a part out of a song (Song Stems), and how its model is made
 docs/how-it-works.md     how the library works with RS Re-ARMed
 ```
 
@@ -572,6 +588,8 @@ the same key names, and no two actions on one default key. A mod's work in the g
   `include/rs-rearmed` (MIT).
 - [rs7string](https://github.com/SomeeName/rs7string) by SomeeName (MIT): Seven-String Guitar and Plain Packages, their
   design, and the chord diagram recipes and headstock programs in `data/rs7string`.
+- [Demucs](https://github.com/facebookresearch/demucs) by Alexandre Défossez, Meta AI (MIT): Song Stems' separation, its
+  model `htdemucs_6s` and the network `stems/convert` rewrites for the Neural Engine.
 
 ## License
 

@@ -180,6 +180,12 @@ final class SettingsStore: ObservableObject {
     var isLearnPlay: Bool { gameFolder.deletingLastPathComponent().lastPathComponent == "learn-play" }
     var hasLearnPlay: Bool { FileManager.default.fileExists(atPath: learnPlayFolder.path) }
     // What the mod runs: start.sh in RS Re-ARMed's own folder, whichever game folder is shown here
+    // rs-stems, where stems/install.sh puts it (beside tonehost)
+    var stemsInstalled: Bool {
+        FileManager.default.isExecutableFile(atPath: Self.defaultGameFolder.deletingLastPathComponent()
+            .appendingPathComponent("stems/rs-stems").path)
+    }
+
     var toneHostInstalled: Bool {
         FileManager.default.isExecutableFile(atPath: Self.defaultGameFolder.deletingLastPathComponent()
             .appendingPathComponent("tonehost/start.sh").path)

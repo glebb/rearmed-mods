@@ -16,6 +16,21 @@ final class ModsLibraryTests: XCTestCase {
         return ModsLibrary(bundled: bundled, gameIsRunning: { [unowned self] in running })
     }
 
+    // With Song Stems' helper in the app: rs-stems, a model folder and the licence
+    private var warmed: [String] = []
+    private var installedStems: URL { root.appendingPathComponent("home/stems") }
+
+    private func withStems(supported: Bool = true, helper: String = "helper 1") throws -> ModsLibrary {
+        let bundled = root.appendingPathComponent("bundled.dylib")
+        try tagged("0.7.0").write(to: bundled)
+        let stems = root.appendingPathComponent("bundled-stems", isDirectory: true)
+        try put(Data(helper.utf8), at: stems.appendingPathComponent("rs-stems"))
+        try put(Data("weights".utf8), at: stems.appendingPathComponent("htdemucs_6s.mlmodelc/weights/weight.bin"))
+        try put(Data("MIT".utf8), at: stems.appendingPathComponent("LICENSE-demucs"))
+        return ModsLibrary(bundled: bundled, bundledStems: stems, stemsSupported: supported,
+                           warmStems: { [unowned self] in warmed.append($0.path) }, gameIsRunning: { [unowned self] in running })
+    }
+
     private func tagged(_ version: String) -> Data { Data("xx rearmed-mods-version:\(version)\0yy".utf8) }
 
     private func put(_ data: Data, at url: URL) throws {
@@ -26,6 +41,7 @@ final class ModsLibraryTests: XCTestCase {
     override func setUp() async throws {
         root = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         running = false
+        warmed = []
         try put(Data("x rc_hook_add_name y".utf8), at: game.appendingPathComponent("Rocksmith2014.app/Contents/MacOS/Rocksmith2014"))
         try fm.createDirectory(at: root.appendingPathComponent("home/learn-play/game"), withIntermediateDirectories: true)
     }
@@ -110,6 +126,50 @@ final class ModsLibraryTests: XCTestCase {
         XCTAssertEqual(setxattr(l.bundled!.path, "com.apple.quarantine", "0081;0;Safari;", 14, 0, 0), 0)
         l.install(gameFolder: game)
         XCTAssertEqual(getxattr(macLibrary.path, "com.apple.quarantine", nil, 0, 0, 0), -1)
+    }
+
+    func testTheStemsHelperGoesWithTheLibrary() throws {
+        let l = try withStems()
+        l.install(gameFolder: game)
+        XCTAssertEqual(l.state, .installed("0.7.0"))
+        XCTAssertEqual(try Data(contentsOf: installedStems.appendingPathComponent("rs-stems")), Data("helper 1".utf8))
+        XCTAssertTrue(fm.fileExists(atPath: installedStems.appendingPathComponent("htdemucs_6s.mlmodelc/weights/weight.bin").path))
+        XCTAssertTrue(fm.fileExists(atPath: installedStems.appendingPathComponent("LICENSE-demucs").path))
+        XCTAssertEqual(warmed, [installedStems.appendingPathComponent("rs-stems").path], "its model compiled once")
+    }
+
+    func testAnotherHelperIsAnUpdate() throws {
+        try withStems(helper: "helper 1").install(gameFolder: game)
+        let l = try withStems(helper: "helper 2")
+        l.refresh(gameFolder: game)
+        XCTAssertEqual(l.state, .updateAvailable("0.7.0"))
+        l.install(gameFolder: game)
+        XCTAssertEqual(l.state, .installed("0.7.0"))
+        XCTAssertEqual(try Data(contentsOf: installedStems.appendingPathComponent("rs-stems")), Data("helper 2".utf8))
+    }
+
+    func testNoHelperBeforeMacOS15() throws {
+        let l = try withStems(supported: false)
+        l.install(gameFolder: game)
+        XCTAssertEqual(l.state, .installed("0.7.0"), "the library alone is up to date there")
+        XCTAssertFalse(fm.fileExists(atPath: installedStems.path))
+        XCTAssertTrue(warmed.isEmpty)
+    }
+
+    func testRemovingTheModsRemovesTheHelper() throws {
+        let l = try withStems()
+        l.install(gameFolder: game)
+        l.uninstall(gameFolder: game)
+        XCTAssertFalse(fm.fileExists(atPath: installedStems.path))
+        XCTAssertFalse(fm.fileExists(atPath: macLibrary.path))
+    }
+
+    func testTheHelperLosesTheQuarantineFlag() throws {
+        let l = try withStems()
+        let helper = l.bundledStems!.appendingPathComponent("rs-stems")
+        XCTAssertEqual(setxattr(helper.path, "com.apple.quarantine", "0081;0;Safari;", 14, 0, 0), 0)
+        l.install(gameFolder: game)
+        XCTAssertEqual(getxattr(installedStems.appendingPathComponent("rs-stems").path, "com.apple.quarantine", nil, 0, 0, 0), -1)
     }
 
     func testVersionOrder() {

@@ -475,6 +475,33 @@ struct MiscSettings: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                ModSettingsGroup(title: "Song Stems", mod: "SongStems") {
+                    Label(store.stemsInstalled ? "rs-stems is installed." : "rs-stems isn't installed.",
+                          systemImage: store.stemsInstalled ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(store.stemsInstalled ? Color.green : Color.orange)
+                    HStack {
+                        Text("Guitar in the song")
+                        Slider(value: store.number("SongStemsGuitarLevel"), in: 0...100, step: 5)
+                        Text("\(Int(store.number("SongStemsGuitarLevel").wrappedValue))%")
+                            .monospacedDigit().frame(width: 40, alignment: .trailing)
+                    }
+                    HStack {
+                        Text("Bass in the song")
+                        Slider(value: store.number("SongStemsBassLevel"), in: 0...100, step: 5)
+                        Text("\(Int(store.number("SongStemsBassLevel").wrappedValue))%")
+                            .monospacedDigit().frame(width: 40, alignment: .trailing)
+                    }
+                    NumberField(label: "Keep songs up to", value: store.number("SongStemsCacheMB"),
+                                range: 50...20000, step: 50, unit: "MB")
+                    Text(store.stemsInstalled
+                         ? "0% takes the part out, 100% is the song as it is. A bass tone takes out the bass, any other tone the guitar. The level is also a line of the volume mixer in the game, with its own key, and stays for the next songs. Each song is separated once, a few seconds before it starts, and kept; the songs you play most stay when the space runs out."
+                         : ModsLibrary.macOSRunsStems
+                            ? "Until it is, the songs stay as they are. Installing the mods installs it too, when this app carries it."
+                            : "It needs macOS 15 or later; until then the songs stay as they are.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 ModSettingsGroup(title: "Start On Secondary Monitor", mod: "SecondaryMonitor") {
                     HStack {
                         Menu("Choose Screen") {

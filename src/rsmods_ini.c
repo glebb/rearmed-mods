@@ -110,6 +110,10 @@ static const char DEFAULT_INI[] =
     "; Your own plug-in in place of the game's tones: rs-tonehost plays the guitar and follows the game's tones, and\n"
     "; the game's guitar is silent while it runs. Without it the game keeps its tones.\n"
     "ToneHost = off\n"
+    "; Take the guitar or the bass out of the song you play (the bass with a bass tone, the guitar with any other), at\n"
+    "; SongStemsGuitarLevel and SongStemsBassLevel (0 the song without it, 100 the song as it is), the song stems key's\n"
+    "; line in the volume mod. rs-stems separates each song on the Neural Engine and keeps SongStemsCacheMB of them.\n"
+    "SongStems = off\n"
     "; For a screen in the sun: the sunlight key goes through off, bright and daylight (a white highway with dark\n"
     "; notes, in songs), kept in SunlightMode (0, 1 or 2). In a song the venue goes too.\n"
     "Sunlight = off\n"
@@ -133,6 +137,9 @@ static const char DEFAULT_INI[] =
     "RewindBy = 5000\n"
     "RewindLeadup = 2000\n"
     "VolumeControlInterval = 5\n"
+    "SongStemsGuitarLevel = 0\n"
+    "SongStemsBassLevel = 0\n"
+    "SongStemsCacheMB = 500\n"
     "CheckForNewSongsInterval = 5000\n"
     "OverrideInputVolume = 17\n"
     "CameraZoom = 100\n"
@@ -284,7 +291,8 @@ static const char DEFAULT_INI[] =
     "DisplayMixerKey = P\n"
     "MutePlayer1Key = X\n"
     "MutePlayer2Key = C\n"
-    "ChangedSelectedVolumeKey = B\n";
+    "ChangedSelectedVolumeKey = B\n"
+    "SongStemVolumeKey = 4\n";
 
 typedef struct {
   char *section, *key, *value;
@@ -335,6 +343,9 @@ static const struct {
     {"Mod Settings", "CheckForNewSongsInterval", "5000"},
     {"Keybinds", "ForceReEnumerationKey", "F"},
     {"Mod Settings", "VolumeControlInterval", "5"},
+    {"Mod Settings", "SongStemsGuitarLevel", "0"},
+    {"Mod Settings", "SongStemsBassLevel", "0"},
+    {"Mod Settings", "SongStemsCacheMB", "500"},
     {"Audio Keybindings", "MasterVolumeKey", "5"},
     {"Audio Keybindings", "SongVolumeKey", "6"},
     {"Audio Keybindings", "Player1VolumeKey", "7"},
@@ -346,6 +357,7 @@ static const struct {
     {"Audio Keybindings", "MutePlayer1Key", "X"},
     {"Audio Keybindings", "MutePlayer2Key", "C"},
     {"Audio Keybindings", "ChangedSelectedVolumeKey", "B"},
+    {"Audio Keybindings", "SongStemVolumeKey", "4"},
     {"Mod Settings", "LoopingLeadUp", "0"},
     {"Mod Settings", "RewindBy", "5000"},
     {"Mod Settings", "RewindLeadup", "2000"},
@@ -354,6 +366,7 @@ static const struct {
     {"Keybinds", "RewindKey", "Z"},
     {"Toggle Switches", "CameraDirector", "off"},
     {"Toggle Switches", "ToneHost", "off"},
+    {"Toggle Switches", "SongStems", "off"},
     {"Toggle Switches", "Sunlight", "off"},
     {"Mod Settings", "SunlightMode", "1"},
     {"Keybinds", "SunlightKey", "G"},

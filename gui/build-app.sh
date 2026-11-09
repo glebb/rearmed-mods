@@ -1,6 +1,9 @@
 #!/bin/bash
 # Builds "Re-ARMed Mods.app" (arm64) into gui/build/, with rearmed-mods.dylib (../build.sh)
-# inside it: the app installs the library into RS Re-ARMed's mods folder.
+# inside it: the app installs the library into RS Re-ARMed's mods folder. Song Stems' helper goes in too (stems/: rs-stems,
+# its model compiled, Demucs' licence), which the app installs on macOS 15 and later. The model isn't in the repository:
+# RS_STEMS_MODEL is its Core ML package (stems/convert) or an .mlmodelc, default build/stems/htdemucs_6s.mlpackage; without
+# it the app is built without the helper, with a warning.
 #   ./build-app.sh           build
 #   ./build-app.sh --open    build and open
 #   ./build-app.sh --zip     build and make build/Re-ARMed-Mods-<version>.zip, the release download
@@ -17,6 +20,23 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Re-ARMed Mods"
 cp ../build/rearmed-mods.dylib "$APP/Contents/Resources/"
+model=${RS_STEMS_MODEL:-../build/stems/htdemucs_6s.mlpackage}
+if [ -e "$model" ]; then
+  ../stems/build.sh
+  stems="$APP/Contents/Resources/stems"
+  mkdir -p "$stems"
+  cp ../build/stems/rs-stems ../stems/LICENSE-demucs "$stems/"
+  case "$model" in
+    *.mlmodelc) cp -R "$model" "$stems/htdemucs_6s.mlmodelc" ;;
+    *)
+      stage=$(mktemp -d)
+      xcrun coremlcompiler compile "$model" "$stage" >/dev/null
+      mv "$stage"/*.mlmodelc "$stems/htdemucs_6s.mlmodelc"
+      rm -rf "$stage" ;;
+  esac
+else
+  echo "warning: no Song Stems model at $model (RS_STEMS_MODEL): the app is built without rs-stems" >&2
+fi
 cp icon/AppIcon.icns "$APP/Contents/Resources/"  # icon/make_icon.py draws it
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

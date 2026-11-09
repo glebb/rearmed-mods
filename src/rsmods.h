@@ -155,7 +155,7 @@ extern const rsm_mod rsm_mod_riff_repeater, rsm_mod_looping, rsm_mod_song_previe
     rsm_mod_fretboard, rsm_mod_camera, rsm_mod_colors, rsm_mod_tone_host, rsm_mod_sunlight, rsm_mod_nsp_timer,
     rsm_mod_secondary_monitor, rsm_mod_profile_backups, rsm_mod_extended_range, rsm_mod_game_note,
     rsm_mod_current_note, rsm_mod_guitar_speak, rsm_mod_buggy_tones, rsm_mod_accuracy, rsm_mod_song_list_titles,
-    rsm_mod_song_lists;
+    rsm_mod_song_lists, rsm_mod_song_stems;
 
 // The guitar fader while ToneHost holds the game's own at 0: 1 and the value; otherwise 0 (mod_tone_host.c)
 int rsm_guitar_fader(float *value);
@@ -165,6 +165,14 @@ int rsm_sunlight_hides_venue(void);
 
 // The extended range colors are on now (mod_extended_range.c; mod_colors.c applies them)
 int rsm_extended_range(void);
+// The tone in play is a bass tone (bass gear in the RTPCs the game sets as the tone loads; mod_extended_range.c)
+int rsm_tone_bass(void);
+// Song Stems (mod_song_stems.c): the level of the part it takes out (0-100: 0 the song without it, 100 the song as it
+// is), the part's line in the volume mod; -1 while Song Stems is off. Setting it keeps it in RSMods.ini, for the songs
+// after too. The label says which part.
+int rsm_stems_level(void);
+void rsm_stems_set_level(int v);
+const char *rsm_stems_label(void);
 
 // The note the game hears the player play, while Show Current Note or GuitarSpeak is on (rsmods_game_note.c): MIDI, or
 // -1; *plucks (may be NULL) a count that goes up with each new note, as RSMods' GuitarSpeak counts them

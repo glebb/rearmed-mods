@@ -4,6 +4,11 @@ import Foundation
 // Installs the mods library the app carries (Contents/Resources/rearmed-mods.dylib, built by build-app.sh) into RS
 // Re-ARMed's mods folders: <home>/mods for the Mac edition, <home>/learn-play/mods for Learn & Play, the same file in
 // both. RS Re-ARMed loads them at startup; this library needs 1.5.1 or later.
+//
+// With it goes Song Stems' helper, rs-stems (stems/), when the app carries it (Contents/Resources/stems: the helper, its
+// model compiled, Demucs' licence) and macOS is 15 or later, which its model needs: into <home>/stems, one for both
+// editions. A model is compiled for the Neural Engine the first time it loads, 20 s or more, so the install starts that
+// (rs-stems warm) for a song not to wait for it. A helper or model other than the app's is an update, as the library is.
 @MainActor
 final class ModsLibrary: ObservableObject {
     enum State: Equatable {
@@ -25,12 +30,21 @@ final class ModsLibrary: ObservableObject {
     private static let runtimeMarker = Data("rc_hook_add_name".utf8)
 
     let bundled: URL?
+    let bundledStems: URL?
+    private let stemsSupported: Bool
+    private let warmStems: (URL) -> Void
     private let gameIsRunning: () -> Bool
     private var supportChecked: (path: String, date: Date?, supported: Bool)?
 
     init(bundled: URL? = Bundle.main.url(forResource: "rearmed-mods", withExtension: "dylib"),
+         bundledStems: URL? = Bundle.main.url(forResource: "stems", withExtension: nil),
+         stemsSupported: Bool = ModsLibrary.macOSRunsStems,
+         warmStems: @escaping (URL) -> Void = ModsLibrary.warm,
          gameIsRunning: @escaping () -> Bool = ModsLibrary.gameRunning) {
         self.bundled = bundled
+        self.bundledStems = bundledStems
+        self.stemsSupported = stemsSupported
+        self.warmStems = warmStems
         self.gameIsRunning = gameIsRunning
     }
 
@@ -47,6 +61,36 @@ final class ModsLibrary: ObservableObject {
         [home, home.appendingPathComponent("learn-play")].filter {
             FileManager.default.fileExists(atPath: $0.appendingPathComponent("game").path)
         }
+    }
+
+    private var stemsFolder: URL { home.appendingPathComponent("stems", isDirectory: true) }
+
+    // The helper the app carries, if this Mac can run it
+    private var stemsToInstall: URL? { stemsSupported ? bundledStems : nil }
+
+    // Every file of the app's helper is installed as it is (a model is a folder: compared through)
+    private func stemsCurrent() -> Bool {
+        guard let source = stemsToInstall else { return true }
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: source.path) else { return true }
+        return names.allSatisfy {
+            fm.contentsEqual(atPath: source.appendingPathComponent($0).path, andPath: stemsFolder.appendingPathComponent($0).path)
+        }
+    }
+
+    private func installStems() throws {
+        guard let source = stemsToInstall else { return }
+        let fm = FileManager.default
+        let temp = home.appendingPathComponent("stems.new", isDirectory: true)
+        try? fm.removeItem(at: temp)
+        try fm.copyItem(at: source, to: temp)
+        Self.unquarantine(temp)
+        if fm.fileExists(atPath: stemsFolder.path) {
+            _ = try fm.replaceItemAt(stemsFolder, withItemAt: temp)
+        } else {
+            try fm.moveItem(at: temp, to: stemsFolder)
+        }
+        warmStems(stemsFolder.appendingPathComponent("rs-stems"))
     }
 
     private func installedURL(_ edition: URL) -> URL {
@@ -81,7 +125,7 @@ final class ModsLibrary: ObservableObject {
         let installed = editions.map(installedURL).filter { fm.fileExists(atPath: $0.path) }
         guard let first = installed.first else { state = .notInstalled; return }
         if installed.count == editions.count, installed.allSatisfy({ fm.contentsEqual(atPath: $0.path, andPath: bundled.path) }) {
-            state = .installed(bundledVersion)
+            state = stemsCurrent() ? .installed(bundledVersion) : .updateAvailable(bundledVersion)
             return
         }
         let versions = installed.map { Self.version(of: $0) ?? "unknown" }
@@ -117,7 +161,11 @@ final class ModsLibrary: ObservableObject {
                     try fm.moveItem(at: temp, to: target)
                 }
             }
-            result = "Installed. Start RS Re-ARMed to use the mods."
+            let stems = stemsToInstall != nil && !stemsCurrent()
+            try installStems()
+            result = stems
+                ? "Installed. Song Stems' model is being prepared for the Neural Engine (about 20 seconds); then start RS Re-ARMed."
+                : "Installed. Start RS Re-ARMed to use the mods."
         } catch {
             result = "Install failed: \(error.localizedDescription)"
         }
@@ -133,6 +181,9 @@ final class ModsLibrary: ObservableObject {
         do {
             for edition in editions where fm.fileExists(atPath: installedURL(edition).path) {
                 try fm.removeItem(at: installedURL(edition))
+            }
+            if fm.fileExists(atPath: stemsFolder.appendingPathComponent("rs-stems").path) {
+                try fm.removeItem(at: stemsFolder)
             }
             result = "Removed. RS Re-ARMed starts without the mods."
         } catch {
@@ -160,6 +211,28 @@ final class ModsLibrary: ObservableObject {
     static func supportsMods(_ executable: URL) -> Bool {
         guard let data = try? Data(contentsOf: executable, options: .alwaysMapped) else { return false }
         return data.range(of: runtimeMarker) != nil
+    }
+
+    // The helper's model is converted for macOS 15 (its attention op)
+    nonisolated static var macOSRunsStems: Bool {
+        ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 15, minorVersion: 0, patchVersion: 0))
+    }
+
+    // Files copied out of a downloaded app keep its quarantine flag, and macOS would refuse to run the helper
+    nonisolated static func unquarantine(_ url: URL) {
+        removexattr(url.path, "com.apple.quarantine", XATTR_NOFOLLOW)
+        guard let all = FileManager.default.enumerator(at: url, includingPropertiesForKeys: nil) else { return }
+        for case let item as URL in all { removexattr(item.path, "com.apple.quarantine", XATTR_NOFOLLOW) }
+    }
+
+    // Compiles the model for the Neural Engine once (rs-stems warm), in the background
+    nonisolated static func warm(_ helper: URL) {
+        let p = Process()
+        p.executableURL = helper
+        p.arguments = ["warm"]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        try? p.run()
     }
 
     nonisolated static func gameRunning() -> Bool {

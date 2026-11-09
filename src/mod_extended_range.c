@@ -66,6 +66,7 @@ static int g_flip;                 // the key turned it the other way for this s
 static char g_flip_for[128];
 
 int rsm_extended_range(void) { return atomic_load(&g_active); }
+int rsm_tone_bass(void) { return atomic_load(&g_bass); }
 
 static void free_index(void) {
   for (int i = 0; i < g_narchives; i++) {

@@ -43,6 +43,7 @@ static const rsm_mod *const MODS[] = {
     &rsm_mod_extended_range,  // before the colors, which it changes
     &rsm_mod_colors,
     &rsm_mod_tone_host,
+    &rsm_mod_song_stems,
     &rsm_mod_sunlight,
     &rsm_mod_nsp_timer,
     &rsm_mod_secondary_monitor,
