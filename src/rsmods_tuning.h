@@ -5,6 +5,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 // ------------------------------------------------------------------------------------------------
 // PSARC, the game's archives (songs.psarc, dlc/*.psarc): a table of contents, AES-256-CFB with the game's key and a
@@ -13,6 +14,14 @@
 // ------------------------------------------------------------------------------------------------
 typedef struct rsm_psarc rsm_psarc;
 rsm_psarc *rsm_psarc_open(const char *path, const uint8_t key[32]);  // NULL if it isn't one, or can't be read
+// The same, the file read by io's functions and not the system's (rsmods_files.h has the game's file layer, which
+// also reads an archive a mod serves). NULL: the system's.
+typedef struct {
+  int (*open)(const char *path);  // for reading: a descriptor, or less than 0
+  ssize_t (*pread)(int fd, void *buf, size_t n, off_t off);
+  int (*close)(int fd);
+} rsm_psarc_io;
+rsm_psarc *rsm_psarc_open_io(const char *path, const uint8_t key[32], const rsm_psarc_io *io);
 int rsm_psarc_files(const rsm_psarc *a);                             // the named files
 const char *rsm_psarc_name(const rsm_psarc *a, int i);               // file i's name (from 0)
 void *rsm_psarc_read(rsm_psarc *a, int i, size_t *len);              // file i, malloc'ed and NUL-terminated; NULL

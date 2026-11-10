@@ -43,7 +43,8 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
 - Seven-String Guitar and Plain Packages need RS Re-ARMed's edits and mid points: in Learn & Play from 1.12.0, on the
   Mac from 1.13.0; with an older one they stay off.
 - Song Stems needs RS Re-ARMed 1.12.0, for its hook point on the audio the game decodes, and macOS 15 or later for
-  its helper; without them it stays off and the songs play as they are.
+  its helper; without them it stays off and the songs play as they are. A song whose archive another mod serves
+  (RS Re-ARMed's file providers, 1.14.0) is found from that version on; before it, only archives that are files.
 - macOS 13 or later for the app.
 - To build from source: the Xcode command line tools (`xcode-select --install`), with Swift 5.9 or later.
 
@@ -559,6 +560,7 @@ src/rsmods_ini.c         RSMods.ini (defaults, key names)
 src/rsmods_overlay.c     text over the game
 src/rsmods_scene.c       the scene graph and render steps: finding and hiding by name, the dump
 src/rsmods_tuning.c, .h  PSARC archives, the manifests' tunings, the Extended Range rule (no game: tested as is)
+src/rsmods_files.c, .h   files as the game finds them: RS Re-ARMed's file layer, with the archives another mod serves
 src/rsmods_game_note.c   the note the game hears, from its pitch detection
 src/rsmods_note_stats.c  the player's note counts and the grey-note time
 src/rsmods_profiles.c    the save folder and LocalProfiles.json
@@ -568,6 +570,7 @@ src/mod_cache.c          the archives the game is given for those two
 src/mod_*.c              one file per mod
 src/seven*.c, seven.h    Seven-String Guitar's parts (mod_seven_string.c turns them on)
 src/stems_mix.h          Song Stems' mix of a block, and which .wem a song's bank plays (no game: tested as is)
+src/stems_index.c, .h    Song Stems' way from a song to its archive and its .wem (no game: tested as is)
 data/rs7string/          rs7string's chord diagram recipes and headstock programs (MIT), compiled into the library
 tests/, test.sh          the library's tests, and the script that runs them and the app's
 include/rs-rearmed/      RS Re-ARMed's runtime headers (MIT)
@@ -600,7 +603,8 @@ the color maths, Sunlight's colors, archives and tunings made
 in the test with a key of its own, the profile list and the backups, the song list titles put in the game's strings, with
 either game's pointers, LZMA and a 7z archive made by liblzma (`tests/make_7z_vectors.py` makes them again) and written
 again, archives laid out in the test for a folder without a file and counts the reader refuses, the tuning,
-localization and tone edits, a tone key the file has many times) and the app's
+localization and tone edits, a tone key the file has many times, Song Stems' index of the song archives with one that
+only a file provider serves, through RS Re-ARMed's own `rc_file.c`, and without the file layer) and the app's
 (`gui/Tests`: settings, a section that is a list, install and update for both editions, the app's profile backups). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,
 the same key names, and no two actions on one default key. A mod's work in the game is checked by playing it.
 `stems/test.sh` has `rs-stems`' own tests, which need game data and the model ([`stems/README.md`](stems/README.md)).

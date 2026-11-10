@@ -5,13 +5,13 @@
 //
 // The song without the part comes from rs-stems (stems/), a separate process that separates the song with Demucs on the
 // Neural Engine and keeps a cache of a fixed size (SongStemsCacheMB); stems/README.md has the contract between the two.
-// When a song is picked (its options, its tuner, or its Play_ event), a thread finds the song's archive and the .wem its
-// bank plays, writes the .wem for the helper and asks for the song without the part; the helper writes it from the start
-// into a file this maps. Every block the game decodes passes RS Re-ARMed's hook point ak_src_submit, with the source's
-// file ID and the block's position. A block of the song whose stretch of the file is ready is mixed there, before the
-// game's speed change and mixer, so Riff Repeater, rewinds and the volume sliders work on the result. Until then, and
-// with the mod off, the song is as it is. Needs RS Re-ARMed with ak_src_submit (1.12.0 and later); without it the mod
-// stays off.
+// When a song is picked (its options, its tuner, or its Play_ event), a thread finds the song's archive and the .wem
+// its bank plays (stems_index.c: as the game finds them, so also an archive a mod serves), writes the .wem for the
+// helper and asks for the song without the part; the helper writes it from the start into a file this maps. Every block
+// the game decodes passes RS Re-ARMed's hook point ak_src_submit, with the source's file ID and the block's position. A
+// block of the song whose stretch of the file is ready is mixed there, before the game's speed change and mixer, so
+// Riff Repeater, rewinds and the volume sliders work on the result. Until then, and with the mod off, the song is as it
+// is. Needs RS Re-ARMed with ak_src_submit (1.12.0 and later); without it the mod stays off.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -28,7 +28,9 @@
 #include <unistd.h>
 
 #include "rsmods.h"
+#include "rsmods_files.h"
 #include "rsmods_tuning.h"
+#include "stems_index.h"
 #include "stems_mix.h"
 
 extern char **environ;
@@ -237,13 +239,6 @@ static void heartbeat(void) {
 // ------------------------------------------------------------------------------------------------
 // From a song key to its .wem (the worker thread)
 // ------------------------------------------------------------------------------------------------
-typedef struct {
-  char *path;
-  int n;
-  char **keys;  // the songs whose bank it has (song_<key>.bnk), as named there
-} archive;
-static archive *g_archives;
-static int g_narchives;
 static double g_indexed_at = -1;
 static uint8_t g_key[32];
 static int g_have_key = -1;
@@ -257,86 +252,12 @@ static int g_want_part, g_want_event_part;
 static _Atomic uint32_t g_song_id;  // the file ID of the song asked for last, and its part
 static _Atomic int g_song_part = -1;
 
-static void free_index(void) {
-  for (int i = 0; i < g_narchives; i++) {
-    for (int k = 0; k < g_archives[i].n; k++) free(g_archives[i].keys[k]);
-    free(g_archives[i].keys);
-    free(g_archives[i].path);
-  }
-  free(g_archives);
-  g_archives = NULL;
-  g_narchives = 0;
-}
-
-// "audio/mac/song_stro1251.bnk" -> "stro1251" (not a preview's bank); NULL otherwise
-static int bank_key(const char *name, char *key, size_t n) {
-  const char *b = strrchr(name, '/');
-  b = b ? b + 1 : name;
-  size_t l = strlen(b);
-  if (strncasecmp(b, "song_", 5) || l < 10 || strcasecmp(b + l - 4, ".bnk")) return 0;
-  if (l >= 17 && !strncasecmp(b + l - 12, "_preview.bnk", 12)) return 0;
-  if (l - 9 >= n) return 0;
-  memcpy(key, b + 5, l - 9);
-  key[l - 9] = 0;
-  return 1;
-}
-
-static void index_archive(const char *path) {
-  rsm_psarc *a = rsm_psarc_open(path, g_key);
-  if (!a) return;
-  archive r = {strdup(path), 0, NULL};
-  for (int i = 0, n = rsm_psarc_files(a); i < n; i++) {
-    char key[128];
-    if (!bank_key(rsm_psarc_name(a, i), key, sizeof key)) continue;
-    char **more = realloc(r.keys, (size_t)(r.n + 1) * sizeof *more);
-    if (!more) break;
-    r.keys = more;
-    r.keys[r.n++] = strdup(key);
-  }
-  rsm_psarc_close(a);
-  archive *more = r.n ? realloc(g_archives, (size_t)(g_narchives + 1) * sizeof *more) : NULL;
-  if (!more) {
-    for (int k = 0; k < r.n; k++) free(r.keys[k]);
-    free(r.keys);
-    free(r.path);
-    return;
-  }
-  g_archives = more;
-  g_archives[g_narchives++] = r;
-}
-
-static void index_folder(const char *dir, int depth) {
-  DIR *d = opendir(dir);
-  if (!d) return;
-  for (struct dirent *e; (e = readdir(d));) {
-    if (e->d_name[0] == '.') continue;
-    char path[2048];
-    struct stat st;
-    snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
-    if (stat(path, &st)) continue;
-    size_t l = strlen(e->d_name);
-    if (S_ISDIR(st.st_mode) && depth < 8)
-      index_folder(path, depth + 1);
-    else if (S_ISREG(st.st_mode) && l > 6 && !strcasecmp(e->d_name + l - 6, ".psarc"))
-      index_archive(path);
-  }
-  closedir(d);
-}
-
 static void build_index(void) {
   double t = rsm_now();
-  free_index();
-  index_folder("dlc", 0);
-  index_archive("songs.psarc");
+  int n = stems_index_build(g_key);
   g_indexed_at = rsm_now();
-  rsm_log("song stems: %d archives with songs, listed in %.2f s", g_narchives, g_indexed_at - t);
-}
-
-static const char *archive_of(const char *song) {
-  for (int i = 0; i < g_narchives; i++)
-    for (int k = 0; k < g_archives[i].n; k++)
-      if (!strcasecmp(g_archives[i].keys[k], song)) return g_archives[i].path;
-  return NULL;
+  rsm_log("song stems: %d archives with songs, listed in %.2f s%s", n, g_indexed_at - t,
+          rsm_files_layer() ? "" : " (files on disk only: this RS Re-ARMed has no file layer)");
 }
 
 static int read_key(void) {
@@ -412,43 +333,19 @@ static void remove_other_wems(const char *keep) {
 
 // The song's .wem written for the helper; its file ID, or 0
 static uint32_t extract_wem(const char *archive_path, const char *song, char *wem_path, size_t n) {
-  rsm_psarc *a = rsm_psarc_open(archive_path, g_key);
-  if (!a) return 0;
-  int files = rsm_psarc_files(a), bank = -1, nids = 0;
-  uint32_t *ids = calloc((size_t)files, sizeof *ids);
-  int *which = calloc((size_t)files, sizeof *which);
-  for (int i = 0; ids && which && i < files; i++) {
-    const char *name = rsm_psarc_name(a, i);
-    char key[128];
-    uint32_t id = stems_wem_id(name);
-    if (id) {
-      ids[nids] = id;
-      which[nids++] = i;
-    } else if (bank < 0 && bank_key(name, key, sizeof key) && !strcasecmp(key, song)) {
-      bank = i;
-    }
-  }
   uint32_t id = 0;
-  size_t len = 0;
-  uint8_t *b = bank >= 0 ? rsm_psarc_read(a, bank, &len) : NULL;
-  int k = b ? stems_bank_wem(b, len, ids, NULL, nids) : -1;
-  free(b);
-  if (k >= 0) {
-    size_t wlen = 0;
-    void *w = rsm_psarc_read(a, which[k], &wlen);
-    snprintf(wem_path, n, "%s/%u.wem", g_work, ids[k]);
-    struct stat st;
-    if (w && ((!stat(wem_path, &st) && (size_t)st.st_size == wlen) || write_file(wem_path, w, wlen))) id = ids[k];
-    free(w);
-    if (id) {
-      char name[32];
-      snprintf(name, sizeof name, "%u.wem", id);
-      remove_other_wems(name);
-    }
+  size_t wlen = 0;
+  void *w = stems_index_wem(archive_path, song, g_key, &id, &wlen);
+  if (!w) return 0;
+  snprintf(wem_path, n, "%s/%u.wem", g_work, id);
+  struct stat st;
+  if (!((!stat(wem_path, &st) && (size_t)st.st_size == wlen) || write_file(wem_path, w, wlen))) id = 0;
+  free(w);
+  if (id) {
+    char name[32];
+    snprintf(name, sizeof name, "%u.wem", id);
+    remove_other_wems(name);
   }
-  free(ids);
-  free(which);
-  rsm_psarc_close(a);
   return id;
 }
 
@@ -465,10 +362,10 @@ static void *worker(void *arg) {
     pthread_mutex_unlock(&g_lock);
     if (!read_key() || !write_codebooks()) continue;
     if (g_indexed_at < 0) build_index();
-    const char *path = archive_of(song);
+    const char *path = stems_index_find(song);
     if (!path && strict && rsm_now() - g_indexed_at > REINDEX_AFTER) {
       build_index();
-      path = archive_of(song);
+      path = stems_index_find(song);
     }
     if (!path) {
       if (strict) rsm_log("song stems: no archive with the song %s", song);

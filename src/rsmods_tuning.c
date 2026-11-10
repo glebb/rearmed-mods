@@ -27,6 +27,7 @@ typedef struct {
 } entry;
 
 struct rsm_psarc {
+  const rsm_psarc_io *io;
   int fd;
   uint32_t block_size;
   int nentries;
@@ -69,10 +70,13 @@ static int decrypt_toc(uint8_t *buf, size_t n, const uint8_t key[32]) {
   return ok;
 }
 
-static int read_at(int fd, void *buf, size_t n, uint64_t at) {
+static int plain_open(const char *path) { return open(path, O_RDONLY); }
+static const rsm_psarc_io plain_io = {plain_open, pread, close};
+
+static int read_at(const rsm_psarc *a, void *buf, size_t n, uint64_t at) {
   size_t done = 0;
   while (done < n) {
-    ssize_t r = pread(fd, (uint8_t *)buf + done, n - done, (off_t)(at + done));
+    ssize_t r = a->io->pread(a->fd, (uint8_t *)buf + done, n - done, (off_t)(at + done));
     if (r <= 0) return 0;
     done += (size_t)r;
   }
@@ -90,12 +94,12 @@ static void *read_entry(rsm_psarc *a, int i, size_t *len) {
     uint32_t stored = a->zlen[b++];
     uint64_t want = size - pos < a->block_size ? size - pos : a->block_size;
     if (!stored) {  // a whole block as it is
-      if (!read_at(a->fd, out + pos, (size_t)want, off)) goto fail;
+      if (!read_at(a, out + pos, (size_t)want, off)) goto fail;
       pos += want;
       off += a->block_size;
       continue;
     }
-    if (stored > a->block_size || !read_at(a->fd, in, stored, off)) goto fail;
+    if (stored > a->block_size || !read_at(a, in, stored, off)) goto fail;
     off += stored;
     int zlib = stored >= 2 && (in[0] & 0x0f) == 8 && ((unsigned)in[0] << 8 | in[1]) % 31 == 0;
     uLongf got = (uLongf)want;
@@ -117,14 +121,20 @@ fail:
   return NULL;
 }
 
-rsm_psarc *rsm_psarc_open(const char *path, const uint8_t key[32]) {
+rsm_psarc *rsm_psarc_open(const char *path, const uint8_t key[32]) { return rsm_psarc_open_io(path, key, NULL); }
+
+rsm_psarc *rsm_psarc_open_io(const char *path, const uint8_t key[32], const rsm_psarc_io *io) {
   uint8_t h[32];
-  int fd = open(path, O_RDONLY);
+  if (!io) io = &plain_io;
+  int fd = io->open(path);
   if (fd < 0) return NULL;
   rsm_psarc *a = calloc(1, sizeof *a);
   uint8_t *toc = NULL;
-  if (!a || !read_at(fd, h, sizeof h, 0) || memcmp(h, "PSAR", 4) || memcmp(h + 8, "zlib", 4)) goto fail;
-  a->fd = fd;
+  if (a) {
+    a->io = io;
+    a->fd = fd;
+  }
+  if (!a || !read_at(a, h, sizeof h, 0) || memcmp(h, "PSAR", 4) || memcmp(h + 8, "zlib", 4)) goto fail;
   uint32_t toc_end = be32(h + 12), entry_size = be32(h + 16), n = be32(h + 20);
   a->block_size = be32(h + 24);
   uint32_t flags = be32(h + 28);
@@ -133,7 +143,7 @@ rsm_psarc *rsm_psarc_open(const char *path, const uint8_t key[32]) {
     goto fail;
   size_t toc_len = toc_end - 32;
   toc = malloc(toc_len);
-  if (!toc || !read_at(fd, toc, toc_len, 32)) goto fail;
+  if (!toc || !read_at(a, toc, toc_len, 32)) goto fail;
   if ((flags & PSARC_ENCRYPTED) && !decrypt_toc(toc, toc_len, key)) goto fail;
   a->nentries = (int)n;
   a->e = calloc(n, sizeof *a->e);
@@ -175,7 +185,7 @@ fail:
     a->fd = -1;
     rsm_psarc_close(a);
   }
-  close(fd);
+  io->close(fd);
   return NULL;
 }
 
@@ -185,7 +195,7 @@ void *rsm_psarc_read(rsm_psarc *a, int i, size_t *len) { return read_entry(a, i 
 
 void rsm_psarc_close(rsm_psarc *a) {
   if (!a) return;
-  if (a->fd >= 0) close(a->fd);
+  if (a->fd >= 0) a->io->close(a->fd);
   free(a->e);
   free(a->zlen);
   free(a->names);
