@@ -1066,6 +1066,21 @@ static void on_ds1(rc_mid_frame *f, void *user) {
   f->go = SEVEN_CONT(f, "done");
 }
 
+// DS1's count where the game counts a chord's played strings in a function of its own (the Mac: the post-processing
+// calls it with the record and compares its answer with 2): `played` is that answer, made the count over the T8's
+// frets of seven strings. Learn & Play counts in line (DS1) and has no such point.
+static void on_ds1_count(rc_mid_frame *f, void *user) {
+  if (!seven_on) return;
+  const uint8_t *song = PTR(f, "song");
+  uint8_t *templates;
+  if (!song || !vec(AT(song, sng_song_templates), &templates)) return;
+  uint8_t *t8 = seven_chords_template(templates, (uint32_t)SEVEN_GET(f, "chord"));
+  if (!t8) return;
+  uint32_t n = 0;
+  for (int s = 0; s < SEVEN_CHORD_NATIVE; s++) n += AT(t8, seven_t8_frets)[s] != 0xff;
+  SEVEN_SET(f, "played", n);
+}
+
 // BT1 Play_Eval_Build's end: the eval's tails from its template and ChordNotes copies' T8 / C8 (anything else: empty)
 static void on_bt1(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
@@ -1076,12 +1091,24 @@ static void on_bt1(rc_mid_frame *f, void *user) {
 }
 
 // CS1 Play_Eval_ClearState: empty tails, and no child evals for strings 6/7
-static void on_cs1(rc_mid_frame *f, void *user) {
-  if (!seven_on) return;
-  uint8_t *eval = PTR(f, "eval");
+static void clear_state(uint8_t *eval) {
   if (!eval) return;
   seven_chords_eval_clear(eval);
   memset(AT(eval, seven_eval_child67), 0xff, 2);
+}
+static void on_cs1(rc_mid_frame *f, void *user) {
+  if (!seven_on) return;
+  clear_state(PTR(f, "eval"));
+}
+// The same where a build has Play_Eval_ClearState in line (the Mac: the eval's constructor and Play_Eval_Build;
+// Learn & Play calls it from both, CS1)
+static void on_cs1_ctor(rc_mid_frame *f, void *user) {
+  if (!seven_on) return;
+  clear_state(PTR(f, "eval"));
+}
+static void on_cs1_build(rc_mid_frame *f, void *user) {
+  if (!seven_on) return;
+  clear_state(PTR(f, "eval"));
 }
 
 int seven_chords_init(void) {
@@ -1115,6 +1142,8 @@ int seven_chords_init(void) {
       {"seven_tp6", on_tp6},   {"seven_tp7", on_tp7},   {"seven_tp8", on_tp8},   {"seven_tp11", on_tp11},
       {"seven_tp12", on_tp12}, {"seven_cp1", on_cp1},   {"seven_cp2", on_cp2},   {"seven_ds1", on_ds1},
       {"seven_bt1", on_bt1},   {"seven_cs1", on_cs1},
+      // where a build counts or clears in a function's place (none on Learn & Play)
+      {"seven_ds1_count", on_ds1_count}, {"seven_cs1_ctor", on_cs1_ctor}, {"seven_cs1_build", on_cs1_build},
   };
   for (size_t i = 0; i < sizeof points / sizeof *points; i++)
     if (seven_mid(points[i].name, points[i].fn)) return -1;

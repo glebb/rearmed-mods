@@ -210,9 +210,23 @@ static void on_f1_floor(rc_mid_frame *f, void *user) {
             moved, u[0], u[1], u[2]);
 }
 
+// After it, where the game lets the C call Entity_SetScale (the Mac: seven_f1_scale is none there, and this point
+// is none on Learn & Play, whose Entity_SetScale takes its own registers)
+static void on_f1_setscale(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on || !f1.bars) return;
+  const uint64_t entity = SEVEN_GET(f, "entity");
+  if (!entity) return;
+  const uint64_t a[3] = {entity, 1, f1.k_bits};  // (entity, 1 as the game's own setters pass it, scale)
+  rc_call_name_f("entity_set_scale", a, 3, 1u << 2);
+}
+
 // --- IN1: after Rnd_Inlays_ApplyTransforms ----------------------------------------------------------------------
-// The entity's root scene node, as the game's entity setters find it: NULL while the world has no scene
+// The entity's root scene node, as the game's entity setters find it: NULL while the world has no scene. A game
+// without a render-world getter of its own (the Mac inlines it) answers through its entity_model_root.
+int seven_has_render_world(void) { return RC_ADDR(render_world) != 0; }  // one lookup (one log line) for the unit
 static uint8_t *entity_root(uint8_t *entity) {
+  if (!seven_has_render_world()) return RC_HOST(OV_GUEST(entity_model_root, arg(entity)));
   uint8_t *world = RC_HOST(OV_GUESTV(render_world, NULL, 0));
   if (!world || !RC_LD(uint32_t, world + RC_OFF(render_world_scene))) return NULL;
   if (RC_LD(uint32_t, entity + RC_OFF(entity_flags)) & 1) return rc_mod_ptr(entity + RC_OFF(entity_root_node));
@@ -237,7 +251,7 @@ static void on_in1(rc_mid_frame *f, void *user) {
   ld3(p, root + RC_OFF(ni_world_translate));
   for (int i = 0; i < 3; i++) p[i] += 0.5f * (a0[i] - a1[i]);
   st3(pos, p);
-  OV_GUEST(entity_set_translation, arg(entity), arg(pos));
+  OV_GUEST(entity_set_translation, arg(entity), arg(pos), 1);  // the Mac's third argument as its callers pass it
   if (once(&g_log_inlays))
     rsm_log("seven-string: frets: the inlays of a 7-string guitar are at the centre of its strings (%.3f, %.3f, %.3f)",
             p[0], p[1], p[2]);
@@ -275,10 +289,83 @@ int seven_grid_fill_extra_cells(void *grid, unsigned frets) {
   return done;
 }
 
+// --- the unrolled row functions (the Mac: clang unrolled the six-loops, so there is no count to edit) -------------
+// Each point runs where the game has done its six cells or records of a row, and does 7 and 8 the game's way. A
+// cell row is a valid byte and 8 cells (seven_fretgrid_cell bytes from +4); a fret-wire row a header of
+// seven_fretgrid_wire_head bytes and 8 records of seven_fretgrid_wire_rec. None of them on Learn & Play, whose loops
+// count to 8 by its edits.
+static uint8_t *extra(uint8_t *at6, int k, int64_t size) { return at6 + k * size; }
+
+// The cell row's constructor before its tail call for cell 5 (cell5 = that cell): cells 6 and 7
+static void on_cellrow_ctor(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  uint8_t *c5 = host(SEVEN_GET(f, "cell5"));
+  const int64_t cell = RC_OFF(seven_fretgrid_cell);
+  for (int k = 1; k <= 2; k++) OV_GUEST(fretgrid_cell_ctor, arg(extra(c5, k, cell)));
+}
+
+// A fret-wire row's record of string s
+static uint8_t *wire_rec(uint8_t *row, int s) {
+  return row + RC_OFF(seven_fretgrid_wire_head) + s * RC_OFF(seven_fretgrid_wire_rec);
+}
+
+// The wire row's constructor after record 5: records 6 and 7
+static void on_wirerow_ctor(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  uint8_t *row = host(SEVEN_GET(f, "row"));
+  for (int s = 6; s < 8; s++) OV_GUEST(fretgrid_wire_ctor, arg(wire_rec(row, s)));
+}
+
+// The wire row's reset (the FretGrid unload) and flush, before their tail calls for record 5 (rec5): 6 and 7
+static void on_wirerow_reset(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  uint8_t *r5 = host(SEVEN_GET(f, "rec5"));
+  for (int k = 1; k <= 2; k++) OV_GUEST(fretgrid_wire_reset, arg(extra(r5, k, RC_OFF(seven_fretgrid_wire_rec))));
+}
+static void on_wirerow_flush(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  uint8_t *r5 = host(SEVEN_GET(f, "rec5"));
+  for (int k = 1; k <= 2; k++) OV_GUEST(fretgrid_wire_flush, arg(extra(r5, k, RC_OFF(seven_fretgrid_wire_rec))));
+}
+
+// The wire row's "mark" (event 13) at its exit: records 6 and 7 as the game marks 0-5, a record whose state is not
+// 2 gets its dirty byte and state 2
+static void on_wirerow_mark(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on || (uint32_t)SEVEN_GET(f, "event") != 13) return;
+  uint8_t *row = host(SEVEN_GET(f, "row"));
+  const int64_t state = RC_OFF(seven_fretgrid_wire_state);
+  for (int s = 6; s < 8; s++) {
+    uint8_t *r = wire_rec(row, s);
+    if (RC_LD(uint32_t, r + state) == 2) continue;
+    RC_ST(uint8_t, r, 1);
+    RC_ST(uint32_t, r + state, 2);
+  }
+}
+
+// The FretGrid's destructor, in its loop over the wire rows from the last: at = the offset of the row's last record's
+// second reference (record 7, +0x30 on the Mac); the game releases records 7..2, this releases 1 and 0 the same way
+static void on_wires_dtor(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  uint8_t *grid = host(SEVEN_GET(f, "grid"));
+  const int64_t at = (int64_t)SEVEN_GET(f, "at"), rec = RC_OFF(seven_fretgrid_wire_rec);
+  for (int k = 6; k <= 7; k++)                 // records 1 and 0: k records below record 7
+    for (int r = 0; r < 2; r++)                // its second reference, then its first
+      OV_GUEST(ref_release, arg(grid + at - k * rec - r * rc_guest_ptr_size));
+}
+
 int seven_grid_init(void) {
   if (seven_mid("seven_f1", on_f1) || seven_mid("seven_f1_bar", on_f1_bar) ||
-      seven_mid("seven_f1_scale", on_f1_scale) || seven_mid("seven_f1_floor", on_f1_floor) ||
-      seven_mid("seven_in1", on_in1))
+      seven_mid("seven_f1_scale", on_f1_scale) || seven_mid("seven_f1_setscale", on_f1_setscale) ||
+      seven_mid("seven_f1_floor", on_f1_floor) || seven_mid("seven_in1", on_in1) ||
+      seven_mid("seven_grid_cellrow_ctor", on_cellrow_ctor) || seven_mid("seven_grid_wirerow_ctor", on_wirerow_ctor) ||
+      seven_mid("seven_grid_wirerow_reset", on_wirerow_reset) || seven_mid("seven_grid_wirerow_mark", on_wirerow_mark) ||
+      seven_mid("seven_grid_wirerow_flush", on_wirerow_flush) || seven_mid("seven_grid_wires_dtor", on_wires_dtor))
     return -1;
   return 0;
 }

@@ -236,9 +236,7 @@ static void det_reset(uint8_t *det) {
   write_det(det, zero);  // the game's reset zeroes tuning[6] and makes the open notes from it
 }
 
-static void det_tuned(uint8_t *det, const uint8_t *v, int apply) {
-  const int16_t *e = NULL;
-  size_t n = vec(v, &e);
+static void det_tuned(uint8_t *det, const int16_t *e, size_t n, int apply) {
   int16_t t[8], before[8];
   fill_tuning(e, n, t);
   const uint8_t *tail = det + RC_OFF(seven_detection_tuning8);
@@ -256,9 +254,7 @@ static void mat_new(uint8_t *m) {
   mark_tailed(m, MATCHER);
 }
 
-static void mat_tuned(uint8_t *m, const uint8_t *v, int apply) {
-  const int16_t *e = NULL;
-  const size_t n = vec(v, &e);
+static void mat_tuned(uint8_t *m, const int16_t *e, size_t n, int apply) {
   int16_t t[8], before[8];
   fill_tuning(e, n, t);
   const uint8_t *tail = m + RC_OFF(seven_matcher_tuning8);
@@ -343,10 +339,12 @@ static int not_ready(void *grid, void *guitar, unsigned reason) {
 }
 
 // The string's model is loaded, as the build's own loop asks it of strings 0-5 (0x1110f8d..0x1110fc5): the entity,
-// the render world's scene, the entity's root node
+// the render world's scene, the entity's root node; where the game asks one function for all of it (the Mac's
+// 0x1002a2ba0, as its build's loop does), that function
 static int model_ready(uint8_t *child) {
   uint8_t *entity = child ? rc_mod_ptr(child + RC_OFF(guitar_string_entity)) : NULL;
   if (!entity) return 0;
+  if (!seven_has_render_world()) return OV_GUEST(entity_model_root, arg(entity)) != 0;
   uint8_t *world = RC_HOST(OV_GUESTV(render_world, NULL, 0));
   if (!world || !RC_LD(uint32_t, world + RC_OFF(render_world_scene))) return 0;
   if (RC_LD(uint32_t, entity + RC_OFF(entity_flags)) & 1) return rc_mod_ptr(entity + RC_OFF(entity_root_node)) != NULL;
@@ -424,23 +422,38 @@ static void on_pr0(rc_mid_frame *f, void *user) {
   if (det) det_reset(det);
 }
 
-// Play_Detector_SetTuning's two exits, at their ret: the game copied the vector's six entries and made the open notes
+// Play_Detector_SetTuning's exits, at their ret: the game copied the vector's six entries and made the open notes
 // and the lowest open note. `from` is its return address: the tuner's profile re-apply keeps a song's strings 6/7.
+// The tuning is the vector (`tuning`), or where the vector is not kept at the ret its entries and their count
+// (`entries`, `count`: the Mac's).
 static void on_set_tuning(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
   uint8_t *det = P(SEVEN_GET(f, "detection"));
-  const uint32_t from = (uint32_t)SEVEN_GET(f, "from");
-  if (det) det_tuned(det, P(SEVEN_GET(f, "tuning")), from == (uint32_t)RC_ADDR(tuning_apply_detection_ret));
+  if (!det) return;
+  const int16_t *e = NULL;
+  size_t n;
+  // A 32-bit game's point has the vector (`tuning`); a 64-bit one's its entries and count (asked once, quietly)
+  static int tv = -2;
+  if (tv == -2) tv = rc_guest_ptr_size == 4 ? rc_mid_value(f->point, "tuning") : -1;
+  if (tv >= 0) {
+    n = vec(P(rc_mid_get(f, tv)), &e);
+  } else {
+    e = (const int16_t *)P(SEVEN_GET(f, "entries"));
+    n = e ? (size_t)SEVEN_GET(f, "count") : 0;
+  }
+  det_tuned(det, e, n, seven_at(SEVEN_GET(f, "from"), RC_ADDR(tuning_apply_detection_ret)));
 }
 
-// Play_Matcher_SetTuning after its six-entry copy (esi = matcher, edx = vector, [ebp+4] its return address)
+// Play_Matcher_SetTuning (the matcher, the vector, its return address): after its six-entry copy, or before it where
+// the copy reads nothing of the tail (the Mac's)
 static void on_pm1(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
   uint8_t *m = P(SEVEN_GET(f, "matcher"));
-  const uint32_t from = (uint32_t)SEVEN_GET(f, "from");
-  if (m) mat_tuned(m, P(SEVEN_GET(f, "tuning")), from == (uint32_t)RC_ADDR(tuning_apply_matcher_ret));
+  const int16_t *e = NULL;
+  const size_t n = m ? vec(P(SEVEN_GET(f, "tuning")), &e) : 0;
+  if (m) mat_tuned(m, e, n, seven_at(SEVEN_GET(f, "from"), RC_ADDR(tuning_apply_matcher_ret)));
 }
 
 // Song setup hands the SNG tuning to the detection (the SetTuning after this): a 7/8-entry guitar tuning on a guitar
@@ -452,12 +465,9 @@ static void song_note(const char *what, unsigned a, unsigned b) {
   if (g_song_lines++ < 200) rsm_log("seven-string: pitch: song detection %s (%u, %u)", what, a, b);
 }
 
-static void on_s4(rc_mid_frame *f, void *user) {
-  (void)user;
-  if (!seven_on) return;
-  uint8_t *det = P(SEVEN_GET(f, "detection")), *session = P(SEVEN_GET(f, "session"));
+static void song_setup(uint8_t *det, const uint8_t *tuning, uint8_t *session) {
   const int16_t *e = NULL;
-  const size_t n = vec(P(SEVEN_GET(f, "tuning")), &e);
+  const size_t n = vec(tuning, &e);
   if (!det || !session || !e || n > 8) return;
   const int b = bass(det);
   const unsigned count = b ? 4 : n == 7 || n == 8 ? (unsigned)n : 6;
@@ -486,6 +496,21 @@ static void on_s4(rc_mid_frame *f, void *user) {
   RC_ST(uint32_t, det + RC_OFF(seven_detection_count), count);
   RC_ST(int32_t, det + RC_OFF(detection_lowest_open), low);
   song_note("widened (strings, lowest open note)", count, (unsigned)low);
+}
+
+static void on_s4(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  song_setup(P(SEVEN_GET(f, "detection")), P(SEVEN_GET(f, "tuning")), P(SEVEN_GET(f, "session")));
+}
+
+// The same where song setup hands the SetTuning an input id (the Mac's): its Play_DetectInput's detection
+static void on_s4_input(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  uint8_t *input = RC_HOST(OV_GUEST(play_detect_input, (uint32_t)SEVEN_GET(f, "input")));
+  uint8_t *det = input ? rc_mod_ptr(input + RC_OFF(detector_detection)) : NULL;
+  song_setup(det, P(SEVEN_GET(f, "tuning")), P(SEVEN_GET(f, "session")));
 }
 
 // 0x13f3d60 (ecx = an int16 tuning, edx = instrument - 2, esi = string, the fret on the stack) where a string past
@@ -542,6 +567,69 @@ static void on_pubcl(rc_mid_frame *f, void *user) {
                          (int)(uint32_t)SEVEN_GET(f, "result"));
   SEVEN_SET(f, "result", (uint32_t)r);
   f->go = SEVEN_CONT(f, "classified");
+}
+
+// The search of a note played near the target's pitch on another string (Learn & Play's 0x13f5210, whose loop its edits
+// widen; the Mac's 0x10010f9d0 is unrolled over six): over the detection's 7/8 strings, the first string whose open note
+// + the target's fret is the played note (2) or within two of it (1, its fret), else 7. `result` is the returned
+// struct's first eight bytes as the Mac returns them: the code, the fret at bit 32, the string at bit 40.
+static void on_puban(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  uint8_t *tracker = P(SEVEN_GET(f, "tracker")), *note = P(SEVEN_GET(f, "note"));
+  uint8_t *input = tracker ? rc_mod_ptr(tracker + RC_OFF(tracker_detector)) : NULL;
+  uint8_t *det = input ? rc_mod_ptr(input + RC_OFF(detector_detection)) : NULL;
+  if (!note || !tailed(det, DETECTION) || bass(det)) return;
+  const unsigned n = RC_LD(uint32_t, det + RC_OFF(seven_detection_count));
+  if (n != 7 && n != 8) return;  // six strings: the game's search
+  const unsigned own = RC_LD(uint8_t, note + RC_OFF(detect_target_string));
+  const uint32_t fret = RC_LD(uint8_t, note + RC_OFF(detect_target_fret));
+  const uint32_t midi = (uint32_t)SEVEN_GET(f, "midi");
+  uint64_t r = 7;
+  for (unsigned s = 0; s < n; s++) {
+    if (s == own) continue;
+    const uint32_t open = (uint32_t)(int32_t)RC_LD(int16_t, det + RC_OFF(seven_detection_open8) + 2 * s) + fret;
+    const int32_t d = (int32_t)(midi - open);
+    if (d == 0) {
+      r = 2 | (uint64_t)fret << 32 | (uint64_t)s << 40;
+      break;
+    }
+    if (d >= -2 && d <= 2) {
+      const int32_t at = (int32_t)((uint32_t)d + fret);
+      r = 1 | (uint64_t)(uint8_t)(at < 0 ? 0 : at) << 32 | (uint64_t)s << 40;
+      break;
+    }
+  }
+  SEVEN_SET(f, "result", r);
+  f->go = SEVEN_CONT(f, "done");
+}
+
+// The note-list publication (Learn & Play's 0x1067b00, whose arrays its edits widen to eight; the Mac's 0x10022e0a0
+// keeps six): notes past six are dropped, as the game's stack arrays hold six
+static int g_pubnl_logged;
+
+static void on_pubnl_count(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  const int32_t n = (int32_t)(uint32_t)SEVEN_GET(f, "count");
+  if (n <= 6) return;
+  SEVEN_SET(f, "count", 6);
+  if (once(&g_pubnl_logged)) rsm_log("seven-string: pitch: a note list of %d published as its first six", (int)n);
+}
+
+// Its test whether a note is an open string, unrolled over six: strings 6/7 of a widened detection
+static void on_pubnl_open(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  const uint8_t *det = P(SEVEN_GET(f, "detection"));
+  if (!tailed(det, DETECTION) || bass(det)) return;
+  const unsigned n = RC_LD(uint32_t, det + RC_OFF(seven_detection_count));
+  const uint32_t note = (uint32_t)SEVEN_GET(f, "note"), offset = (uint32_t)SEVEN_GET(f, "offset");
+  for (unsigned s = 6; s < n && s < 8; s++)
+    if ((uint32_t)(int32_t)RC_LD(int16_t, det + RC_OFF(seven_detection_open8) + 2 * s) + offset == note) {
+      f->go = SEVEN_CONT(f, "open");
+      return;
+    }
 }
 
 // 0x110fe40's fret-wire loop (edi = the caller's FretGrid) runs over the guitar's count, not 6
@@ -616,6 +704,9 @@ int seven_pitch_init(void) {
       {"seven_s1", on_s1},             {"seven_i1", on_i1},         {"seven_pubcl_base", on_pubcl_base},
       {"seven_pubcl", on_pubcl},       {"seven_pubwu", on_pubwu},   {"seven_pubgb", on_pubgb},
       {"seven_pubga", on_pubga},       {"seven_pubedge", on_pubedge},
+      // the Mac's own moments (none on Learn & Play)
+      {"seven_s1b", on_s1},            {"seven_s4_input", on_s4_input}, {"seven_puban", on_puban},
+      {"seven_pubnl_count", on_pubnl_count}, {"seven_pubnl_open", on_pubnl_open},
   };
   for (size_t i = 0; i < sizeof points / sizeof *points; i++)
     if (seven_mid(points[i].name, points[i].fn)) return -1;

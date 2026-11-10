@@ -14,6 +14,9 @@
 //                    is a byte of the parent eval (+0xc1e), which seven_rl1/rl2 release with the parent
 //   seven_ag1..ag3   the three child queries, one loop over eight strings
 //   seven_up1..up3, seven_pd2..pd5   the per-string technique checks: the game's loop over strings 0-5, then the tails
+// On the Mac, clang unrolled most of these loops: the edits there add string 6/7 steps of their own (the child loop's
+// seven_ch3 is one), and the checks inlined into their callers end at Mac-only points (seven_pd*_update and the like,
+// none on Learn & Play) that read the eval from a register.
 //
 // [Seven String] ChordWideMisses (0-2, default 2) in RSMods.ini: a seven- or eight-note chord may miss that many notes
 // (on any string: with 2, a 7-note chord passes without its low B); five- and six-note chords one, two- to four-note
@@ -163,7 +166,7 @@ static void game_sort(uint8_t *v) {
   uint8_t *last = v + SORTED * size;
   int depth = 0;
   for (int k = SORTED; k != 1; k >>= 1) depth++;
-  OV_GUEST(matcher_sort, arg(v), arg(last), 0, (uint64_t)(2 * depth), RC_ADDR(matcher_candidate_less));
+  OV_GUEST(matcher_sort, arg(v), arg(last), 0, (uint64_t)(2 * depth), seven_code(RC_ADDR(matcher_candidate_less)));
   if (SORTED > INSERTION_RUN) {
     insertion_sort(v, v + INSERTION_RUN * size, size);
     unguarded_insertion_sort(v + INSERTION_RUN * size, last, size);
@@ -217,8 +220,11 @@ static int scaled_greater(float m, double k, float u) { return (double)m * k > (
 
 // The game's rule per target count. Seven or eight: the game has no case (its last rule would need every one); with
 // ChordWideMisses the five/six-note rule widened: all found and less unmatched than matched strength, or up to that
-// many missing and unmatched below 0.2 x matched.
-static int verdict(int active, int found, score_t r, int tol, int misses) {
+// many missing and unmatched below 0.2 x matched. The Mac's matcher has a lenient mode (its last argument), where
+// only the count found decides, every count alike (found >= active - tolerance): seven or eight may miss
+// ChordWideMisses more.
+static int verdict(int active, int found, score_t r, int tol, int misses, int lenient) {
+  if (lenient) return found >= active - tol - (active >= 7 ? misses : 0);
   const int less = r.unmatched < r.matched;
   if (active == 6)
     return (found >= 6 - tol && less) || (found == 5 - tol && scaled_greater(r.matched, 0.20000000298023224, r.unmatched));
@@ -249,7 +255,7 @@ static int octave_dyad(const int32_t *in, int n) {
   return octave && count == 2;
 }
 
-static int match_n(const uint8_t *m, const int32_t *in, int n, int tol, int hist, uint8_t *v) {
+static int match_n(const uint8_t *m, const int32_t *in, int n, int tol, int hist, int lenient, uint8_t *v) {
   int32_t loc[TARGETS], cnt[TARGETS];
   const int active = dedupe(in, n, loc);
   const int32_t low = special_target(loc, n, active);
@@ -276,12 +282,13 @@ static int match_n(const uint8_t *m, const int32_t *in, int n, int tol, int hist
   const score_t r = score(v, row, loc, n, active, cnt);
   const int found = count_found(cnt, n);
   const uint8_t *det = rc_mod_ptr(m + RC_OFF(matcher_detection));
-  // A bass's octave dyad passes with one note found and unmatched below 0.3 x matched
-  if (det && RC_LD(int32_t, det + RC_OFF(detection_instrument)) == 2 && octave_dyad(in, n) &&
+  // A bass's octave dyad passes with one note found and unmatched below 0.3 x matched (the Mac's lenient mode
+  // decides first)
+  if (!lenient && det && RC_LD(int32_t, det + RC_OFF(detection_instrument)) == 2 && octave_dyad(in, n) &&
       RC_LD(uint8_t, m + RC_OFF(matcher_octave_dyads)) && found >= 1 &&
       scaled_greater(r.matched, 0.30000001192092896, r.unmatched))
     return 1;
-  const int ok = verdict(active, found, r, tol, g_misses);
+  const int ok = verdict(active, found, r, tol, g_misses, lenient);
   if (g_lines < 64) {
     g_lines++;
     rsm_log("seven-string: chord detection: %d targets, %d found (tolerance %d, %d may miss): matched %.4g, unmatched "
@@ -292,9 +299,11 @@ static int match_n(const uint8_t *m, const int32_t *in, int n, int tol, int hist
 }
 
 // --- the mid points -----------------------------------------------------------------------------------------------
-// Play_Matcher_DetectChord's entry (stdcall: matcher, int32 targets[8], tolerance, history index; al = played). No
-// string 6/7 target: the game's body as it is (it reads six). Up to six targets in all: compacted, in order, into an
-// int32[6] the body gets (the -1 holes change nothing it looks at). Seven or eight: judged here, on at its ret.
+// Play_Matcher_DetectChord's entry (matcher, int32 targets[8], tolerance, history index; al = played). No string 6/7
+// target: the game's body as it is (it reads six). Up to six targets in all: compacted, in order, into an int32[6]
+// the body gets (the -1 holes change nothing it looks at). Seven or eight: judged here, on at its ret. The Mac's
+// matcher also takes a target count (every caller passes six, the edits leave it so: its body has room for six) and
+// a lenient mode, a value of its row only (Learn & Play's matcher has neither, and its row no such value).
 static void on_md1(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
@@ -315,14 +324,16 @@ static void on_md1(rc_mid_frame *f, void *user) {
   }
   int32_t t[TARGETS];
   for (int i = 0; i < TARGETS; i++) t[i] = RC_LD(int32_t, in + i);
+  const int lenient = rc_guest_ptr_size == 8 && (uint8_t)SEVEN_GET(f, "lenient");
   const int ok = match_n(m, t, TARGETS, (int)(int32_t)SEVEN_GET(f, "tolerance"), (int)(int32_t)SEVEN_GET(f, "history"),
-                         s->cand);
+                         lenient, s->cand);
   SEVEN_SET(f, "matched", (uint32_t)ok);
   f->go = SEVEN_CONT(f, "ret");
 }
 
 // Play_AnalyzeChordMistake tries the chord shifted by -2..2 semitones (edi): the wrapper it calls gets the six shifted
-// targets and the chord's (a T8's) strings 6/7 shifted the same way
+// targets and the chord's (a T8's) strings 6/7 shifted the same way. The Mac has two such calls (seven_am1 and its
+// seven_am1_b), the chord kept for them by an edit.
 static void on_am1(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
@@ -515,26 +526,76 @@ static void on_pd4(rc_mid_frame *f, void *user) {
 // 0x13f7bf0: the extreme slide distance (slideTo - fret, both as bytes) over strings with a fret other than 0: the
 // first sets it, then a farther one in its direction; the tails continue the game's loop. ecx = the last fretted
 // tail's distance, edx = string 7's fret byte, as rs7string leaves them.
+static int32_t extreme_tails(const uint8_t *ev, int32_t extreme, int32_t *distance) {
+  for (int t = 0; t < TARGETS - STOCK; t++) {
+    const int32_t fret = RC_LD(uint8_t, ev + RC_OFF(seven_eval_tail_fret) + t);
+    if (fret == 0) continue;
+    const int32_t d = (int32_t)RC_LD(uint8_t, ev + RC_OFF(seven_eval_tail_slide) + t) - fret;
+    *distance = d;
+    if (extreme == 0) extreme = d;
+    if (extreme < 0 && d < extreme) extreme = d;
+    if (extreme > 0 && d > extreme) extreme = d;
+  }
+  return extreme;
+}
+
 static void on_pd5(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
   const uint64_t end = SEVEN_GET(f, "slides_end");
   if (!end) return;
   const uint8_t *ev = P(end) - (RC_OFF(eval_slide_to) + STOCK);
-  int32_t extreme = (int32_t)(uint32_t)SEVEN_GET(f, "extreme");
   int32_t distance = (int32_t)(uint32_t)SEVEN_GET(f, "distance");
-  for (int t = 0; t < TARGETS - STOCK; t++) {
-    const int32_t fret = RC_LD(uint8_t, ev + RC_OFF(seven_eval_tail_fret) + t);
-    if (fret == 0) continue;
-    const int32_t d = (int32_t)RC_LD(uint8_t, ev + RC_OFF(seven_eval_tail_slide) + t) - fret;
-    distance = d;
-    if (extreme == 0) extreme = d;
-    if (extreme < 0 && d < extreme) extreme = d;
-    if (extreme > 0 && d > extreme) extreme = d;
-  }
+  const int32_t extreme = extreme_tails(ev, (int32_t)(uint32_t)SEVEN_GET(f, "extreme"), &distance);
   SEVEN_SET(f, "extreme", (uint32_t)extreme);
   SEVEN_SET(f, "distance", (uint32_t)distance);
   SEVEN_SET(f, "fret", (uint32_t)RC_LD(uint8_t, ev + RC_OFF(seven_eval_tail_fret) + 1));
+}
+
+// --- the Mac's unrolled checks (Mac-only points, none on Learn & Play, whose loops the points above end) ---------
+// clang unrolled the six-string loops of 0x13f7b00, 0x13f7b40, 0x13f7bb0 into each of their callers and
+// 0x13f7bf0 into a function of its own: no loop pointer there, the eval in a register instead. The same tests.
+static void fold_tails_eval(rc_mid_frame *f, uint32_t bits, int byte, int none) {
+  const uint8_t *ev = P(SEVEN_GET(f, "eval"));
+  if (!ev) return;
+  uint8_t r = (uint8_t)SEVEN_GET(f, "result");
+  for (int t = 0; t < TARGETS - STOCK; t++) {
+    if (!tail_sounds(ev, t)) continue;
+    const uint32_t mask = byte ? (tail_mask(ev, t) & 0xff) : tail_mask(ev, t);
+    r &= (uint8_t)(((mask & bits) != 0) != none);
+  }
+  SEVEN_SET(f, "result", r);
+}
+
+// seven_pd2_update, seven_pd2_chord: every sounding string slides (0x800)
+static void on_pd2_eval(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  fold_tails_eval(f, 0x800, 0, 0);
+}
+
+// seven_pd3_update: no sounding string bends, slides, slides unpitched or tremolos
+static void on_pd3_eval(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  fold_tails_eval(f, 0x401810, 0, 1);
+}
+
+// seven_pd4_update, seven_pd4_sustain: every sounding string tremolos
+static void on_pd4_eval(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  fold_tails_eval(f, 0x10, 1, 0);
+}
+
+// seven_pd5_eval: the extreme slide distance, at the end of the Mac's function of it (eax; nothing else is read after)
+static void on_pd5_eval(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  const uint8_t *ev = P(SEVEN_GET(f, "eval"));
+  if (!ev) return;
+  int32_t distance = 0;
+  SEVEN_SET(f, "extreme", (uint32_t)extreme_tails(ev, (int32_t)(uint32_t)SEVEN_GET(f, "extreme"), &distance));
 }
 
 // --- shared ---------------------------------------------------------------------------------------------------
@@ -558,6 +619,10 @@ int seven_chdetect_init(void) {
       {"seven_rl2", on_rl},  {"seven_ag1", on_ag1}, {"seven_ag2", on_ag2}, {"seven_ag3", on_ag3},
       {"seven_up1", on_up},  {"seven_up2", on_up},  {"seven_up3", on_up},  {"seven_pd2", on_pd2},
       {"seven_pd3", on_pd3}, {"seven_pd4", on_pd4}, {"seven_pd5", on_pd5},
+      // Mac-only (none on Learn & Play)
+      {"seven_am1_b", on_am1}, {"seven_pd2_update", on_pd2_eval}, {"seven_pd2_chord", on_pd2_eval},
+      {"seven_pd3_update", on_pd3_eval}, {"seven_pd4_update", on_pd4_eval}, {"seven_pd4_sustain", on_pd4_eval},
+      {"seven_pd5_eval", on_pd5_eval},
   };
   for (size_t i = 0; i < sizeof points / sizeof *points; i++)
     if (seven_mid(points[i].name, points[i].fn)) return -1;

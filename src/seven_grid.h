@@ -19,4 +19,8 @@ void *seven_grid_cell(void *grid, unsigned row, unsigned string);
 // exit (PUBGB) calls for a guitar built with 7 or 8 strings once the strings are loaded.
 int seven_grid_fill_extra_cells(void *grid, unsigned frets);
 
+// 1 when the game has a render-world getter (render_world); else the parts find an entity's root through
+// entity_model_root
+int seven_has_render_world(void);
+
 #endif

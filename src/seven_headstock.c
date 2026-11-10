@@ -537,8 +537,10 @@ static uint8_t *top_object(const uint8_t *res) {
   return ptr_at(ptr_at(stream, RC_OFF(ni_stream_top)), 0);
 }
 
-// The entity's root scene node, as the game's entity setters find it: NULL while the world has no scene
+// The entity's root scene node, as the game's entity setters find it: NULL while the world has no scene. The Mac's
+// setters ask the service manager inline (no render_world): there the game's entity_model_root answers the same.
 static uint8_t *entity_root(uint8_t *entity) {
+  if (entity && !seven_has_render_world()) return RC_HOST(OV_GUEST(entity_model_root, arg(entity)));
   uint8_t *world = entity ? RC_HOST(OV_GUESTV(render_world, NULL, 0)) : NULL;
   if (!world || !RC_LD(uint32_t, world + RC_OFF(render_world_scene))) return NULL;
   if (RC_LD(uint32_t, entity + RC_OFF(entity_flags)) & 1) return ptr_at(entity, RC_OFF(entity_root_node));
@@ -645,14 +647,22 @@ static void *call_dds_handler(const char *key, const uint8_t *bytes, uint32_t si
   RC_ST(int32_t, FIELD(file, ni_ref_count), 1 << 30);
   ptr_put(FIELD(file, mem_file_blob), blob);
   // The adapter, as Res_NiFileAdapter_Ctor makes it: the file held (AddRef), its state good, the game's read and
-  // write functions
+  // write functions. Where the game's ctor takes ordinary arguments (the Mac's), it makes it itself.
   memset(adapter, 0, (size_t)RC_OFF(nf_adapter_size));
-  ptr_put(adapter, (void *)(uintptr_t)RC_GA(nf_adapter_vtable));
-  ptr_put(FIELD(adapter, nf_adapter_file), file);
-  addref(file);
-  RC_ST(uint8_t, FIELD(adapter, nf_adapter_good), 1);
-  ptr_put(FIELD(adapter, nf_adapter_read), (void *)(uintptr_t)RC_GA(nf_adapter_read_fn));
-  ptr_put(FIELD(adapter, nf_adapter_write), (void *)(uintptr_t)RC_GA(nf_adapter_write_fn));
+  if (RC_ADDR(nf_adapter_read_fn)) {
+    ptr_put(adapter, (void *)(uintptr_t)RC_GA(nf_adapter_vtable));
+    ptr_put(FIELD(adapter, nf_adapter_file), file);
+    addref(file);
+    RC_ST(uint8_t, FIELD(adapter, nf_adapter_good), 1);
+    ptr_put(FIELD(adapter, nf_adapter_read), (void *)(uintptr_t)RC_GA(nf_adapter_read_fn));
+    ptr_put(FIELD(adapter, nf_adapter_write), (void *)(uintptr_t)RC_GA(nf_adapter_write_fn));
+  } else {
+    OV_GUEST(nf_adapter_ctor, arg(adapter), arg(file));
+    if (!U8(adapter, nf_adapter_good) || ptr_at(adapter, RC_OFF(nf_adapter_file)) != file) {
+      hlog("%s: the game's file adapter didn't take the texture: left to the game", key);
+      return NULL;  // nothing to release: the file's count never drops to zero
+    }
+  }
   void *res = RC_HOST(OV_GUEST(dds_stream_handler, arg(keybuf), arg(adapter), 0));
   OV_GUESTV(nf_adapter_dtor, (const uint64_t[]){arg(adapter)}, 1);
   return res;
@@ -827,6 +837,14 @@ static uint8_t *pegset_of(const head *h) {
 static uint8_t *peg_slot(uint8_t *pegs, int s) { return FIELD(pegs, pegs_slots) + s * RC_OFF(peg_slot_size); }
 
 // ---- the string segments
+// Where value i of a segment's params is: the Mac's params have a word before the nine values (headstock_seg_values);
+// Learn & Play's start with them (its tables predate the name)
+static int64_t seg_value(int i) {
+  static int64_t base = -1;
+  if (base < 0) base = rc_guest_ptr_size == 4 ? 0 : RC_OFF(headstock_seg_values);
+  return base + (int64_t)i * rc_guest_ptr_size;
+}
+
 // Our params of a segment: its nine values on the mesh (the game's helpers find or make each by name, as
 // Rnd_SetStringShaderParams does: it takes its params in a register), with the values of `from` (the stock params of
 // the same string)
@@ -834,12 +852,18 @@ static void bind_segment(uint8_t *out[SEG_FIELDS], uint8_t *mesh, const uint8_t 
   static float *rgba;
   if (!rgba) rgba = rc_guest_alloc(4 * sizeof(float));
   for (int i = 0; i < SEG_FIELDS; i++) {
-    const uint8_t *src = ptr_at(from, (int64_t)i * rc_guest_ptr_size);
+    const uint8_t *src = ptr_at(from, seg_value(i));
     uint8_t *ed;
     if (i == COLOUR_FIELD) {
       if (!rgba) continue;
       for (int k = 0; k < 4; k++) rgba[k] = src ? RC_LD(float, FIELD(src, ni_extra_value) + 4 * k) : 1.0f;
-      ed = RC_HOST(OV_GUEST(mesh_colour_extra, arg(mesh), arg(rgba)));
+      if (RC_ADDR(mesh_colour_extra)) {
+        ed = RC_HOST(OV_GUEST(mesh_colour_extra, arg(mesh), arg(rgba)));
+      } else {  // the Mac's helper takes the name
+        const char *nm = gstr(SEG_NAMES[i]);
+        if (!nm) continue;
+        ed = RC_HOST(OV_GUEST(mesh_colour_extra_named, arg(mesh), arg(nm), arg(rgba)));
+      }
     } else {
       float v = src ? RC_LD(float, FIELD(src, ni_extra_value)) : 0.0f;
       const char *nm = gstr(SEG_NAMES[i]);
@@ -880,7 +904,7 @@ static void bind_alt(head *h) {
     if (!params || !h->alt_seg[s] || !kind_of(h->alt_seg[s], "NiMesh")) continue;
     bind_segment(h->alt_hold[s], h->alt_seg[s], params);
     for (int i = 0; i < SEG_FIELDS; i++) {
-      uint8_t *p = ptr_at(params, (int64_t)i * rc_guest_ptr_size);
+      uint8_t *p = ptr_at(params, seg_value(i));
       h->stock_hold[s][i] = p && h->alt_hold[s][i] ? p : NULL;
       addref(h->stock_hold[s][i]);
     }
@@ -903,7 +927,7 @@ static void point_params(head *h, int to_alt) {
       uint8_t *from = to_alt ? h->stock_hold[s][i] : h->alt_hold[s][i], *to = to_alt ? h->alt_hold[s][i] : h->stock_hold[s][i];
       if (!from || !to) continue;
       memcpy(FIELD(to, ni_extra_value), FIELD(from, ni_extra_value), i == COLOUR_FIELD ? 16 : 4);
-      uint8_t *at = params + i * rc_guest_ptr_size, *old = ptr_at(at, 0);
+      uint8_t *at = params + seg_value(i), *old = ptr_at(at, 0);
       if (old == to) continue;
       addref(to);
       ptr_put(at, to);

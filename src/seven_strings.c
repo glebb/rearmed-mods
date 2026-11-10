@@ -136,7 +136,8 @@ static int profile_count(unsigned player) {
 static void on_gkc(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   uint8_t *profile = PTR(f, "profile");
-  if (!profile) return;
+  // a bass's count stays the game's (the Mac's point follows both branches' common store)
+  if (!profile || RC_LD(int32_t, FIELD(profile, guitar_profile_type)) == 2) return;
   int n = g_load_player == 0 ? seven_strings_desired() : SEVEN_STOCK;
   RC_ST(uint8_t, FIELD(profile, guitar_profile_strings), n);
   static int last = SEVEN_STOCK;
@@ -198,16 +199,25 @@ static int has_key(const uint8_t *tuning, const char *key) {
 // What a store of the target tuning is, by its caller (the return address of Play_Tuning_SetPlayerTargetTuning)
 enum role { OTHER, SONG_SELECT, TUNER_MENU, MODE_ENTRY };
 
-static enum role role_of(uint32_t caller, const char **mode) {
+// Code addresses compare at pointer width. The Mac has copies of Play_SetPlayerTuningFromManifest per caller
+// (song_select2/3) and a third Guitarcade store; on Learn & Play those names repeat the first one's address.
+// A return address as the guest sees it: the image address on Learn & Play, the mapped (slid) one on the Mac
+#define AT(caller, addr) seven_at((caller), (addr))
+
+static enum role role_of(uint64_t caller, const char **mode) {
   *mode = NULL;
-  if (caller == RC_ADDR(tuning_store_song_select)) return SONG_SELECT;
-  if (caller == RC_ADDR(tuning_store_tuner_menu) || caller == RC_ADDR(tuning_store_tuner_menu2)) return TUNER_MENU;
-  if (caller == RC_ADDR(tuning_store_guitarcade) || caller == RC_ADDR(tuning_store_guitarcade2)) *mode = "Guitarcade";
-  else if (caller == RC_ADDR(tuning_store_lessons)) *mode = "Lessons";
-  else if (caller == RC_ADDR(tuning_store_session_tuner) || caller == RC_ADDR(tuning_store_session_tuner2) ||
-           caller == RC_ADDR(tuning_store_session_start) || caller == RC_ADDR(tuning_store_session_start2))
+  if (AT(caller, RC_ADDR(tuning_store_song_select)) || AT(caller, RC_ADDR(tuning_store_song_select2)) ||
+      AT(caller, RC_ADDR(tuning_store_song_select3)))
+    return SONG_SELECT;
+  if (AT(caller, RC_ADDR(tuning_store_tuner_menu)) || AT(caller, RC_ADDR(tuning_store_tuner_menu2))) return TUNER_MENU;
+  if (AT(caller, RC_ADDR(tuning_store_guitarcade)) || AT(caller, RC_ADDR(tuning_store_guitarcade2)) ||
+      AT(caller, RC_ADDR(tuning_store_guitarcade3)))
+    *mode = "Guitarcade";
+  else if (AT(caller, RC_ADDR(tuning_store_lessons))) *mode = "Lessons";
+  else if (AT(caller, RC_ADDR(tuning_store_session_tuner)) || AT(caller, RC_ADDR(tuning_store_session_tuner2)) ||
+           AT(caller, RC_ADDR(tuning_store_session_start)) || AT(caller, RC_ADDR(tuning_store_session_start2)))
     *mode = "Session Mode";
-  else if (caller == RC_ADDR(tuning_store_technique_hub)) *mode = "the technique hub";
+  else if (AT(caller, RC_ADDR(tuning_store_technique_hub))) *mode = "the technique hub";
   return *mode ? MODE_ENTRY : OTHER;
 }
 
@@ -241,7 +251,8 @@ static int rebuild_target(enum role r, uint32_t player, int want, int was, int t
 
 static void on_gkt(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
-  uint32_t player = (uint32_t)SEVEN_GET(f, "player"), caller = (uint32_t)SEVEN_GET(f, "caller");
+  uint32_t player = (uint32_t)SEVEN_GET(f, "player");
+  uint64_t caller = SEVEN_GET(f, "caller");
   int want = has_key(PTR(f, "tuning"), g_keys) ? 7 : SEVEN_STOCK, was = seven_strings_desired();
   const char *mode;
   enum role r = role_of(caller, &mode);
@@ -260,7 +271,7 @@ static void on_gkt(rc_mid_frame *f, void *user) {
   // The game's own rebuild of player 0's guitar from its profile, and the scene attach of both players' guitars
   // (rs7string calls Rnd_Guitar_EnsureForPlayer and 0x4B24F0 itself; this function of the game is that pair)
   int before = seven_strings_guitar_count(player_guitar(0));
-  OV_GUESTV(guitar_rebuild_player0, NULL, 0);
+  OV_GUEST(guitar_rebuild_player0, 0);  // player 0 (the Mac's takes it; Learn & Play's ignores it)
   int after = seven_strings_guitar_count(player_guitar(0));
   // A new build: no wait deadline or failed neck of the old guitar carries over (the pitch part's PUBGB records)
   if (after != before) seven_pitch_grid_forget_all();
@@ -372,17 +383,19 @@ static void on_shape3(rc_mid_frame *f, void *user) {
 // would read past its six): string 6 has one while the guitar shows the 7-string headstock model, its string_size_7
 // (the headstock part's), which then takes string 6's colour as the game's loop gives the others theirs; string 7
 // never has one
-static void *segment7(rc_mid_frame *f, int string) {
-  return string == SEVEN_STOCK ? seven_headstock_seg7_colour(PTR(f, "guitar")) : NULL;
+// (`guitar` is read by each point itself: SEVEN_GET caches a value's index per place, and the two points list their
+// values in different orders)
+static void *segment7(const void *guitar, int string) {
+  return string == SEVEN_STOCK ? seven_headstock_seg7_colour(guitar) : NULL;
 }
 static void on_hs_loaded(rc_mid_frame *f, void *user) {
   int s = (int32_t)SEVEN_GET(f, "string");
-  if (seven_on && s >= SEVEN_STOCK) f->go = segment7(f, s) ? SEVEN_CONT(f, "loaded") : SEVEN_CONT(f, "next");
+  if (seven_on && s >= SEVEN_STOCK) f->go = segment7(PTR(f, "guitar"), s) ? SEVEN_CONT(f, "loaded") : SEVEN_CONT(f, "next");
 }
 static void on_hs_segment(rc_mid_frame *f, void *user) {
   int s = (int32_t)SEVEN_GET(f, "string");
   if (!seven_on || s < SEVEN_STOCK) return;
-  SEVEN_SET(f, "segment", (uintptr_t)segment7(f, s));
+  SEVEN_SET(f, "segment", (uintptr_t)segment7(PTR(f, "guitar"), s));
   f->go = SEVEN_CONT(f, "done");
 }
 
@@ -475,7 +488,10 @@ static void on_psn1(rc_mid_frame *f, void *user) {
 // colour call would write through): no call, its argument popped as its `ret 4` would
 static void on_psn2(rc_mid_frame *f, void *user) {
   if (!seven_on || PTR(f, "slot")) return;
-  SEVEN_SET(f, "sp", (uint32_t)SEVEN_GET(f, "sp") + (uint32_t)rc_guest_ptr_size);
+  // Learn & Play's thiscall argument is already pushed: drop it (its table has `sp`; the Mac's SysV call has none)
+  static int sp = -2;
+  if (sp == -2) sp = rc_guest_ptr_size == 4 ? rc_mid_value(f->point, "sp") : -1;
+  if (sp >= 0) rc_mid_set(f, sp, rc_mid_get(f, sp) + (uint64_t)rc_guest_ptr_size);
   f->go = SEVEN_CONT(f, "skip");
 }
 
@@ -483,14 +499,71 @@ static void on_psn2(rc_mid_frame *f, void *user) {
 static void on_psn2_after(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   int index = (int32_t)SEVEN_GET(f, "index");
-  uint8_t *tuner = PTR(f, "tuner");
-  uint8_t *pegs = pegs_of(ptr_at(tuner, RC_OFF(player_tuner_guitar)));
-  if (index < SEVEN_STOCK || index >= SEVEN_CAPACITY || !pegs || index >= RC_LD(uint16_t, FIELD(pegs, pegs_count))) return;
-  uint8_t *slot = peg_slot(pegs, index);
+  if (index < SEVEN_STOCK || index >= SEVEN_CAPACITY) return;
+  // Learn & Play's point has the tuner; the Mac's (no tuner in a register there) the slot and the player
+  static int tv = -2;
+  if (tv == -2) tv = rc_guest_ptr_size == 4 ? rc_mid_value(f->point, "tuner") : -1;
+  uint8_t *slot;
+  int player;
+  if (tv >= 0) {
+    uint8_t *tuner = (uint8_t *)(uintptr_t)rc_mid_get(f, tv);
+    uint8_t *pegs = pegs_of(ptr_at(tuner, RC_OFF(player_tuner_guitar)));
+    if (!pegs || index >= RC_LD(uint16_t, FIELD(pegs, pegs_count))) return;
+    slot = peg_slot(pegs, index);
+    player = RC_LD(int32_t, FIELD(tuner, player_tuner_player));
+  } else {
+    slot = PTR(f, "slot");
+    player = (int32_t)SEVEN_GET(f, "player");
+  }
   float rgb[3];
-  if (!RC_LD(uint8_t, slot) || !named_colour(seven_colours_manager(), RC_LD(int32_t, FIELD(tuner, player_tuner_player)), rgb)) return;
+  if (!slot || !RC_LD(uint8_t, slot) || !named_colour(seven_colours_manager(), player, rgb)) return;
   st3(FIELD(slot, peg_slot_rgb), rgb);
   RC_ST(uint32_t, FIELD(slot, peg_slot_named), NAME_STRING0 + index);
+}
+
+// ---- where the game's own constructor and release are unrolled for six (the Mac's): strings, ghosts and peg
+// slots 6 and 7 are built and freed here by calling the game. A target whose loops were widened has these `none`.
+// The end of the GuitarStrings ctor: its six main and ghost strings copied to the native arrays, 6 and 7 built
+// (efd_alloc and the string ctor, is_ghost 0 / 1, as the ctor does the others)
+static void on_gsc_tail(rc_mid_frame *f, void *user) {
+  if (!seven_on) return;
+  uint8_t *gs = PTR(f, "strings");
+  if (!gs) return;
+  size_t ps = (size_t)rc_guest_ptr_size;
+  for (int s = 0; s < SEVEN_STOCK; s++) {
+    memcpy(FIELD(gs, seven_gs_main) + s * ps, FIELD(gs, guitar_strings_string) + s * ps, ps);
+    memcpy(FIELD(gs, seven_gs_ghost) + s * ps, FIELD(gs, guitar_strings_ghost) + s * ps, ps);
+  }
+  for (int s = SEVEN_STOCK; s < SEVEN_CAPACITY; s++)
+    for (int ghost = 0; ghost < 2; ghost++) {
+      uint64_t obj = OV_GUEST(efd_alloc, (uint64_t)RC_OFF(guitar_string_size), 0);
+      if (obj) OV_GUEST(guitar_string_ctor, obj, (uint64_t)ghost);
+      memcpy((ghost ? FIELD(gs, seven_gs_ghost) : FIELD(gs, seven_gs_main)) + s * ps, &obj, ps);
+    }
+}
+
+// The end of the GuitarStrings release (it freed the six of each): 6 and 7 the same way, the native arrays cleared
+static void on_gsfr_tail(rc_mid_frame *f, void *user) {
+  if (!seven_on) return;
+  uint8_t *gs = PTR(f, "strings");
+  if (!gs) return;
+  size_t ps = (size_t)rc_guest_ptr_size;
+  for (int s = SEVEN_STOCK; s < SEVEN_CAPACITY; s++)
+    for (int ghost = 0; ghost < 2; ghost++) {
+      uint8_t *obj = seven_strings_string(gs, s, ghost);
+      if (!obj) continue;
+      OV_GUEST(guitar_string_dtor, RC_GUEST(obj));
+      OV_GUEST(efd_delete, RC_GUEST(obj), (uint64_t)RC_OFF(guitar_string_size));
+    }
+  memset(FIELD(gs, seven_gs_main), 0, SEVEN_CAPACITY * ps);
+  memset(FIELD(gs, seven_gs_ghost), 0, SEVEN_CAPACITY * ps);
+}
+
+// The PegSet dtor (the game's releases slots 0-5): slots 6 and 7 too
+static void on_psd_tail(rc_mid_frame *f, void *user) {
+  if (!seven_on) return;
+  uint8_t *pegs = PTR(f, "pegs");
+  for (int s = SEVEN_STOCK; pegs && s < SEVEN_CAPACITY; s++) OV_GUEST(peg_slot_dtor, RC_GUEST(peg_slot(pegs, s)));
 }
 
 // ---- the 7th string's look
@@ -537,13 +610,13 @@ static uint8_t *g_scratch;  // 4 x vec3
 static void lane_vec(rc_mid_frame *f, int k) {
   if (!IS_STRING6(f)) return;
   if (!g_scratch && !(g_scratch = rc_guest_alloc(4 * 3 * sizeof(float)))) return;
-  uint32_t cells = (uint32_t)SEVEN_GET(f, "cells");
-  const uint8_t *cell0 = RC_HOST(cells + (uint32_t)RC_OFF(note_lane_pos));
+  uint64_t cells = SEVEN_GET(f, "cells");
+  const uint8_t *cell0 = RC_HOST(cells + (uint64_t)RC_OFF(note_lane_pos));
   uint8_t *out = g_scratch + k * 3 * sizeof(float);
   float v[3];
   for (int i = 0; i < 3; i++) v[i] = lane(cell0, 4 * i);
   st3(out, v);
-  SEVEN_SET(f, "cells", (uint32_t)RC_GUEST(out) - (uint32_t)SEVEN_GET(f, "string_at") - (uint32_t)RC_OFF(note_lane_pos));
+  SEVEN_SET(f, "cells", RC_GUEST(out) - (uint64_t)(int64_t)(int32_t)SEVEN_GET(f, "string_at") - (uint64_t)RC_OFF(note_lane_pos));
 }
 static void on_r3a(rc_mid_frame *f, void *user) { lane_vec(f, 0); }
 static void on_r3b(rc_mid_frame *f, void *user) { lane_vec(f, 1); }
@@ -600,6 +673,9 @@ int seven_strings_init(void) {
       {"seven_r4", on_r4},
       {"seven_r2", on_r2},
       {"seven_r6", on_r6},
+      {"seven_gsc_tail", on_gsc_tail},
+      {"seven_gsfr_tail", on_gsfr_tail},
+      {"seven_psd_tail", on_psd_tail},
   };
   for (size_t i = 0; i < sizeof points / sizeof *points; i++)
     if (seven_mid(points[i].name, points[i].fn)) return -1;

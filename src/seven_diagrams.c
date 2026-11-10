@@ -12,7 +12,8 @@
 // the arrangement's attributes are the ones that song's post-processing looked up (seven_dgb binds the two). Six-string
 // shapes and bass are left as the game makes them.
 //
-// The names go in as the game's serializers put them: the name interned by the game (json_key_intern) and set on the
+// The names go in as the game's serializers put them: the name interned by the game (json_key_intern; the Mac's
+// json_key_make takes the same two arguments the other way round) and set on the
 // object (json_object_set). A number object the game would get from num_intern, which takes its result's address in a
 // register a mod can't give, is made here as num_intern makes one (the game's allocator, its vtable, the double), one
 // for each value, held by this library for the run: no number made here is ever freed, so the game's table of numbers
@@ -25,7 +26,9 @@
 // opener, whose file function (the game's, 0x101a140) opens it through FrontEnd_OpenFile, the hook point
 // frontend_open_file. At the first open of one of the three in a run, the library makes all three from static.psarc
 // (rsm_psarc), each with its class rebuilt, and writes them where the game opens files from disk, as mod_cache.c
-// writes its archives: Update/rearmed-mods-<movie>.gfx, given to the game as c:\rocksmith2014\update\.... When a hash
+// writes its archives: Update/rearmed-mods-<movie>.gfx, given to the game as c:\rocksmith2014\update\...; on the Mac
+// (whose file function 0x1003c7510 calls FrontEnd_OpenFile the same way) rearmed-mods/<movie>.gfx, which the hook
+// opens through FrontEnd_OpenFile itself, as mod_cache.c does there. When a hash
 // doesn't match (another movie), the game opens its own and the log says why. rs7string instead wraps the opener's
 // vtable slot and gives Scaleform an in-memory file.
 //
@@ -136,7 +139,14 @@ static uint8_t *key_slot(int k) {
   uint8_t *slot = g.keys + (size_t)k * rc_guest_ptr_size;
   if (rc_mod_ptr(slot)) return slot;
   pthread_mutex_lock(&g_put_lock);
-  if (!rc_mod_ptr(slot)) OV_GUEST(json_key_intern, (uintptr_t)g.text[k], (uintptr_t)slot);
+  if (!rc_mod_ptr(slot)) {
+    // The game's call takes the text first (Learn & Play's json_key_intern) or the key's place first (the Mac's
+    // json_key_make): whichever this game has
+    if (RC_ADDR(json_key_make))
+      OV_GUEST(json_key_make, (uintptr_t)slot, (uintptr_t)g.text[k]);
+    else
+      OV_GUEST(json_key_intern, (uintptr_t)g.text[k], (uintptr_t)slot);
+  }
   pthread_mutex_unlock(&g_put_lock);
   return rc_mod_ptr(slot) ? slot : NULL;
 }
@@ -345,6 +355,7 @@ static void on_tp13(rc_mid_frame *f, void *user) {
 #define MOVIE_LIMIT (16u << 20)  // the largest movie or recipe taken
 #define RECIPE_HEAD 84           // "R7DA" 1 0 0 0, the old and new tag's size, the count of operations, two SHA-256
 #define ARCHIVE "static.psarc"
+#define MOVIE_DIR "rearmed-mods"  // the Mac's folder of the movies, mod_cache.c's
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wc23-extensions"
@@ -371,20 +382,23 @@ static const uint8_t RECIPE_GE_GAME[] = {
 static struct movie {
   const char *name;     // in the archive, as the game opens it
   uint16_t sprite;      // the class's sprite
-  const char *path;     // written there, in the game folder
+  const char *path;     // Learn & Play: written there, in the game folder
   const char *game_path;  // and given to the game so
   const uint8_t *recipe;
   size_t recipe_len;
   char *guest_path;
   int built, told;
+  const char *mac_path;  // the Mac: written there and given to the game as that (relative to the game folder, as
+                         // mod_cache.c's archives)
 } g_movies[] = {
     {"gfxassets/libs/commonlib.gfx", 1103, "Update/rearmed-mods-commonlib.gfx",
-     "c:\\rocksmith2014\\update\\rearmed-mods-commonlib.gfx", NULL, 0, NULL, 0, 0},
+     "c:\\rocksmith2014\\update\\rearmed-mods-commonlib.gfx", NULL, 0, NULL, 0, 0, MOVIE_DIR "/commonlib.gfx"},
     {"gfxassets/views/contentpanel.gfx", 28, "Update/rearmed-mods-contentpanel.gfx",
-     "c:\\rocksmith2014\\update\\rearmed-mods-contentpanel.gfx", NULL, 0, NULL, 0, 0},
+     "c:\\rocksmith2014\\update\\rearmed-mods-contentpanel.gfx", NULL, 0, NULL, 0, 0, MOVIE_DIR "/contentpanel.gfx"},
     {"gfxassets/views/ge_game.gfx", 26, "Update/rearmed-mods-ge_game.gfx",
-     "c:\\rocksmith2014\\update\\rearmed-mods-ge_game.gfx", NULL, 0, NULL, 0, 0},
+     "c:\\rocksmith2014\\update\\rearmed-mods-ge_game.gfx", NULL, 0, NULL, 0, 0, MOVIE_DIR "/ge_game.gfx"},
 };
+static int g_learn_play;  // win-x86: the path the game opens is changed (a mod can't call FrontEnd_OpenFile there)
 #define NMOVIES ((int)(sizeof g_movies / sizeof *g_movies))
 static pthread_once_t g_movies_once = PTHREAD_ONCE_INIT;
 
@@ -509,7 +523,7 @@ static void build_movies(void) {
   rsm_psarc *arc = hex && rsm_psarc_key_from_hex((const char *)(uintptr_t)RC_A(hex), key) ? rsm_psarc_open(ARCHIVE, key)
                                                                                           : NULL;
   if (!arc) dlog("%s can't be read: the game's own movies (six rows)", ARCHIVE);
-  mkdir("Update", 0755);
+  mkdir(g_learn_play ? "Update" : MOVIE_DIR, 0755);
   for (int m = 0; arc && m < NMOVIES; m++) {
     struct movie *mv = &g_movies[m];
     uint8_t *data = NULL, *out = NULL;
@@ -543,9 +557,21 @@ static int before_open(rc_ctx *c, void *user) {
   if (m < 0 || !g_movies[m].guest_path) return 0;
   pthread_once(&g_movies_once, build_movies);
   if (!g_movies[m].built) return 0;
-  rc_mod_set_arg(c, 1, (uint64_t)(uintptr_t)g_movies[m].guest_path);
+  if (g_learn_play) {
+    rc_mod_set_arg(c, 1, (uint64_t)(uintptr_t)g_movies[m].guest_path);
+    if (!__atomic_exchange_n(&g_movies[m].told, 1, __ATOMIC_RELAXED)) dlog("the game opens %s", g_movies[m].path);
+    return 0;
+  }
+  // The Mac: the game's FrontEnd_OpenFile opens the library's movie (a path relative to the game folder) and the game
+  // gets that stream, as mod_cache.c gives its archives; when it fails, the game opens its own
+  OV_GUEST(frontend_open_file, out, (uint64_t)(uintptr_t)g_movies[m].guest_path);
+  if (!rc_mod_ptr((const void *)(uintptr_t)out)) {
+    dlog("the game can't open %s: its own movie (six rows)", g_movies[m].path);
+    return 0;
+  }
   if (!__atomic_exchange_n(&g_movies[m].told, 1, __ATOMIC_RELAXED)) dlog("the game opens %s", g_movies[m].path);
-  return 0;
+  ov_ret_u64(c, out);
+  return 1;
 }
 
 static void movies_init(void) {
@@ -555,13 +581,11 @@ static void movies_init(void) {
   } r[] = {{RECIPE_COMMONLIB, sizeof RECIPE_COMMONLIB},
            {RECIPE_CONTENTPANEL, sizeof RECIPE_CONTENTPANEL},
            {RECIPE_GE_GAME, sizeof RECIPE_GE_GAME}};
-  if (strcmp(rc_target(), "win-x86")) {
-    dlog("the movies are served on Learn & Play only: six rows on %s", rc_target());
-    return;
-  }
+  g_learn_play = !strcmp(rc_target(), "win-x86");
   for (int m = 0; m < NMOVIES; m++) {
     g_movies[m].recipe = r[m].d;
     g_movies[m].recipe_len = r[m].n;
+    if (!g_learn_play) g_movies[m].path = g_movies[m].game_path = g_movies[m].mac_path;
     g_movies[m].guest_path = guest_text(g_movies[m].game_path);
   }
   if (rsm_hook("frontend_open_file", before_open, NULL)) dlog("no file hook: the game's own movies (six rows)");

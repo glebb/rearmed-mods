@@ -341,12 +341,15 @@ static void localize(char *out, size_t n, const char *text) {
 enum { KEY_7, KEY_8, KEY_CENTS, KEY_STRING0 };  // Rs7String6, Rs7String7, CentOffset, string0..string5
 static const char *g_keys[KEY_STRING0 + 6];
 
+// A guest pointer a game function returned, to its width (a 32-bit guest's upper half is not the pointer's)
+static uint64_t guest_ptr(uint64_t v) { return rc_guest_ptr_size == 8 ? v : (uint32_t)v; }
+
 static int json_number(void *obj, const char *key, double *out) {
   if (!obj || !key) return 0;
   uint64_t node = OV_VCALL((uint64_t)(uintptr_t)obj, (int)RC_SLOT(json_value_find), (uint64_t)(uintptr_t)key);
-  if (!(uint32_t)node) return 0;
+  if (!guest_ptr(node)) return 0;
   uint64_t num = OV_VCALL((uint64_t)(uintptr_t)RC_HOST(node), (int)RC_SLOT(json_value_number));
-  if (!(uint32_t)num) return 0;
+  if (!guest_ptr(num)) return 0;
   *out = RC_LD(double, (uint8_t *)RC_HOST(num) + RC_OFF(json_number_value));
   return 1;
 }
@@ -372,7 +375,7 @@ static int read_seven(void *tuning, int t[8], int *eight) {
 
 // ---- the calls under way, a thread's: from an entry (or TUT) to the return with the same stack pointer
 typedef struct {
-  uint32_t sp;     // 0: free
+  uint64_t sp;     // 0: free (the guest's stack pointer, or a frame pointer the target's table ties it with)
   uint8_t *raw;    // TJ's outputs; TU's output in disp
   uint8_t *disp;
   int cents, eight;
@@ -382,13 +385,13 @@ typedef struct {
 static __thread name_call t_tj[CALLS], t_tu[CALLS];
 static __thread unsigned t_tj_next, t_tu_next;
 
-static void forget(name_call *calls, uint32_t sp) {
+static void forget(name_call *calls, uint64_t sp) {
   for (int i = 0; i < CALLS; i++)
     if (calls[i].sp == sp) calls[i].sp = 0;
 }
 
 // A slot for a new call: a free one, else the oldest (a call that never returned, which the game's don't do)
-static name_call *open_call(name_call *calls, unsigned *next, uint32_t sp) {
+static name_call *open_call(name_call *calls, unsigned *next, uint64_t sp) {
   for (int i = 0; i < CALLS; i++)
     if (!calls[i].sp) {
       calls[i].sp = sp;
@@ -399,7 +402,7 @@ static name_call *open_call(name_call *calls, unsigned *next, uint32_t sp) {
   return c;
 }
 
-static int take(name_call *calls, uint32_t sp, name_call *out) {
+static int take(name_call *calls, uint64_t sp, name_call *out) {
   for (int i = 0; i < CALLS; i++)
     if (calls[i].sp == sp) {
       *out = calls[i];
@@ -427,7 +430,7 @@ static const char *suffix_of(int eight, char *buf, size_t n) {
 // outputs: they get their values back (eax is not read before the game sets it).
 static void on_tj(rc_mid_frame *f, void *user) {
   if (!seven_on || !g_cfg.on) return;
-  uint32_t sp = (uint32_t)SEVEN_GET(f, "sp");
+  uint64_t sp = SEVEN_GET(f, "sp");
   uint8_t *raw = PTR(f, "raw"), *disp = PTR(f, "display"), *tuning = PTR(f, "tuning");
   forget(t_tj, sp);
   if (!tuning || !raw || !disp) return;
@@ -448,7 +451,7 @@ static void on_tj(rc_mid_frame *f, void *user) {
 static void on_tj_ret(rc_mid_frame *f, void *user) {
   if (!seven_on || !g_cfg.on) return;
   name_call c;
-  if (!take(t_tj, (uint32_t)SEVEN_GET(f, "sp"), &c)) return;
+  if (!take(t_tj, SEVEN_GET(f, "sp"), &c)) return;
   char raw0[TEXT_MAX], disp0[TEXT_MAX], raw[TEXT_MAX], disp[TEXT_MAX], loc[TEXT_MAX], deco[24], s8[AFFIX_MAX + 2],
       offs[96];
   read_text(c.raw, raw0, sizeof raw0);
@@ -473,7 +476,7 @@ static void on_tj_ret(rc_mid_frame *f, void *user) {
 // eax, ecx and edx themselves.
 static void on_tut(rc_mid_frame *f, void *user) {
   if (!seven_on || !g_cfg.on) return;
-  uint32_t sp = (uint32_t)SEVEN_GET(f, "frame") + 4;  // the entry's stack pointer, the return's
+  uint64_t sp = SEVEN_GET(f, "frame") + (uint64_t)rc_guest_ptr_size;  // the entry's stack pointer, the return's
   uint8_t *tuning = PTR(f, "tuning"), *attributes = PTR(f, "attributes"), *out = PTR(f, "out");
   forget(t_tu, sp);
   int t[8] = {0}, eight = 0;
@@ -491,7 +494,7 @@ static void on_tu_ret(rc_mid_frame *f, void *user) {
   if (!seven_on || !g_cfg.on) return;
   name_call c;
   uint8_t *out = PTR(f, "out");
-  if (!take(t_tu, (uint32_t)SEVEN_GET(f, "sp"), &c) || !out || c.disp != out) return;
+  if (!take(t_tu, SEVEN_GET(f, "sp"), &c) || !out || c.disp != out) return;
   char stock[TEXT_MAX], text[TEXT_MAX], loc[TEXT_MAX], s8[AFFIX_MAX + 2], offs[96];
   read_text(out, stock, sizeof stock);
   if (!known_display(text, sizeof text, c.t, c.eight, &g_cfg, c.cents, 1)) {

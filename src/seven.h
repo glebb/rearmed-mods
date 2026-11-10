@@ -45,6 +45,15 @@ int seven_mid(const char *name, rc_mid_fn fn);
 #define SEVEN_GETF(f, name) rc_mid_get_f((f), SEVEN_VAL(f, name))
 #define SEVEN_SETF(f, name, v) rc_mid_set_f((f), SEVEN_VAL(f, name), (double)(v))
 
+// A game code address (RC_ADDR: unslid) as the game holds it: what a return address read from the stack, a function
+// pointer or a vtable entry is, and what one written into game memory must be. The Mac image is mapped slid
+// (RC_A); a 32-bit game's guest addresses are its image addresses, so there it is the address itself. 0 stays 0.
+static inline uint64_t seven_code(uint64_t addr) {
+  return addr ? RC_GUEST((const void *)(uintptr_t)RC_A(addr)) : 0;
+}
+// 1 when v, a code address read from the game, is the image address addr (0: never)
+static inline int seven_at(uint64_t v, uint64_t addr) { return addr && v == seven_code(addr); }
+
 // The parts: each registers its mid points; 0, or -1 (then the unit stays off)
 int seven_colours_init(void);
 int seven_grid_init(void);

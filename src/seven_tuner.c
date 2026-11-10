@@ -2,10 +2,11 @@
 // native 8-slot tuner session (github.com/SomeeName/rs7string, MIT, by SomeeName: src/features/tuner, its
 // tools/gen_tuner8s.py and gen_tuner8.py; docs/ARCHITECTURE.md sections 5 and 8).
 //
-// The session (UI_PlayerTuner) is 380h bytes and its per-string arrays have a tail of eight slots (seven_tuner.h). The
-// edits of seven_string are rs7string's copied methods made in place: the tuner's methods read the tail, run their
-// loops to the session's count and step through the session's order; the GuitarStrings readers among them read the
-// guitar's native count and strings (the strings part). rs7string ran its copies for a 7/8-string session only;
+// The session (UI_PlayerTuner) grows (380h bytes on Learn & Play, 458h on the Mac) and its per-string arrays have a
+// tail of eight slots (seven_tuner.h). The edits of seven_string are rs7string's copied methods made in place: the
+// tuner's methods read the tail, run their loops to the session's count and step through the session's order; the
+// GuitarStrings readers among them read the guitar's native count and strings (the strings part). rs7string ran its
+// copies for a 7/8-string session only;
 // here every session runs them, a 6-string guitar's and a bass's too, so every session gets its tail when it is made
 // and keeps it in step with the game's own arrays: count 4 or 6 as the guitar is built and the order 0..n-1, which
 // is what the game's loops and steps do; 7 or 8 with the low strings first for a 7/8-string target. The count is the
@@ -129,12 +130,14 @@ int seven_tuner_seven_for(const void *offsets, int *t6) {
 }
 
 // A number member of a JSON object, through the game's JSON vtable (as Play_Tuning_ReadStringOffsets reads the six)
+// (a returned pointer is the guest's width: 32 bits on Learn & Play, whose upper half is not the return value)
 static int json_number(void *obj, const char *key, double *out) {
+  const uint64_t width = rc_guest_ptr_size == 8 ? ~(uint64_t)0 : 0xffffffffu;
   if (!obj) return 0;
   uint64_t node = OV_VCALL((uint64_t)(uintptr_t)obj, (int)RC_SLOT(json_value_find), (uint64_t)(uintptr_t)key);
-  if (!(uint32_t)node) return 0;
+  if (!(node &= width)) return 0;
   uint64_t num = OV_VCALL((uint64_t)(uintptr_t)RC_HOST(node), (int)RC_SLOT(json_value_number));
-  if (!(uint32_t)num) return 0;
+  if (!(num &= width)) return 0;
   *out = RC_LD(double, FIELD(RC_HOST(num), json_number_value));
   return 1;
 }
@@ -187,6 +190,27 @@ static void on_tu8init(rc_mid_frame *f, void *user) {
   memset(FIELD(s, seven_tuner_tail), 0, (size_t)(RC_OFF(seven_tuner_size) - RC_OFF(seven_tuner_tail)));
   for (int k = 0; k < 8; k++) RC_ST(int32_t, FIELD(s, seven_tuner_last_pick) + 4 * k, -2);
   put_count(s, 6);
+}
+
+// TU8DT (the Mac's): the destructor releases the game's six pick and letter slots, unrolled, so there is no count to
+// widen; the tail's (where every pick and letter of the session lives, the game's slots stay empty) are released here
+// as the game releases each (its vtable's Release) and cleared. Learn & Play widens its loops instead (no call).
+static void on_tu8dt(rc_mid_frame *f, void *user) {
+  if (!seven_on) return;
+  uint8_t *s = PTR(f, "session");
+  if (!s) return;
+  const size_t w = (size_t)rc_guest_ptr_size;
+  uint8_t *slots[2] = {FIELD(s, seven_tuner_picks), FIELD(s, seven_tuner_letters)};
+  const int n[2] = {8, 16};  // a pick per string, a letter and a sharp per string
+  for (int a = 0; a < 2; a++)
+    for (int k = 0; k < n[a]; k++) {
+      uint8_t *at = slots[a] + (size_t)k * w;
+      void *obj = rc_mod_ptr(at);
+      if (!obj) continue;
+      if (w == 8) RC_ST(uint64_t, at, 0);
+      else RC_ST(uint32_t, at, 0);
+      OV_VCALL((uint64_t)(uintptr_t)obj, (int)RC_SLOT(tuner_entity_release));
+    }
 }
 
 // TS8RS: the session's reset has put the standard tuning in the game's targets and zeroed the peaks: the tail too
@@ -364,13 +388,22 @@ static void on_ts8sel(rc_mid_frame *f, void *user) {
   if (!s || count_of(s) < 7) return;
   int low = lowest_open(s), str = (int)(uint32_t)SEVEN_GET(f, "string");
   uint64_t eax = SEVEN_GET(f, "eax"), ecx = SEVEN_GET(f, "ecx"), edx = SEVEN_GET(f, "edx");
-  uint8_t *det = RC_HOST(OV_GUEST(play_get_detection, RC_LD(uint32_t, FIELD(s, player_tuner_input))));
+  uint32_t input = RC_LD(uint32_t, FIELD(s, player_tuner_input));
+  // The detection of the session's input: Learn & Play has a function for it (play_get_detection); the Mac game has
+  // it inlined everywhere, so there the input's Play_DetectInput is asked for, which is the detector too
+  uint8_t *holder = NULL, *det;
+  if (RC_ADDR(play_get_detection)) {
+    det = RC_HOST(OV_GUEST(play_get_detection, input));
+  } else {
+    holder = RC_HOST(OV_GUEST(play_detect_input, input));
+    det = holder ? rc_mod_ptr(FIELD(holder, detector_detection)) : NULL;
+  }
   SEVEN_SET(f, "eax", eax);
   SEVEN_SET(f, "ecx", ecx);
   SEVEN_SET(f, "edx", edx);
   if (str >= 0 && str < 8) tlog("session %p selects string %d, target MIDI %d", (void *)s, str, open_of(s, str));
   if (!det) return;
-  uint8_t *detector = rc_mod_ptr(FIELD(det, detection_detector));
+  uint8_t *detector = holder ? holder : rc_mod_ptr(FIELD(det, detection_detector));
   uint8_t *matcher = detector ? rc_mod_ptr(FIELD(detector, detector_matcher)) : NULL;
   if (!matcher || rc_mod_ptr(FIELD(matcher, matcher_detection)) != det) return;  // a detection with its matcher
   if (RC_LD(int32_t, FIELD(det, detection_instrument)) == 2) return;             // not a bass's
@@ -431,6 +464,7 @@ int seven_tuner_init(void) {
     rc_mid_fn fn;
   } points[] = {
       {"seven_tu8init", on_tu8init},       {"seven_ts8rs", on_ts8rs},
+      {"seven_tu8dt", on_tu8dt},
       {"seven_ts8bind", on_ts8bind},       {"seven_ts", on_ts},
       {"seven_tk", on_tk},                 {"seven_ts8fin_letter", on_ts8fin_letter},
       {"seven_ts8f1", on_ts8f1},           {"seven_ts8f2", on_ts8f2},

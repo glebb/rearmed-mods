@@ -1,6 +1,7 @@
 // Seven-String Guitar (seven.h): what the tuner part shares with the others.
 //
-// Every UI_PlayerTuner (the tuner's session) is 380h bytes with the edits of seven_string, where the game makes 278h:
+// Every UI_PlayerTuner (the tuner's session) is grown by the edits of seven_string (278h -> 380h on Learn & Play,
+// 308h -> 458h on the Mac):
 // its per-string arrays have a tail of eight slots at the end (offsets.map, seven_tuner_*), which the tuner's methods
 // read instead of the game's six, and next to them the session's string count (seven_tuner_count: 4 or 6 as the
 // guitar is built, 7 or 8 for a 7/8-string target), the order the tuner goes through them (seven_tuner_order: 0..n-1,
