@@ -13,7 +13,7 @@
 // as RSMods reaches them, from the UI manager (ui_note_stats_0 to _3: D3DOverlay.cpp's ptr_noteDataOffsets), and
 // the rest is the same: their track and its times. Score Attack counts in another object there (RSMods'
 // ScoreAttackNoteData), reached by RSMods' path with another last step (ui_score_attack_stats: score_attack_hits,
-// score_attack_misses; in RS Re-ARMed after 1.13.0; seen in a run). Only the counts are read from it: the grey-note time isn't
+// score_attack_misses; from RS Re-ARMed 1.14.0; seen in a run). Only the counts are read from it: the grey-note time isn't
 // found in Score Attack in Learn & Play.
 //
 // The path starts at the current menu, so it is followed only in these menus, and each pointer is read with a

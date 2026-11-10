@@ -119,7 +119,7 @@ enum Catalog {
         ModToggle(label: "Guitar Speak", key: "GuitarSpeak",
                   help: "Play notes on your guitar to press keys in the game's menus."),
         ModToggle(label: "Show Current Accuracy", key: "DisplayCurrentAccuracy",
-                  help: "In a song, the notes you hit out of the notes played so far, under the song timer. Needs RS Re-ARMed 1.11.0; in Learn & Play's Score Attack a later one than 1.13.0."),
+                  help: "In a song, the notes you hit out of the notes played so far, under the song timer. Needs RS Re-ARMed 1.11.0; in Learn & Play's Score Attack 1.14.0."),
         ModToggle(label: "Custom Song List Titles", key: "CustomSongListTitles",
                   help: "Your own names for the song lists. Needs RS Re-ARMed 1.11.0."),
         ModToggle(label: "More Song Lists", key: "MoreSongLists",
