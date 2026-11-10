@@ -2,7 +2,7 @@ import Foundation
 
 // What the app shows: the mods rearmed-mods.dylib (../src) has, with the labels of the Windows
 // RSMods GUI (GUI/UI.Designer.cs). When a mod is ported, move it from `notYetOnMac` to `mods`, add its keys to
-// `defaults`, and its settings (if any) to ModSettingsView.
+// `defaults`, its key to one of `categories`, and its settings (if any) to ModSettings.
 
 enum Section {
     static let toggles = "Toggle Switches"
@@ -28,6 +28,16 @@ struct ModToggle: Identifiable {
     var id: String { key }
 }
 
+// A page of the sidebar: the mods that change one part of the game
+struct ModCategory: Identifiable {
+    let name: String
+    let icon: String  // an SF Symbol
+    let keys: [String]  // of `Catalog.mods`, in the page's order
+    var footnote: String? = nil
+    var id: String { name }
+    var mods: [ModToggle] { keys.compactMap { key in Catalog.mods.first { $0.key == key } } }
+}
+
 struct Keybind: Identifiable {
     let label: String
     let section: String
@@ -37,7 +47,7 @@ struct Keybind: Identifiable {
 }
 
 enum Catalog {
-    // In the Windows GUI's order of its "Enabled Mods" box
+    // In the Windows GUI's order of its "Enabled Mods" box; `categories` puts them on the app's pages
     static let mods: [ModToggle] = [
         ModToggle(label: "Toggle Loft", key: "ToggleLoft",
                   help: "The venue behind the note highway goes black, e.g. to key it out in OBS."),
@@ -80,11 +90,11 @@ enum Catalog {
         ModToggle(label: "Remove Lane Markers", key: "LaneMarkers",
                   help: "Hides the lane lines on the note highway."),
         ModToggle(label: "Custom String Colors", key: "CustomStringColors",
-                  help: "The strings, and the notes unless they have their own colors, in the colors of the Colors tab."),
+                  help: "The strings, and the notes unless they have their own colors, in your own colors."),
         ModToggle(label: "Separate Note Colors", key: "SeparateNoteColors",
-                  help: "The notes get their own colors, from the Colors tab."),
+                  help: "The notes get their own colors."),
         ModToggle(label: "Custom Highway Colors", key: "CustomHighwayColors",
-                  help: "The lanes, gutters and fret numbers in the colors of the Colors tab.",
+                  help: "The lanes, gutters and fret numbers in your own colors.",
                   section: Section.highwayColors),
         ModToggle(label: "Rainbow Strings", key: "RainbowStrings",
                   help: "The rainbow strings key cycles the strings through the colors."),
@@ -105,19 +115,19 @@ enum Catalog {
         ModToggle(label: "Start On Secondary Monitor", key: "SecondaryMonitor",
                   help: "Moves the game's window to another screen when the game starts."),
         ModToggle(label: "Show Current Note", key: "ShowCurrentNoteOnScreen",
-                  help: "Shows the note you are playing on screen."),
+                  help: "The note you play, as the game hears it: in a song left of the middle, elsewhere at the top. Needs RS Re-ARMed 1.11.0."),
         ModToggle(label: "Guitar Speak", key: "GuitarSpeak",
                   help: "Play notes on your guitar to press keys in the game's menus."),
         ModToggle(label: "Show Current Accuracy", key: "DisplayCurrentAccuracy",
                   help: "In a song, the notes you hit out of the notes played so far, under the song timer. Needs RS Re-ARMed 1.11.0; in Learn & Play not in Score Attack."),
         ModToggle(label: "Custom Song List Titles", key: "CustomSongListTitles",
-                  help: "Your own names for the song lists, set in the Song Lists tab. Needs RS Re-ARMed 1.11.0."),
+                  help: "Your own names for the song lists. Needs RS Re-ARMed 1.11.0."),
         ModToggle(label: "More Song Lists", key: "MoreSongLists",
-                  help: "Your profiles get up to 20 song lists (the Song Lists tab). When the game starts."),
+                  help: "Your profiles get up to 20 song lists. When the game starts."),
         ModToggle(label: "Custom Tunings", key: "CustomTunings",
-                  help: "The game names your tunings (the Tunings tab) where it showed CUSTOM TUNING. From the game's next start."),
+                  help: "The game names your tunings where it showed CUSTOM TUNING. From the game's next start."),
         ModToggle(label: "Change Default Tones", key: "DefaultTones",
-                  help: "Tones saved in your profiles become the game's default tones (the Tones tab). From the game's next start."),
+                  help: "Tones saved in your profiles become the game's default tones. From the game's next start."),
         ModToggle(label: "Backup Profile", key: "BackupProfile",
                   help: "Backs up your profiles when this app opens, and every 10 minutes while the game runs (when they changed).",
                   section: Section.guiSettings),
@@ -130,12 +140,44 @@ enum Catalog {
         ModToggle(label: "Song Stems", key: "SongStems",
                   help: "Takes the guitar or the bass out of the song you play, at a level of your own: a line of the volume mixer, with its own key. rs-stems separates each song on the Neural Engine. Needs RS Re-ARMed 1.12.0."),
         ModToggle(label: "Seven-String Guitar", key: "SevenString",
-                  help: "A low B string for 7-string charts (DotCharter's), after rs7string: its settings are in the 7-String tab. From the game's next start.",
+                  help: "A low B string for 7-string charts (DotCharter's), after rs7string. From the game's next start.",
                   note: "Learn & Play only, with the RS Re-ARMed after 1.11.0"),
         ModToggle(label: "Plain Packages", key: "PlainPackages",
                   help: "Unencrypted song archives, as DotCharter writes its 7-string charts, load as the encrypted ones do. From the game's next start.",
                   note: "Learn & Play only, with the RS Re-ARMed after 1.11.0"),
     ]
+
+    // The sidebar's pages. Every mod is on exactly one.
+    static let categories: [ModCategory] = [
+        ModCategory(name: "Screen", icon: "tv", keys: [
+            "ToggleLoft", "GreenScreenWall", "Skyline", "Lyrics", "ShowSongTimer", "DisplayCurrentAccuracy",
+            "ShowCurrentNoteOnScreen", "Sunlight", "SecondaryMonitor", "ScreenShotScores",
+        ]),
+        ModCategory(name: "Highway & Neck", icon: "guitars", keys: [
+            "CameraDirector", "Headstock", "Fretless", "Inlays", "LaneMarkers", "RemoveFingerprints", "ExtendedRange",
+        ]),
+        ModCategory(name: "Colors", icon: "paintpalette", keys: [
+            "CustomStringColors", "SeparateNoteColors", "CustomHighwayColors", "RainbowStrings", "RainbowNotes",
+        ], footnote: "The notes follow the strings unless Separate Note Colors is on. Rainbow Strings and Rainbow Notes turn on with their keys. These need RS Re-ARMed 1.9.0; the note and highway colors need its Metal renderer too."),
+        ModCategory(name: "Practice", icon: "repeat", keys: [
+            "AllowRewind", "AllowLooping", "RRSpeedAboveOneHundred", "LinearRiffRepeater", "PreventMidSongPause",
+        ]),
+        ModCategory(name: "Sound & Tones", icon: "speaker.wave.2", keys: [
+            "VolumeControl", "OverrideInputVolumeEnabled", "AllowAudioInBackground", "BypassTwoRTCMessageBox",
+            "FixBrokenTones", "DefaultTones", "ToneHost", "SongStems",
+        ]),
+        ModCategory(name: "Songs & Lists", icon: "music.note.list", keys: [
+            "ForceReEnumeration", "SongPreviews", "UseCustomNSPTimer", "MoreSongLists", "CustomSongListTitles",
+            "CustomTunings",
+        ]),
+        ModCategory(name: "Profiles & Menus", icon: "person.crop.circle", keys: [
+            "ForceProfileLoad", "BackupProfile", "GuitarSpeak",
+        ]),
+        ModCategory(name: "Seven-String", icon: "7.circle", keys: ["SevenString", "PlainPackages"]),
+    ]
+
+    // The keys of a mod, for its row
+    static func keybinds(of mod: String) -> [Keybind] { (modKeybinds + audioKeybinds).filter { $0.mod == mod } }
 
     // Mods of the Windows GUI that the Mac library doesn't have yet
     static let notYetOnMac = [
@@ -200,7 +242,7 @@ enum Catalog {
         Keybind(label: "Mute Player 2", section: Section.audioKeybinds, key: "MutePlayer2Key", mod: nil),
     ]
 
-    // The colors of the game's strings, for rows of the Colors tab with no color set (DEFAULT_N, DEFAULT_CB in
+    // The colors of the game's strings, for rows of the Colors page with no color set (DEFAULT_N, DEFAULT_CB in
     // mod_colors.c), low E first
     static let stringNames = ["Low E", "A", "D", "G", "B", "High E"]
     static let defaultColors = ["FF4F5A", "E2C102", "1DACF9", "FF9216", "3FCC0C", "C825ED"]

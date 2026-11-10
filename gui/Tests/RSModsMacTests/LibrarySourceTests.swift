@@ -31,6 +31,15 @@ final class LibrarySourceTests: XCTestCase {
         XCTAssertEqual(count, library.count, "a default in the app that the library lacks")
     }
 
+    func testEveryModIsOnOnePage() {
+        let paged = Catalog.categories.flatMap(\.keys)
+        XCTAssertEqual(paged.sorted(), Catalog.mods.map(\.key).sorted())
+    }
+
+    func testEveryModWithSettingsIsAMod() {
+        XCTAssertTrue(ModSettings.mods.isSubset(of: Set(Catalog.mods.map(\.key))))
+    }
+
     func testEveryKeybindHasADefault() {
         for kb in Catalog.modKeybinds + Catalog.audioKeybinds {
             XCTAssertNotNil(Catalog.defaults[kb.section]?[kb.key], kb.key)

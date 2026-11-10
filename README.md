@@ -12,7 +12,7 @@ many of its features to [RS Re-ARMed](https://github.com/bbelgg/rs-rearmed) on m
 All credit for the ideas, the features and their design goes to the RSMods team. This is an independent port:
 not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksmith is a trademark of Ubisoft.
 
-![Re-ARMed Mods.app, with the mods on the left and each mod's settings on the right](docs/images/app.png)
+![Re-ARMed Mods.app, with the mods' pages in the sidebar and a mod's settings and keys under its switch](docs/images/app.png)
 
 ## Table of Contents
 
@@ -90,8 +90,9 @@ Windows, so an `RSMods.ini` from Windows works too. Seven-String Guitar, which R
 which RSMods keeps in its app, have `[Custom Tunings]`, `[Default Tones]` and `NumberOfSongLists` here.
 The mods re-read the file while the game runs: a change takes effect within a second, no restart.
 
-**Re-ARMed Mods.app** (in `gui/`) edits it like the Windows RSMods GUI: an **Enable / Disable Mods** tab with each mod's
-settings (the tunings and the tones among them), a **Colors** tab and a **Keybindings** tab (click a key field, press a key). The switch at the bottom left goes
+**Re-ARMed Mods.app** (in `gui/`) edits it, with the labels of the Windows RSMods GUI: the mods are on the sidebar's pages by what
+they change (**Screen**, **Highway & Neck**, **Colors**, **Practice**, **Sound & Tones** and so on), each with a switch, and a mod that is on shows its
+settings and its keys under it (click a key field, press a key); **Keybindings** has every key, and the search field finds a mod by name. The switch at the bottom left goes
 between the two editions' settings. Or edit the file in any text editor.
 
 Keys are letters, digits, `F1`-`F20` or Windows `VK_` names (as RSMods writes them), mapped to the Mac keys.
@@ -273,7 +274,7 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
 * **Extended Range Support**
   * In a song tuned low enough for a 7-string guitar or a 5-string bass, and in its tuner, the strings and notes take
     extended range colors: ZZ's (`CustomStringColors = 1`: the game's colors a string down, a green for the low string),
-    your colorblind colors (`2`, the Colors tab), or the game's colorblind colors (`0`). The key turns it on or off for the
+    your colorblind colors (`2`, the Colors page), or the game's colorblind colors (`0`). The key turns it on or off for the
     song.
   * `ExtendedRange`, `ExtendedRangeDropTuning`, `ExtendedRangeFixBassTuning`, `[Mod Settings] ExtendedRangeModeAt` (-5:
     a lowest string at B or lower), `[Keybinds] ToggleExtendedRangeKey` (E)
@@ -299,7 +300,7 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     arrows, Escape, the brackets, tilde, slash, Option. The close note stops it, and starts it again. Off in songs,
     lessons and calibration, and in the tuners unless `GuitarSpeakWhileTuning` is on.
   * `GuitarSpeak`, `[Guitar Speak]` `GuitarSpeakDeleteWhen` to `GuitarSpeakAltWhen`, `GuitarSpeakCloseWhen` (MIDI notes;
-    0 none; E3, the low E's 12th fret, is 52), `GuitarSpeakWhileTuning` (off). The app's Guitar Speak tab sets them.
+    0 none; E3, the low E's 12th fret, is 52), `GuitarSpeakWhileTuning` (off). The app's Profiles & Menus page sets them.
   * The notes are the game's, as for Show Current Note, and a new note is what RSMods counts as one: another note, or a
     note after the last one ended. Needs RS Re-ARMed 1.11.0. Not yet checked in the game.
 
@@ -317,7 +318,7 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
 * **Custom Song List Titles**
   * Your own names for the song lists in the game's menus, such as Learn a Song's song list filter and Non-Stop Play's
     choice of list. A list without one keeps the game's name (SONG LIST 1 and so on); All Songs and Favorites keep theirs.
-  * `CustomSongListTitles`, `[SongListTitles]` `SongListTitle_1` to `SongListTitle_20` (empty). The app's Song Lists tab
+  * `CustomSongListTitles`, `[SongListTitles]` `SongListTitle_1` to `SongListTitle_20` (empty). The app's Songs & Lists page
     sets them.
   * As RSMods, the title takes the place of the name the game builds for a list, the localized "SONG LIST" and its number.
     RSMods changes that function's code; here a hook point on it (RS Re-ARMed 1.11.0) puts the title in after it. Lists 7
@@ -333,7 +334,7 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     profile's lists (Learn a Song's song list filter, the song list editor, adding a song to a list: RSMods' notes, on
     Windows), and Custom Song List Titles names them. Non-Stop Play still offers the first six
     ([below](#not-on-macos-yet)).
-  * `MoreSongLists`, `[Mod Settings] NumberOfSongLists` (6 to 20; 6). The app's Song Lists tab sets the number.
+  * `MoreSongLists`, `[Mod Settings] NumberOfSongLists` (6 to 20; 6). The app's Songs & Lists page sets the number.
   * As RSMods' app (Profile Edits, Add New SongList), an empty list is added after the last in the profile's
     `SongListsRoot`; the rest of the game sizes itself from that list. When the game starts, on its first frame
     and before it reads a profile, the library gives every profile in the save folder in use that many lists, and
@@ -352,7 +353,7 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     the tuner, not CUSTOM TUNING.
   * `CustomTunings`, `[Custom Tunings]`: one line a tuning, its name = the six strings' semitones from E standard, low
     string first (`B Standard = -5 -5 -5 -5 -5 -5`). A new `RSMods.ini` has nine common ones (F Standard, C# Drop B,
-    C Drop Bb, B Standard, B Drop A, Bb Standard, A Standard, Double Drop D, Open C); the app's Tunings tab edits them,
+    C Drop Bb, B Standard, B Drop A, Bb Standard, A Standard, Double Drop D, Open C); the app's Songs & Lists page edits them,
     and Add Common Tunings adds those to a list. A tuning with the same strings as one of the game's takes its place.
   * As RSMods, it adds the tunings to the game's `manifests/tuning.database.json`, and each name to the localization
     (`localization/maingame.csv`) under an id the file hasn't from 37500 on. RSMods' app writes them into `cache.psarc`;
@@ -369,7 +370,7 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     Guitarcade game's, become tones you saved in your profiles.
   * `DefaultTones`, `[Default Tones]` `Rhythm`, `Lead`, `Bass`, and the Guitarcade games' by their tones' names
     (`TempleOfBends` to `GoneWailin`): a tone's name as you saved it (the tone designer's Save); empty keeps the
-    game's. The app's Tones tab lists your saved tones: the library writes their names to `rearmed-mods/tones.txt` in
+    game's. The app's Sound & Tones page lists your saved tones: the library writes their names to `rearmed-mods/tones.txt` in
     the game folder when the game starts.
   * As RSMods, the game's tone (`manifests/tonemanager.database.json`) takes the saved tone's gear; the emulated bass's
     is left alone, as in RSMods. From the game's next start. The library logs the tones it set; not yet checked by ear.
@@ -438,7 +439,7 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     grey), `ExtendedRangeColor` (on: with Extended Range Support on, its low string color), `ChordWideMisses`
     (2; 0 to 2: how many notes a chord of 7 or 8 may miss and still count), `TuningNames` (on), `TuningNamePrefix`
     (empty), `TuningNameSuffix` (7Str), `Headstock7` (on), `Headstock7Wood` (0.6; 0.05 to 1, its wood's brightness).
-    The app's 7-String tab sets them. The color changes while the game runs; the switch and the rest from the next
+    The app's Seven-String page sets them. The color changes while the game runs; the switch and the rest from the next
     start.
   * A port of [rs7string](https://github.com/SomeeName/rs7string) by SomeeName, which patches the running Windows game.
     Here the same changes are built into RS Re-ARMed as edits and mid points, and the library switches them on when the
