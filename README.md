@@ -40,7 +40,7 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   game's note counts (in Learn & Play: Learn a Song and its pause menu, not Score Attack), and so do Prevent Buggy
   Tones and Custom Song List Titles, for its hook points on the tone change and a song list's name.
 - Seven-String Guitar and Plain Packages need RS Re-ARMed's edits and mid points: in Learn & Play from 1.12.0, on the
-  Mac the RS Re-ARMed after 1.12.0 (not released yet); with an older one they stay off.
+  Mac from 1.13.0; with an older one they stay off.
 - Song Stems needs RS Re-ARMed 1.12.0, for its hook point on the audio the game decodes, and macOS 15 or later for
   its helper; without them it stays off and the songs play as they are.
 - macOS 13 or later for the app.
@@ -443,7 +443,7 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     start.
   * A port of [rs7string](https://github.com/SomeeName/rs7string) by SomeeName, which patches the running Windows game.
     Here the same changes are built into RS Re-ARMed as edits and mid points, and the library switches them on when the
-    game starts: in Learn & Play from RS Re-ARMed 1.12.0, on the Mac from the release after it. The chord diagrams and the headstock are built at
+    game starts: in Learn & Play from RS Re-ARMed 1.12.0, on the Mac from 1.13.0. The chord diagrams and the headstock are built at
     each start from your own game files by rs7string's recipes and programs (`data/rs7string`, checked against their
     hashes); the three rebuilt menu files go in the game folder's `Update` folder (`rearmed-mods-<name>.gfx`).
   * Checked in Learn & Play with DotCharter's Ave Mujica chart: seven strings, chord frames over the low B, and
@@ -451,9 +451,9 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     a guitar (2026-11-09): it works, with the song's chord diagrams and the seven-peg headstock shown.
   * On the Mac: seen in scripted runs (2026-11-10) with the same chart as a Mac archive, its tuner and pause-menu pages,
     a six-string song and the chart again in one run, and a bass arrangement, with no fault: seven strings, the low B's
-    lane and notes, chord frames over the low B, the seven-peg headstock, B STANDARD 7STR in the tuner. Not yet played
-    with a guitar, so the low B's detection and scoring, the tuner's reading of it and a seven-row chord diagram are
-    unchecked there. A chart published for Windows (`_p.psarc`) has to be converted to a Mac archive (`_m.psarc`:
+    lane and notes, chord frames over the low B, the seven-peg headstock, B STANDARD 7STR in the tuner. Played with a
+    guitar the same day: it works; the tuner's reading of the low B and a seven-row chord diagram were not checked
+    one by one. A chart published for Windows (`_p.psarc`) has to be converted to a Mac archive (`_m.psarc`:
     the song files' and audio's folders, and the song files encrypted with the Mac's key) before the Mac game lists it;
     RS Re-ARMed and these mods have no converter for that.
   * Different: all or nothing, as in rs7string: a part that can't start leaves the guitar with six strings, and the log
@@ -466,8 +466,7 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     whose table of contents isn't encrypted, and song files that are compressed but not encrypted. Other archives and
     song files load as before.
   * `PlainPackages`, from the next start
-  * After rs7string's plain archive loading: in Learn & Play from RS Re-ARMed 1.12.0, on the Mac from the release after
-    it. A plain song file has no signature: RS Re-ARMed skips the check (unless `RS_MODS_BYPASS=0`). Checked in Learn &
+  * After rs7string's plain archive loading: in Learn & Play from RS Re-ARMed 1.12.0, on the Mac from 1.13.0. A plain song file has no signature: RS Re-ARMed skips the check (unless `RS_MODS_BYPASS=0`). Checked in Learn &
     Play with an unencrypted copy of the Ave Mujica chart, which plays as the encrypted one does. On the Mac it is on in
     the runs above, which loaded an encrypted Mac copy of the chart; an unencrypted Mac archive hasn't been run yet. The
     Mac game reads Mac archives only, so a Windows one has to be converted first (see Seven-String Guitar).
