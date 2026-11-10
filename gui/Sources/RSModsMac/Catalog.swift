@@ -141,10 +141,10 @@ enum Catalog {
                   help: "Takes the guitar or the bass out of the song you play, at a level of your own: a line of the volume mixer, with its own key. rs-stems separates each song on the Neural Engine. Needs RS Re-ARMed 1.12.0."),
         ModToggle(label: "Seven-String Guitar", key: "SevenString",
                   help: "A low B string for 7-string charts (DotCharter's), after rs7string. From the game's next start.",
-                  note: "Learn & Play only, with the RS Re-ARMed after 1.11.0"),
+                  note: "Needs RS Re-ARMed 1.12.0 in Learn & Play, 1.13.0 on the Mac"),
         ModToggle(label: "Plain Packages", key: "PlainPackages",
                   help: "Unencrypted song archives, as DotCharter writes its 7-string charts, load as the encrypted ones do. From the game's next start.",
-                  note: "Learn & Play only, with the RS Re-ARMed after 1.11.0"),
+                  note: "Needs RS Re-ARMed 1.12.0 in Learn & Play, 1.13.0 on the Mac"),
     ]
 
     // The sidebar's pages. Every mod is on exactly one.
