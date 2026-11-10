@@ -12,7 +12,9 @@
 // In Learn & Play the menu's path reached the counts in two runs and not in a third, so there the counts are reached
 // as RSMods reaches them, from the UI manager (ui_note_stats_0 to _3: D3DOverlay.cpp's ptr_noteDataOffsets), and
 // the rest is the same: their track and its times. Score Attack counts in another object there (RSMods'
-// ScoreAttackNoteData), which that path doesn't reach, so the mods find nothing in Score Attack in Learn & Play.
+// ScoreAttackNoteData), reached by RSMods' path with another last step (ui_score_attack_stats: score_attack_hits,
+// score_attack_misses; in RS Re-ARMed after 1.13.0; seen in a run). Only the counts are read from it: the grey-note time isn't
+// found in Score Attack in Learn & Play.
 //
 // The path starts at the current menu, so it is followed only in these menus, and each pointer is read with a
 // check that the memory is there; what it ends at must look like counts and a track.
@@ -124,7 +126,39 @@ static int find(const char **stats, const char **track) {
   return 1;
 }
 
+// Learn & Play's Score Attack counts, or 0: in Score Attack's menus where the counts' path is RSMods'
+static const char *const SA_MENUS[] = {"ScoreAttack_Game", "ScoreAttack_Pause", NULL};
+
+static int score_attack_counts(int *hits, int *misses) {
+  if (!rsm_menu_in(SA_MENUS) || !known() || g_path != 2) return 0;
+  if (!RC_HAS_OFF(ui_score_attack_stats) || !RC_HAS_OFF(score_attack_hits) || !RC_HAS_OFF(score_attack_misses))
+    return 0;
+  const int64_t offs[4] = {RC_OFF(ui_note_stats_0), RC_OFF(ui_note_stats_1), RC_OFF(ui_note_stats_2),
+                           RC_OFF(ui_score_attack_stats)};
+  const char *p = safe_ptr((const char *)(uintptr_t)RC_A(RC_ADDR(ui_manager)));
+  int step = 0;
+  for (; step < 4 && p; step++) p = safe_ptr(p + offs[step]);
+  if (!p) {
+    not_found("a step of Score Attack's path is empty", NULL, step, 0);
+    return 0;
+  }
+  if (!readable(p + RC_OFF(score_attack_hits), 4) || !readable(p + RC_OFF(score_attack_misses), 4)) {
+    not_found("Score Attack's counts aren't readable", p, 0, 0);
+    return 0;
+  }
+  int32_t h = RC_LD(int32_t, p + RC_OFF(score_attack_hits)), m = RC_LD(int32_t, p + RC_OFF(score_attack_misses));
+  if (h < 0 || h > MAX_COUNT || m < 0 || m > MAX_COUNT) {
+    not_found("not Score Attack's counts", p, h, m);
+    return 0;
+  }
+  static int logged;
+  if (!logged) logged = 1, rsm_log("note counts: Score Attack's at %p (%d hit, %d missed)", (const void *)p, h, m);
+  *hits = h, *misses = m;
+  return 1;
+}
+
 int rsm_note_counts(int *hits, int *misses) {
+  if (score_attack_counts(hits, misses)) return 1;
   const char *s;
   if (!find(&s, NULL)) return 0;
   *hits = RC_LD(int32_t, s + RC_OFF(note_stats_hits));

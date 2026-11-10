@@ -95,7 +95,8 @@ features for the Mac build, keeping RSMods' settings, names and behaviour:
   scanning the game's memory while a song played and paused, and checked in later runs. In Learn & Play, where such a
   path held in two runs and not in a third, the counts are reached as RSMods reaches them, from the UI manager
   (`ui_note_stats_0` to `_3`), and their track is the one with RSMods' grey-note time. Its Score Attack counts in
-  another object, which that path doesn't reach. The library follows it only in a
+  another object, reached by RSMods' path with another last step (`ui_score_attack_stats`), and only the counts are
+  read from it. The library follows it only in a
   song's own menus, reading each pointer with a check that the memory is there. For Show Current Accuracy and the
   grey-note reset of looping and rewinding.
 - **A hook point where RSMods changes code.** RSMods' Custom Song List Titles changes three places in the function

@@ -37,7 +37,8 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   rest works. Sunlight needs the Metal renderer too.
 - Show Current Note and Guitar Speak need RS Re-ARMed 1.11.0, which names the note the game hears; with an older one
   those two stay off. Show Current Accuracy, and the grey-note reset of looping and rewinding, need it too, for the
-  game's note counts (in Learn & Play: Learn a Song and its pause menu, not Score Attack), and so do Prevent Buggy
+  game's note counts (in Learn & Play's Score Attack the accuracy needs a later RS Re-ARMed than 1.13.0, and the
+  grey-note reset isn't there), and so do Prevent Buggy
   Tones and Custom Song List Titles, for its hook points on the tone change and a song list's name.
 - Seven-String Guitar and Plain Packages need RS Re-ARMed's edits and mid points: in Learn & Play from 1.12.0, on the
   Mac from 1.13.0; with an older one they stay off.
@@ -311,7 +312,8 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * The counts are the game's own, the ones RSMods reads on Windows; on the Mac one set serves Learn a Song and Score
     Attack. RS Re-ARMed 1.11.0 names them. Seen in Learn a Song on the Mac; the counts were read in Learn a Song and
     Score Attack, playing and paused. In Learn & Play they are reached by RSMods' own path, in Learn a Song, playing
-    and paused; its Score Attack counts in another object, which that path doesn't reach, so there nothing shows.
+    and paused; its Score Attack counts in another object, read by RSMods' path to it, which a later RS Re-ARMed than
+    1.13.0 names (seen in Score Attack, 2026-11-10); with 1.13.0 or older nothing shows there.
   * Different: RSMods shows 0.00% in the song's other menus (Riff Repeater, the tuner, the mixer); here nothing shows
     there.
 
