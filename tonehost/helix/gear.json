@@ -29,6 +29,7 @@
   },
   "amp_set": {"PreampVintagePre": {"MicLine": true}},
   "fallback": {"clean": "AmpUSDeluxeNrm", "driven": "AmpBrit2204"},
+  "trim": [{"db": 1.5, "with": ["Pedal_AcousticEmulator"]}],
   "high_gain": ["AmpCaliRectifire", "AmpDasBenzinMega", "AmpMandarinRocker", "AmpSoloLeadOD"],
   "blocks": {
     "octave_up": {"model": "HD2_PitchSimplePitch", "set": {"Interval1": 12}, "knobs": {"Mix": 9}, "gear": {"Pedal_OctaveUp": {}}},

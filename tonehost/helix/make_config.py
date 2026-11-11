@@ -8,7 +8,7 @@ import argparse, json, os
 DEFAULTS = {
     "plugin": {"type": "aumf", "subtype": "6HPA", "manufacturer": "LSIX"},
     "input": {"device": "", "channel": 0, "gain_db": 6},
-    "buffer": 128, "fade_ms": 20, "target_db": -32, "probe_peak_db": -12,
+    "buffer": 128, "fade_ms": 20, "target_db": -22.5, "probe_peak_db": -12,
     "gate": {"margin_db": 12, "tight_db": 8, "min_db": -70, "max_db": -40, "hold_ms": [150, 40], "release_ms": [120, 30]},
 }
 
@@ -40,7 +40,7 @@ def main():
                 e[k] = v[k]
         c["templates"][name] = e
     c["map"] = {"gain_knobs": ["_Gain", "_Loudness1", "_Loudness2"], "drive_pedals": t["drive_pedals"], "clean": t["fallback"]["clean"],
-                "driven": t["fallback"]["driven"], "driven_from_gain": 0.3, "by_prefix": t["by_prefix"], "follow": t["follow"]}
+                "driven": t["fallback"]["driven"], "driven_from_gain": 0.3, "by_prefix": t["by_prefix"], "follow": t["follow"], "trim": t.get("trim", [])}
     json.dump(c, open(o.config, "w"), indent=1)
     print("%s: %d templates, guitar on %s channel %d" % (o.config, len(c["templates"]), c["input"]["device"], c["input"]["channel"] + 1))
 

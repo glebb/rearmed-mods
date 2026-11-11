@@ -12,7 +12,7 @@ Two pieces:
   (`Mixer_Player1` at 0; notes still score). With no host the mod does nothing, and the game plays its own tones; a host
   that stops gives the game its guitar back within about a second, and a host that starts later gets the tone in play.
 - **The host** (`tonehost.m`, `RS Tone Host.app`). A separate process, so a plug-in's licence check, window or crash
-  stays out of the game. It has two plug-in instances: one plays, the other takes the next tone's saved state, and a
+  stays out of the game. It has two plug-in instances, or up to four with `slots`: one plays, another takes the next tone's saved state, and a
   crossfade joins them. A load is audible; an instance standing by is not.
 
 The game's effects still run: this mutes them, it doesn't remove them.
@@ -88,11 +88,22 @@ The mod looks for the FIFO at `~/Library/Application Support/RS Re-ARMed/tonehos
 - `state` is an Audio Unit's `ClassInfo` saved as a property list, relative to the config.
 - `params` are Audio Unit parameter ids and values, set when the template starts. `follow` puts a game knob on a
   parameter: `amp_gain` is the amp's gain knob from 0 to 1, anything else a knob whose name ends in `from`.
+- The game says a tone only as it changes, and a state's load and its knobs' ramps take half a second after that. So
+  the mod sends a song's plan as the song loads: the changes the loaded song has (a time and a slot each) and each
+  slot's tone from the arrangement's manifest, then where the song is, every other frame. The host has the next tone
+  ready in the slot nobody hears, its level measured, and plays it `early_ms` (100) before its place. With no plan (the
+  song's arrangements differ in their tones and have as many levels, or the game is one the mod can't read a song of)
+  the host keeps where each tone came, in `changes.plist`, and is ahead from the song's second play.
+  `slots`, 2 to 4, is how many instances there are, and an instance takes memory.
 - `target_db` makes every tone equally loud: before a tone is heard, a reference pluck (`probe_peak_db`, at the input)
   goes through the instance nobody hears, and its gain is set from the level that comes out. `trim_db` in a template
-  moves it from there. Without `target_db` the template's `output_db` applies.
+  moves it from there.
+  The pluck repeats until two agree, as a plug-in ramps a knob that was moved, and the level is kept in `levels.plist`
+  until the config's templates or rules change: a tone measured once changes within 0.1 s where its slot still has it, else in 0.3 s and a load. Without `target_db` the template's `output_db` applies.
 - The system's volume controls the guitar, wherever the sound goes, and so does the game's guitar fader, which the mod
   passes on. `"ignore_system_volume": true` turns the first off.
+- `trim` in the map, `{"db": 1.5, "with": ["Pedal_X"], "clean": true}`, moves the level of a tone that has that gear, or of a
+  clean one: no drive pedal, and the amp's gain under `driven_from_gain`.
 - `follow` with `"present": ["Pedal_X"]` turns a switch parameter on when the tone has that gear; `with` and `without`
   apply a rule only if the tone has, or lacks, the gear. A template's rules come after the map's.
 - `by_prefix` picks a template by a knob name's start; otherwise a drive pedal or an amp gain from `driven_from_gain`
@@ -102,7 +113,8 @@ The mod looks for the FIFO at `~/Library/Application Support/RS Re-ARMed/tonehos
 setlist with one preset per Helix amp and the rules, from Line 6's model files in the install, and `capture_states.m`
 saves each preset's state after a one-time import. The setlist isn't needed after that.
 
-Commands on the FIFO: `gear KEY=VALUE ...` and `mixer VALUE` from the mod, `offset VALUE` from
+Commands on the FIFO: `gear KEY=VALUE ...`, `mixer VALUE`, `time SONG SECONDS` and a song's plan (`plan SONG`,
+`plantone SLOT KEY=VALUE ...`, `planat TIME:SLOT ...`, `planend`) from the mod, `offset VALUE` from
 [RS Companion](https://github.com/glebb/rs-mac-companion), `use TEMPLATE`, `mute` and `quit` by hand.
 
 `offset` is how much too hot a song's tones are against its record, in thirds of the gain knob: an AI's answer, 0 if there

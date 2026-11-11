@@ -70,6 +70,7 @@ DYLD_INSERT_LIBRARIES=$guard "$out/check_states" "$work/states/$first" "$reverb_
 pgrep -f "RS Tone Host.app" > /dev/null && echo quit > "$dest/commands"  # nobody reading: a write would wait for ever
 rm -rf "$dest/states" "$dest/RS Tone Host.app"
 cp -R "$work/states" "$dest/states"
+rm -f "$dest/levels.plist"  # measured with the states before these
 cp -R "$out/RS Tone Host.app" "$dest/"
 cp "$out/start.sh" "$out/stop.sh" "$dest/"
 python3 "$here/make_config.py" "$work/tones.json" "$dest/config.json" "$@"

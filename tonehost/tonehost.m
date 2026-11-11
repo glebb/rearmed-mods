@@ -12,6 +12,7 @@
 //   mute                          fade everything out
 //   quit
 #import <Foundation/Foundation.h>
+#include <CommonCrypto/CommonDigest.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <CoreAudio/CoreAudio.h>
 #include <math.h>
@@ -28,7 +29,7 @@
 #include "gate_floor.h"
 #include "tone_gain.h"
 
-#define SLOTS 2
+#define SLOTS 4  // at most: "slots" in the config says how many, 2 if it doesn't
 #define MAX_FRAMES 1024
 #define RING 8192  // input samples, a power of two
 #define RATE 48000.0
@@ -248,7 +249,7 @@ static OSStatus output_proc(AudioObjectID dev, const AudioTimeStamp *now, const 
 
   int want = atomic_load_explicit(&g_target, memory_order_acquire);
   if (want != g_current) { g_previous = g_current; g_current = want; g_fade_left = g_fade_frames; }
-  for (int i = 0; i < SLOTS; i++)
+  for (int i = 0; i < SLOTS; i++)  // one never made isn't ready
     if (atomic_load_explicit(&slots[i].ready, memory_order_acquire) &&
         (i == g_current || (i == g_previous && g_fade_left) || i == atomic_load_explicit(&g_standby, memory_order_relaxed)))
       render_slot(&slots[i], n);
@@ -362,8 +363,10 @@ static void load_state(int n, const char *path) {
 // A template of the config: a saved state, parameter values and an output gain. Which template a tone gets, and what
 // of the game's knobs reaches which parameter, is the "map" of the config, so another plug-in needs no code.
 static NSDictionary *g_templates, *g_map;
-static NSString *g_dir, *g_loaded[SLOTS];
-static int g_playing = -1;
+static NSString *g_dir, *g_loaded[SLOTS], *g_config_stamp;  // the stamp: a hash of what a measured level depends on
+static int g_playing = -1, g_slots = 2;
+static NSString *g_playing_key, *g_playing_name;  // the tone in g_playing
+static NSDictionary *g_playing_gear;
 static float g_target_db = -200.f;
 
 static float number_of(NSDictionary *gear, NSString *suffix, NSString *prefix, NSString *contains) {
@@ -422,33 +425,108 @@ static void apply(int n, NSDictionary *t, NSDictionary *gear) {
 }
 
 // Plays the reference pluck through a slot nobody hears and returns the level it comes out at
+// A plug-in ramps a knob that was moved, Helix over about 0.3 s, and a clean tone's level follows the ramp where a
+// distorted one's doesn't: so one pluck after another, until two agree
 static float measure(int n) {
   slot_t *s = &slots[n];
   atomic_store(&s->probing, 1);
-  usleep(150000);  // parameters settle, compressors find their level
-  atomic_store(&s->probe_count, 0);
-  s->probe_sum = 0;
-  usleep(250000);  // one pluck
-  double sum = s->probe_sum;
-  uint32_t count = atomic_load(&s->probe_count);
+  float level = -120.f, before = 0.f;
+  for (int i = 0; i < 6; i++) {
+    atomic_store(&s->probe_count, 0);
+    s->probe_sum = 0;
+    usleep(250000);  // one pluck
+    double sum = s->probe_sum;
+    uint32_t count = atomic_load(&s->probe_count);
+    before = level;
+    level = count ? 10 * log10f((float)(sum / count) + 1e-12f) : -120.f;
+    if (i && fabsf(level - before) < 0.5f) break;
+  }
   atomic_store(&s->probing, 0);
-  return count ? 10 * log10f((float)(sum / count) + 1e-12f) : -120.f;
+  return level;
+}
+
+// What makes a tone's level, and a slot ready for it: its template, its knobs and the song's correction
+static NSString *tone_key(NSString *name, NSDictionary *gear) {
+  NSMutableString *key = [NSMutableString stringWithFormat:@"%@ %g", name, g_gain_offset];
+  for (NSString *k in [gear.allKeys sortedArrayUsingSelector:@selector(compare:)]) [key appendFormat:@" %@=%@", k, gear[k]];
+  return key;
+}
+
+static NSString *g_held[SLOTS];  // the tone a slot is ready for: state loaded, knobs set and their ramps over
+static unsigned g_used[SLOTS], g_uses;
+
+// A slot nobody hears: the one that had this tone last, which is ready as it is, or else the one unused longest
+static int slot_for(NSString *key) {
+  int n = -1;
+  for (int i = 0; i < g_slots; i++)
+    if (i != g_playing && (n < 0 || [key isEqual:g_held[i]] || (![key isEqual:g_held[n]] && g_used[i] < g_used[n]))) n = i;
+  g_used[n] = ++g_uses;
+  return n;
+}
+
+// The state and the knobs, in a slot that renders by now. NO if it had the tone already: then there is nothing to wait for
+static BOOL make_ready(int n, NSString *name, NSDictionary *gear, NSString *key) {
+  NSDictionary *t = g_templates[name];
+  if (![g_loaded[n] isEqual:name]) {
+    NSString *path = [t[@"state"] hasPrefix:@"/"] ? t[@"state"] : [g_dir stringByAppendingPathComponent:t[@"state"]];
+    load_state(n, path.UTF8String);
+    g_loaded[n] = name;
+    g_held[n] = nil;
+  }
+  apply(n, t, gear);
+  BOOL had = [key isEqual:g_held[n]];
+  g_held[n] = key;
+  return !had;
+}
+
+// A slot, rendering by now, made ready for a tone, and the level the tone comes out at. A level is measured once and
+// kept in levels.plist, for as long as the config's templates and rules stay as they are: the plucks take half a second
+// or more. All that takes time about a tone is here, so that it can be done before the tone is due.
+static float ready_level(int n, NSString *name, NSDictionary *gear, NSString *key, BOOL *measured) {
+  static NSMutableDictionary<NSString *, NSNumber *> *levels;
+  static NSString *file;
+  if (!levels) {
+    file = [g_dir stringByAppendingPathComponent:@"levels.plist"];
+    NSDictionary *saved = [NSDictionary dictionaryWithContentsOfFile:file];
+    levels = [saved[@"config"] isEqual:g_config_stamp] ? [saved[@"levels"] mutableCopy] : nil;
+    if (!levels) levels = [NSMutableDictionary dictionary];
+  }
+  NSNumber *known = levels[key];
+  BOOL changed = make_ready(n, name, gear, key);
+  *measured = !known;
+  if (known) {
+    if (changed) usleep(300000);  // the knobs' ramps
+    return known.floatValue;
+  }
+  float level = measure(n);
+  if (level > -100) {  // not a slot whose state didn't load
+    levels[key] = @(level);
+    [@{@"config": g_config_stamp, @"levels": levels} writeToFile:file atomically:YES];
+  }
+  return level;
 }
 
 static void use_template(NSString *name, NSDictionary *gear) {
   NSDictionary *t = g_templates[name];
   if (!t) { say("no template %s", name.UTF8String); return; }
-  // Always the slot nobody hears, even for the same template: new knobs change the level, and that is measured first
-  int n = g_playing == 0 ? 1 : 0;
+  NSString *key = tone_key(name, gear);
+  if (g_playing >= 0 && [key isEqual:g_playing_key]) return;  // the same again while it plays is nothing to do
+  CFAbsoluteTime began = CFAbsoluteTimeGetCurrent();
+  int n = slot_for(key);
   atomic_store(&g_standby, n);
-  if (![g_loaded[n] isEqual:name]) {
-    NSString *path = [t[@"state"] hasPrefix:@"/"] ? t[@"state"] : [g_dir stringByAppendingPathComponent:t[@"state"]];
-    load_state(n, path.UTF8String);
-    g_loaded[n] = name;
-  }
-  apply(n, t, gear);
-  float level = measure(n), out = [t[@"output_db"] floatValue];
+  BOOL measured;
+  float level = ready_level(n, name, gear, key, &measured), out = [t[@"output_db"] floatValue];
   if (g_target_db > -100) out = g_target_db + [t[@"trim_db"] floatValue] - level;
+  // {"db": 1.5, "with": ["Pedal_X"], "clean": true}: louder or quieter for a tone with this gear, or for a clean one, which
+  // is one with no drive pedal and its amp's gain under driven_from_gain
+  for (NSDictionary *r in g_map[@"trim"]) {
+    BOOL has = NO, driven = amp_gain(gear) >= [g_map[@"driven_from_gain"] floatValue];
+    for (NSString *k in gear) {
+      for (NSString *g in r[@"with"]) has = has || [k hasPrefix:g];
+      for (NSString *p in g_map[@"drive_pedals"]) driven = driven || [k hasPrefix:p];
+    }
+    if (has || ([r[@"clean"] boolValue] && !driven)) out += [r[@"db"] floatValue];
+  }
   atomic_store(&slots[n].gain, powf(10.f, out / 20.f));
   usleep(30000);  // the guitar reaches it before anyone hears it
   float game_gate = number_of(gear, @"_Thresh", @"Pedal_NoiseGate", nil);
@@ -456,23 +534,195 @@ static void use_template(NSString *name, NSDictionary *gear) {
   atomic_store(&g_tightness, fminf(amp_gain(gear) * [t[@"tight"] ?: @1 floatValue], 1.f));
   atomic_store(&g_target, n);
   g_playing = n;
+  g_playing_key = key;
+  g_playing_name = name;
+  g_playing_gear = gear;
+  int took = (int)((CFAbsoluteTimeGetCurrent() - began) * 1000);
   usleep((useconds_t)(g_fade_frames / RATE * 1e6) + 50000);
   atomic_store(&g_standby, -1);
-  say("play %s in slot %d: measured %.1f dB, output %+.1f dB", name.UTF8String, n, level, out);
+  say("play %s in slot %d: %s %.1f dB, output %+.1f dB, after %d ms", name.UTF8String, n, measured ? "measured" : "known", level, out, took);
+}
+
+// ---- A song's changes, ahead of the game ----
+// The game says a tone as it changes, and a state's load and its knobs' ramps take half a second after that. But the mod
+// sends where the song is, so the host keeps where in a song each tone came (changes.plist) and, the next time the song is
+// played, has that tone ready in the slot nobody hears and plays it "early_ms" before its place. A change is one of a
+// song's only with the tone the song began with and the tone before it, as a song's parts have tones of their own. The
+// game's own word then finds the tone playing; if it doesn't come, the change was another part's: back to the tone before.
+static NSMutableDictionary<NSString *, NSMutableArray<NSDictionary *> *> *g_changes;
+static NSString *g_song, *g_first;  // the song, and the tone that played as it began or went back
+static double g_song_at = -1, g_early = 0.1;
+static NSDictionary *g_awaited, *g_back;  // a change played ahead that the game hasn't said yet, and the tone before it
+
+static NSString *changes_file(void) { return [g_dir stringByAppendingPathComponent:@"changes.plist"]; }
+
+static BOOL is_ours(NSDictionary *e) { return [e[@"first"] isEqual:g_first] && [e[@"before"] isEqual:g_playing_key]; }
+
+// The plan of a song, from the mod as the song loads: the tone of each slot the song uses (0 the one it begins with) and
+// its changes, each a time and a slot. With it the host needs nothing learned, and a song's first play is as any other.
+static NSString *g_plan_song;
+static NSMutableDictionary<NSNumber *, NSDictionary *> *g_plan_tones;
+static NSMutableArray<NSArray<NSNumber *> *> *g_plan_at;
+static BOOL g_plan_whole;
+static int g_plan_played = -1;  // the last change played ahead: none at or before it again, until the song goes back
+
+static BOOL has_plan(void) { return g_plan_whole && [g_plan_song isEqual:g_song]; }
+
+static NSString *plan_key(NSNumber *slot) {
+  NSDictionary *gear = g_plan_tones[slot];
+  return gear ? tone_key(pick(gear), gear) : nil;
+}
+
+// A tone made ready in a slot nobody hears, measured if it never was
+static void make_tone_ready(NSString *name, NSDictionary *gear, double at) {
+  if (!g_templates[name] || g_playing < 0) return;
+  NSString *key = tone_key(name, gear);
+  if ([key isEqual:g_playing_key]) return;
+  int n = slot_for(key);
+  BOOL had = [key isEqual:g_held[n]], measured;
+  atomic_store(&g_standby, n);
+  float level = ready_level(n, name, gear, key, &measured);
+  atomic_store(&g_standby, -1);
+  if (!had) say("ready for %s at %.1f s in slot %d%s", name.UTF8String, at, n, measured ? [[NSString stringWithFormat:@": measured %.1f dB", level] UTF8String] : "");
+}
+
+// The next change from here has its tone made ready
+static void ready_next(void) {
+  if (has_plan()) {
+    NSString *now = plan_key(@0);  // the tone the plan has at this place
+    for (NSArray<NSNumber *> *c in g_plan_at) {
+      NSString *key = plan_key(c[1]);
+      if (!key) continue;
+      if (c[0].doubleValue > g_song_at && ![key isEqual:now]) {
+        make_tone_ready(pick(g_plan_tones[c[1]]), g_plan_tones[c[1]], c[0].doubleValue);
+        return;
+      }
+      now = key;
+    }
+    return;
+  }
+  NSDictionary *next = nil;
+  for (NSDictionary *e in g_changes[g_song])
+    if (is_ours(e) && [e[@"at"] doubleValue] > g_song_at && (!next || [e[@"at"] doubleValue] < [next[@"at"] doubleValue])) next = e;
+  if (next) make_tone_ready(next[@"name"], next[@"gear"], [next[@"at"] doubleValue]);
+}
+
+static void forget(NSDictionary *e) {
+  [g_changes[g_song] removeObject:e];
+  [g_changes writeToFile:changes_file() atomically:YES];
+}
+
+// "time SONG SECONDS" from the mod, while a song plays
+static void song_time(NSString *song, double at) {
+  if (!g_changes) {
+    g_changes = [NSMutableDictionary dictionary];
+    NSDictionary *saved = [NSDictionary dictionaryWithContentsOfFile:changes_file()];
+    for (NSString *k in saved) g_changes[k] = [saved[k] mutableCopy];
+  }
+  BOOL began = ![song isEqual:g_song] || g_song_at < 0 || at < g_song_at - 1;  // a new song, or back in this one
+  g_song = song;
+  g_song_at = at;
+  if (began) {
+    g_first = g_playing_key;
+    g_awaited = nil;
+    g_plan_played = -1;
+    ready_next();
+    return;
+  }
+  if (has_plan()) {
+    for (int i = 0; i < (int)g_plan_at.count; i++) {
+      double due = g_plan_at[i][0].doubleValue;
+      NSDictionary *gear = g_plan_tones[g_plan_at[i][1]];
+      if (i <= g_plan_played || !gear || at < due - g_early || at >= due + 0.3) continue;
+      g_plan_played = i;
+      if ([plan_key(g_plan_at[i][1]) isEqual:g_playing_key]) continue;
+      say("ahead of the game: the song's change at %.1f s", due);
+      use_template(pick(gear), gear);
+      ready_next();
+      return;
+    }
+    return;
+  }
+  if (g_awaited) {
+    if (at < [g_awaited[@"at"] doubleValue] + 1.5) return;
+    say("the game didn't change the tone at %.1f s: back", [g_awaited[@"at"] doubleValue]);
+    forget(g_awaited);
+    NSDictionary *back = g_back;
+    g_awaited = nil;
+    use_template(back[@"name"], back[@"gear"]);
+    return;
+  }
+  for (NSDictionary *e in g_changes[g_song]) {
+    double due = [e[@"at"] doubleValue];
+    if (!is_ours(e) || at < due - g_early || at >= due + 0.3 || !g_templates[e[@"name"]]) continue;
+    say("ahead of the game: the change at %.1f s", due);
+    g_back = @{@"name": g_playing_name, @"gear": g_playing_gear};
+    g_awaited = e;
+    use_template(e[@"name"], e[@"gear"]);
+    ready_next();
+    return;
+  }
+}
+
+// The game's own word of a tone, at a place in a song: kept for the next time
+static void learn(NSString *name, NSDictionary *gear) {
+  NSString *key = tone_key(name, gear);
+  if (has_plan()) return;
+  if (g_awaited && [tone_key(g_awaited[@"name"], g_awaited[@"gear"]) isEqual:key]) { g_awaited = nil; return; }  // as expected
+  if (g_awaited) forget(g_awaited);  // another tone than the one played ahead
+  g_awaited = nil;
+  if (!g_song || g_song_at < 0 || !g_first || !g_playing_key || [key isEqual:g_playing_key]) return;
+  NSMutableArray *list = g_changes[g_song] ?: (g_changes[g_song] = [NSMutableArray array]);
+  for (NSDictionary *e in list.copy)
+    if ([e[@"first"] isEqual:g_first] && fabs([e[@"at"] doubleValue] - g_song_at) < 1) [list removeObject:e];
+  [list addObject:@{@"at": @(g_song_at), @"first": g_first, @"before": g_playing_key, @"name": name, @"gear": gear}];
+  [g_changes writeToFile:changes_file() atomically:YES];
+}
+
+static NSDictionary *gear_of(const char *text) {
+  NSMutableDictionary *gear = [NSMutableDictionary dictionary];
+  for (NSString *pair in [[NSString stringWithUTF8String:text] componentsSeparatedByString:@" "]) {
+    NSArray *kv = [pair componentsSeparatedByString:@"="];
+    if (kv.count == 2) gear[kv[0]] = kv[1];
+  }
+  return gear;
 }
 
 static void command(char *line) {
   static NSDictionary *last_gear;
+  static BOOL timed;  // the line before this one said where the song is: a tone after it is a change in the song
+  BOOL was_timed = timed;
+  timed = NO;
   if (!strncmp(line, "gear ", 5)) {
-    NSMutableDictionary *gear = [NSMutableDictionary dictionary];
-    for (NSString *pair in [[NSString stringWithUTF8String:line + 5] componentsSeparatedByString:@" "]) {
-      NSArray *kv = [pair componentsSeparatedByString:@"="];
-      if (kv.count == 2) gear[kv[0]] = kv[1];
-    }
+    NSDictionary *gear = gear_of(line + 5);
     NSString *name = pick(gear);
     say("tone: gain %.2f, balance %s, %lu knobs -> %s", amp_gain(gear), [gear[@"Meter_Tone_Balance_Return"] UTF8String], (unsigned long)gear.count, name.UTF8String);
     last_gear = gear;
+    if (was_timed) learn(name, gear);
     use_template(name, gear);
+    if (was_timed) ready_next();
+  } else if (!strncmp(line, "time ", 5)) {  // the song and where it is, from the mod; ahead of a tone too
+    char *space = strchr(line + 5, ' ');
+    if (space) song_time([[NSString alloc] initWithBytes:line + 5 length:(NSUInteger)(space - line - 5) encoding:NSUTF8StringEncoding], strtod(space + 1, NULL));
+    timed = space != NULL;
+    return;
+  } else if (!strncmp(line, "plan ", 5)) {  // a song's tones and changes, from the mod as the song loads
+    g_plan_song = [NSString stringWithUTF8String:line + 5];
+    g_plan_tones = [NSMutableDictionary dictionary];
+    g_plan_at = [NSMutableArray array];
+    g_plan_whole = NO;
+  } else if (!strncmp(line, "plantone ", 9)) {
+    char *space = strchr(line + 9, ' ');
+    if (space) g_plan_tones[@(atoi(line + 9))] = gear_of(space + 1);
+  } else if (!strncmp(line, "planat", 6)) {
+    for (NSString *pair in [[NSString stringWithUTF8String:line + 6] componentsSeparatedByString:@" "]) {
+      NSArray<NSString *> *c = [pair componentsSeparatedByString:@":"];
+      if (c.count == 2) [g_plan_at addObject:@[@(c[0].doubleValue), @(c[1].intValue)]];
+    }
+  } else if (!strncmp(line, "planend", 7)) {
+    g_plan_whole = g_plan_tones[@0] != nil;
+    g_plan_played = -1;
+    say("the plan of %s: %lu tones, %lu changes", g_plan_song.UTF8String, (unsigned long)g_plan_tones.count, (unsigned long)g_plan_at.count);
   } else if (!strncmp(line, "offset ", 7)) {  // from RS Companion, as a song loads or its AI answer comes
     float v = strtof(line + 7, NULL);
     if (v == g_gain_offset) return;
@@ -511,8 +761,16 @@ int main(int argc, char **argv) { @autoreleasepool {
   g_target_fill = frames;
   g_templates = c[@"templates"];
   g_map = c[@"map"];
+  // Not the whole file: a new target_db leaves what was measured as it was
+  NSData *measured = [NSJSONSerialization dataWithJSONObject:@[c[@"templates"] ?: @{}, [c[@"map"] ?: @{} objectForKey:@"follow"] ?: @[],
+                                                               [c[@"map"] ?: @{} objectForKey:@"gain_knobs"] ?: @[], c[@"probe_peak_db"] ?: @0]
+                                                     options:NSJSONWritingSortedKeys error:NULL];
+  unsigned char hash[CC_SHA256_DIGEST_LENGTH];
+  CC_SHA256(measured.bytes, (CC_LONG)measured.length, hash);
+  g_config_stamp = [[NSData dataWithBytes:hash length:sizeof hash] base64EncodedStringWithOptions:0];
   g_dir = [[NSString stringWithUTF8String:argv[2]] stringByDeletingLastPathComponent];
   if (c[@"target_db"]) g_target_db = [c[@"target_db"] floatValue];
+  if (c[@"early_ms"]) g_early = [c[@"early_ms"] doubleValue] / 1000;
   if (c[@"probe_peak_db"]) g_probe_peak = powf(10.f, [c[@"probe_peak_db"] floatValue] / 20.f);
 
   // First of all: the instances take seconds to open, and a write before the FIFO exists would make an ordinary file
@@ -530,9 +788,10 @@ int main(int argc, char **argv) { @autoreleasepool {
   set_rate(in_dev);
   usleep(200000);
   if (device_rate(in_dev) != RATE) { say("the input must run at 48 kHz (%g)", device_rate(in_dev)); return 1; }
-  for (int i = 0; i < SLOTS; i++)
+  if (c[@"slots"]) g_slots = MAX(2, MIN(SLOTS, [c[@"slots"] intValue]));
+  for (int i = 0; i < g_slots; i++)
     if (make_slot(&slots[i])) { say("the plug-in didn't open"); return 1; }
-  say("%d instances open", SLOTS);
+  say("%d instances open", g_slots);
   set_buffer(in_dev, frames);
 
   NSDictionary *gt = c[@"gate"];

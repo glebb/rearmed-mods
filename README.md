@@ -583,6 +583,7 @@ src/seven*.c, seven.h    Seven-String Guitar's parts (mod_seven_string.c turns t
 src/stems_mix.h          Song Stems' mix of a block, and which .wem a song's bank plays (no game: tested as is)
 src/stems_index.c, .h    Song Stems' way from a song to its archive and its .wem (no game: tested as is)
 src/song_info.c, .h      a song's title and artist from its archive's manifest (no game: tested as is)
+src/song_plan.c, .h      a manifest's tone slots as Tone Host sends a tone (no game: tested as is)
 src/discord_ipc.c, .h    Discord Rich Presence's activity and its connection to Discord (no game: tested as is)
 data/rs7string/          rs7string's chord diagram recipes and headstock programs (MIT), compiled into the library
 tests/, test.sh          the library's tests, and the script that runs them and the app's

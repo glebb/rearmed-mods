@@ -188,7 +188,7 @@ def main():
            "compression": {"crc32": zlib.crc32(raw) & 0xffffffff, "decompressed_size": len(raw), "type": "zlib"}, "schema": "L6Setlist"}
     json.dump(hls, open(os.path.join(out, "setlist.hls"), "w"), indent=2)
     by = {k + "_": v for k, v in gear["amps"].items()}
-    json.dump({"templates": templates, "by_prefix": by, "fallback": gear["fallback"], "follow": rules(gear),
+    json.dump({"templates": templates, "by_prefix": by, "fallback": gear["fallback"], "trim": gear.get("trim", []), "follow": rules(gear),
                "drive_pedals": sorted(k for b in ("drive", "fuzz", "metal") for k in gear["blocks"][b]["gear"])}, open(os.path.join(out, "tones.json"), "w"), indent=1)
     print("%d presets, %d game amps, %d rules" % (len(used), len(gear["amps"]), len(rules(gear))))
 
