@@ -1,4 +1,5 @@
 // Song Stems' way from a song's key to its .wem. See stems_index.h.
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,8 @@ typedef struct {
 } archive;
 static archive *g_archives;
 static int g_narchives;
+static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;  // the list, for stems_index_build and stems_index_path
+static int g_listed = -1;
 
 void stems_index_free(void) {
   for (int i = 0; i < g_narchives; i++) {
@@ -85,10 +88,29 @@ static void index_folder(const char *dir, int depth, const uint8_t key[32]) {
 }
 
 int stems_index_build(const uint8_t key[32]) {
+  pthread_mutex_lock(&g_lock);
   stems_index_free();
   index_folder("dlc", 0, key);
   index_archive("songs.psarc", key);
-  return g_narchives;
+  int n = g_listed = g_narchives;
+  pthread_mutex_unlock(&g_lock);
+  return n;
+}
+
+int stems_index_listed(void) {
+  pthread_mutex_lock(&g_lock);
+  int n = g_listed;
+  pthread_mutex_unlock(&g_lock);
+  return n;
+}
+
+int stems_index_path(const char *song, char *out, size_t n) {
+  pthread_mutex_lock(&g_lock);
+  const char *path = stems_index_find(song);
+  int ok = path && strlen(path) < n;
+  if (ok) strcpy(out, path);
+  pthread_mutex_unlock(&g_lock);
+  return ok;
 }
 
 const char *stems_index_find(const char *song) {

@@ -139,6 +139,8 @@ enum Catalog {
                   help: "rs-tonehost plays the guitar through your Audio Unit and follows the game's tones."),
         ModToggle(label: "Song Stems", key: "SongStems",
                   help: "Takes the guitar or the bass out of the song you play, at a level of your own: a line of the volume mixer, with its own key. rs-stems separates each song on the Neural Engine. Needs RS Re-ARMed 1.12.0."),
+        ModToggle(label: "Discord Rich Presence", key: "DiscordRichPresence",
+                  help: "Discord shows that you play RS Re-ARMed, and the song, its artist and the game mode while you play one. Needs the Discord app running on this Mac."),
         ModToggle(label: "Seven-String Guitar", key: "SevenString",
                   help: "A low B string for 7-string charts (DotCharter's), after rs7string. From the game's next start.",
                   note: "Needs RS Re-ARMed 1.12.0 in Learn & Play, 1.13.0 on the Mac"),
@@ -171,7 +173,7 @@ enum Catalog {
             "CustomTunings",
         ]),
         ModCategory(name: "Profiles & Menus", icon: "person.crop.circle", keys: [
-            "ForceProfileLoad", "BackupProfile", "GuitarSpeak",
+            "ForceProfileLoad", "BackupProfile", "GuitarSpeak", "DiscordRichPresence",
         ]),
         ModCategory(name: "Seven-String", icon: "7.circle", keys: ["SevenString", "PlainPackages"]),
     ]
@@ -306,7 +308,7 @@ enum Catalog {
             "LinearRiffRepeater": "off", "ToggleLoft": "off", "ToggleLoftWhen": "manual", "Headstock": "off",
             "RemoveHeadstockWhen": "song", "Lyrics": "off", "RemoveLyricsWhen": "manual",
             "Skyline": "off", "ToggleSkylineWhen": "song", "Fretless": "off", "Inlays": "off", "LaneMarkers": "off",
-            "CameraDirector": "off", "ToneHost": "off", "SongStems": "off", "Sunlight": "off", "CustomStringColors": "0",
+            "CameraDirector": "off", "ToneHost": "off", "SongStems": "off", "DiscordRichPresence": "off", "Sunlight": "off", "CustomStringColors": "0",
             "SeparateNoteColors": "off", "RainbowNotes": "off", "RainbowStrings": "off", "ProfileToLoad": "",
             "RemoveFingerprints": "off", "GreenScreenWall": "off", "UseCustomNSPTimer": "off", "SecondaryMonitor": "off",
             "ExtendedRange": "off", "ExtendedRangeDropTuning": "off", "ExtendedRangeFixBassTuning": "off",

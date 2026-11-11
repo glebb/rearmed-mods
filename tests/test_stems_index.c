@@ -12,6 +12,7 @@
 #include <zlib.h>
 
 #include "../src/rsmods_files.h"
+#include "../src/song_info.h"
 #include "../src/stems_index.h"
 #include "check.h"
 #ifndef NO_LAYER
@@ -185,6 +186,7 @@ static int t_hide(void *user, const char *dir, const char *name) { return !strcm
 int main(void) {
   char dir[] = "/tmp/rsmods-stems-XXXXXX";
   CHECK(mkdtemp(dir) && !chdir(dir));
+  CHECK(stems_index_listed() == -1);
   uint8_t key[32], wrong[32];
   for (int i = 0; i < 32; i++) key[i] = (uint8_t)(i * 7 + 3), wrong[i] = (uint8_t)i;
   CHECK(!mkdir("dlc", 0755) && !mkdir("dlc/sub", 0755) && !mkdir("dlc/empty", 0755));
@@ -272,6 +274,44 @@ int main(void) {
   CHECK(!stems_index_wem("dlc/plain_m.psarc", "deepsong", key, &id2, &wl2));
   CHECK(!stems_index_wem("dlc/none_m.psarc", "plainsong", key, &id2, &wl2));
   CHECK(!stems_index_wem("dlc/junk_m.psarc", "plainsong", key, &id2, &wl2));
+
+  // the list for two threads: the path copied out, when it fits
+  char found[2048], tiny[8];
+  CHECK(stems_index_listed() >= 4 && stems_index_path("DeepSong", found, sizeof found));
+  CHECK(ends(found, "dlc/sub/deep_m.psarc") && !stems_index_path("deepsong", tiny, sizeof tiny));
+  CHECK(!stems_index_path("nosuchsong", found, sizeof found));
+
+  // a song's names from its archive (song_info.c): the pack's header has them, for each of its songs; an archive
+  // without a header has them in an arrangement's manifest; one without manifests has none
+  static const char hsan[] =
+      "{\"Entries\":{\"A1\":{\"Attributes\":{\"ArtistName\":\"First Band\",\"SongKey\":\"PackOne\","
+      "\"SongName\":\"One\"}},\"B2\":{\"Attributes\":{\"AlbumName\":\"Second Album\",\"ArtistName\":\"Second Band\","
+      "\"SongKey\":\"PackTwo\",\"SongName\":\"Two\"}}},\"InsertRoot\":\"Static.Songs.Headers\"}";
+  static const char lead[] =
+      "{\"Entries\":{\"C3\":{\"Attributes\":{\"ArtistName\":\"Lone Band\",\"SongKey\":\"Lone\",\"SongName\":\"Alone\"}}}}";
+  CHECK(!mkdir("other", 0755));
+  const char *pn[] = {"manifests/songs_dlc_pack/songs_dlc_pack.hsan", "audio/mac/song_packtwo.bnk"};
+  const uint8_t *pb[] = {(const uint8_t *)hsan, (const uint8_t *)"BKHD"};
+  size_t pl[] = {sizeof hsan - 1, 4};
+  a = make_psarc(key, 2, pn, pb, pl, &len);
+  write_bytes("other/pack_m.psarc", a, len);
+  free(a);
+  const char *ln[] = {"manifests/songs_dlc_lone/lone_vocals.json", "manifests/songs_dlc_lone/lone_lead.json"};
+  const uint8_t *lb[] = {(const uint8_t *)"{\"Entries\":{}}", (const uint8_t *)lead};
+  size_t ll[] = {14, sizeof lead - 1};
+  a = make_psarc(key, 2, ln, lb, ll, &len);
+  write_bytes("other/lone_m.psarc", a, len);
+  free(a);
+  song_info info;
+  CHECK(song_info_read("other/pack_m.psarc", "packtwo", key, &info));
+  CHECK(!strcmp(info.title, "Two") && !strcmp(info.artist, "Second Band") && !strcmp(info.album, "Second Album"));
+  CHECK(song_info_read("other/pack_m.psarc", "PackOne", key, &info) && !strcmp(info.title, "One") && !*info.album);
+  CHECK(!song_info_read("other/pack_m.psarc", "lone", key, &info));
+  CHECK(song_info_read("other/lone_m.psarc", "Lone", key, &info) && !strcmp(info.artist, "Lone Band"));
+  CHECK(!song_info_read("other/lone_m.psarc", "Lone", wrong, &info));
+  CHECK(!song_info_read("dlc/plain_m.psarc", "plainsong", key, &info));
+  CHECK(!song_info_read("other/none_m.psarc", "lone", key, &info));
+
   stems_index_free();
   CHECK(!stems_index_find("plainsong"));
 

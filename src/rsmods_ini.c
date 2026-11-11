@@ -114,6 +114,9 @@ static const char DEFAULT_INI[] =
     "; SongStemsGuitarLevel and SongStemsBassLevel (0 the song without it, 100 the song as it is), the song stems key's\n"
     "; line in the volume mod. rs-stems separates each song on the Neural Engine and keeps SongStemsCacheMB of them.\n"
     "SongStems = off\n"
+    "; Discord shows that you play RS Re-ARMed, and the song, its artist and the game mode while you play one. Needs\n"
+    "; the Discord app running on this Mac, with its activity sharing on.\n"
+    "DiscordRichPresence = off\n"
     "; For a screen in the sun: the sunlight key goes through off, bright and daylight (a white highway with dark\n"
     "; notes, in songs), kept in SunlightMode (0, 1 or 2). In a song the venue goes too.\n"
     "Sunlight = off\n"
@@ -367,6 +370,7 @@ static const struct {
     {"Toggle Switches", "CameraDirector", "off"},
     {"Toggle Switches", "ToneHost", "off"},
     {"Toggle Switches", "SongStems", "off"},
+    {"Toggle Switches", "DiscordRichPresence", "off"},
     {"Toggle Switches", "Sunlight", "off"},
     {"Mod Settings", "SunlightMode", "1"},
     {"Keybinds", "SunlightKey", "G"},

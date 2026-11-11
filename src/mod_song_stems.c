@@ -362,10 +362,11 @@ static void *worker(void *arg) {
     pthread_mutex_unlock(&g_lock);
     if (!read_key() || !write_codebooks()) continue;
     if (g_indexed_at < 0) build_index();
-    const char *path = stems_index_find(song);
+    char found[2048];
+    const char *path = stems_index_path(song, found, sizeof found) ? found : NULL;
     if (!path && strict && rsm_now() - g_indexed_at > REINDEX_AFTER) {
       build_index();
-      path = stems_index_find(song);
+      path = stems_index_path(song, found, sizeof found) ? found : NULL;
     }
     if (!path) {
       if (strict) rsm_log("song stems: no archive with the song %s", song);

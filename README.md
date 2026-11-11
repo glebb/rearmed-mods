@@ -432,6 +432,17 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     `[Audio Keybindings] SongStemVolumeKey` (4)
   * Needs RS Re-ARMed 1.12.0 (the hook point `ak_src_submit` and the codebook names).
 
+* **Discord Rich Presence** (not in RSMods)
+  * Discord shows "Playing RS Re-ARMed" on your profile, and while you play a song its title, its artist and the game
+    mode (Learn a Song, Non-Stop Play, Score Attack), with the time since the song began. In the menus it says so.
+    It goes when the mod is turned off and when the game quits.
+  * Needs the Discord app running on this Mac, with **Share your detected activities with others** on in its
+    Activity Privacy settings. Discord started after the game is found within 15 seconds. Discord takes five changes in
+    twenty seconds: when the songs change faster, the last one shows a little later.
+  * The title and the artist are read from the song's archive. A song whose archive isn't found shows by its key.
+  * `DiscordRichPresence`, `[Mod Settings] DiscordApplicationID` (empty: the mods' own Discord application, "RS
+    Re-ARMed"; another application's ID shows that one's name and its art asset `logo`)
+
 * **Seven-String Guitar** (not in RSMods)
   * For 7-string charts, such as DotCharter's: the guitar gets a seventh string, a low B, and the chart plays on it.
     Its lane and string have their own color; its notes and chords, with their techniques and chord frames, are drawn,
@@ -571,6 +582,8 @@ src/mod_*.c              one file per mod
 src/seven*.c, seven.h    Seven-String Guitar's parts (mod_seven_string.c turns them on)
 src/stems_mix.h          Song Stems' mix of a block, and which .wem a song's bank plays (no game: tested as is)
 src/stems_index.c, .h    Song Stems' way from a song to its archive and its .wem (no game: tested as is)
+src/song_info.c, .h      a song's title and artist from its archive's manifest (no game: tested as is)
+src/discord_ipc.c, .h    Discord Rich Presence's activity and its connection to Discord (no game: tested as is)
 data/rs7string/          rs7string's chord diagram recipes and headstock programs (MIT), compiled into the library
 tests/, test.sh          the library's tests, and the script that runs them and the app's
 include/rs-rearmed/      RS Re-ARMed's runtime headers (MIT)
@@ -604,7 +617,8 @@ in the test with a key of its own, the profile list and the backups, the song li
 either game's pointers, LZMA and a 7z archive made by liblzma (`tests/make_7z_vectors.py` makes them again) and written
 again, archives laid out in the test for a folder without a file and counts the reader refuses, the tuning,
 localization and tone edits, a tone key the file has many times, Song Stems' index of the song archives with one that
-only a file provider serves, through RS Re-ARMed's own `rc_file.c`, and without the file layer) and the app's
+only a file provider serves, through RS Re-ARMed's own `rc_file.c`, and without the file layer, a song's names from
+a manifest and from an archive, Discord's activity and a conversation with a socket that answers as Discord does) and the app's
 (`gui/Tests`: settings, a section that is a list, install and update for both editions, the app's profile backups). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,
 the same key names, and no two actions on one default key. A mod's work in the game is checked by playing it.
 `stems/test.sh` has `rs-stems`' own tests, which need game data and the model ([`stems/README.md`](stems/README.md)).
@@ -616,6 +630,8 @@ every size and offset against the data it has before it uses it, and refuses the
 doesn't fit; the game then goes on as without the mod:
 
 - `src/rsmods_tuning.c`: a song's archive (PSARC), for Extended Range's tunings and Song Stems' audio.
+- `src/song_info.c`: a manifest's names, for Discord Rich Presence. A name longer than its field is cut at a whole
+  character, and goes to Discord as a JSON string (`src/discord_ipc.c`), at most 128 characters.
 - `src/seven_chords.c`: the RS7X block of a 7-string chart.
 - `stems/wwise_vorbis.c`: a song's `.wem`, in `rs-stems`, a process of its own. A header that names an offset past the
   data, a sample rate outside 8 to 192 kHz, or more frames than its packets can hold (or than 2^28) is refused before
