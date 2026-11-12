@@ -186,9 +186,12 @@ final class SettingsStore: ObservableObject {
             .appendingPathComponent("stems/rs-stems").path)
     }
 
+    var toneHostFolder: URL {
+        Self.defaultGameFolder.deletingLastPathComponent().appendingPathComponent("tonehost", isDirectory: true)
+    }
+
     var toneHostInstalled: Bool {
-        FileManager.default.isExecutableFile(atPath: Self.defaultGameFolder.deletingLastPathComponent()
-            .appendingPathComponent("tonehost/start.sh").path)
+        FileManager.default.isExecutableFile(atPath: toneHostFolder.appendingPathComponent("start.sh").path)
     }
 
     func showLearnPlay(_ on: Bool) {

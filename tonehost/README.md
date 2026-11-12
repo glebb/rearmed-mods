@@ -80,6 +80,9 @@ The mod looks for the FIFO at `~/Library/Application Support/RS Re-ARMed/tonehos
   Input and output on one device give the lowest latency: one callback and nothing held between them. A virtual device
   such as Loopback adds a hop. `buffer` can go below the 128 the game's input works in: the game collects what comes,
   from RS Re-ARMed 1.9.0, and the host sets its size again if something changes it.
+- For more than one interface, `"setups": [{"input": {…}, "output": {…}}, …]`: when the host starts with the devices of
+  `input` and `output` not connected, the first of these that is connected takes their place. Re-ARMed Mods' Tone Host
+  settings choose the interface, its channel, gain and output, and keep each one played in this list.
 - `gate` works on the input after `gain_db`, ahead of the plug-in; leave it out for none. It learns the guitar's noise,
   the quietest 100 ms lately, rising only for a level that holds steady, so a note ringing out doesn't take the gate up
   with it. It opens `margin_db` above that, kept between `min_db` and `max_db`. A tone's gain moves it

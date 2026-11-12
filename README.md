@@ -415,6 +415,9 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     while ToneHost is off), and the game's guitar is silent while it runs; the guitar fader and the volume keys still
     work. Without the host the game keeps its tones. It is built from source and
     isn't in the app: set it up from that folder.
+  * Once it is set up, the app's settings for this mod choose the interface the guitar is on, its channel and gain,
+    and where the sound goes. Each interface chosen is kept, so with one unplugged the host takes another that is
+    connected.
   * `ToneHost`
 
 * **Song Stems** (not in RSMods)

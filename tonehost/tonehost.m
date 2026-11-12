@@ -751,6 +751,21 @@ int main(int argc, char **argv) { @autoreleasepool {
   NSData *cfg = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:argv[2]]];
   NSDictionary *c = cfg ? [NSJSONSerialization JSONObjectWithData:cfg options:0 error:NULL] : nil;
   if (!c) { say("can't read the config"); return 2; }
+  // The chosen interface, or with it unplugged the first of "setups" that is connected: every interface played before
+  BOOL (^connected)(NSDictionary *) = ^BOOL(NSDictionary *s) {
+    NSString *out = s[@"output"][@"device"];
+    return find_device(s[@"input"][@"device"]) && (!out || find_device(out));
+  };
+  if (!connected(c))
+    for (NSDictionary *s in c[@"setups"]) {
+      if (!connected(s)) continue;
+      NSMutableDictionary *m = [c mutableCopy];
+      m[@"input"] = s[@"input"];
+      m[@"output"] = s[@"output"];  // none: the system's output
+      c = m;
+      break;
+    }
+  say("interface: %s", [c[@"input"][@"device"] description].UTF8String);
   NSDictionary *pl = c[@"plugin"];
   g_plugin = (AudioComponentDescription){fourcc(pl[@"type"]), fourcc(pl[@"subtype"]), fourcc(pl[@"manufacturer"]), 0, 0};
   g_channel = [c[@"input"][@"channel"] intValue];

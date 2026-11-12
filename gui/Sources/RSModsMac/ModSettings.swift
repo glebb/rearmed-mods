@@ -217,17 +217,78 @@ private struct OverrideInputSettings: View {
 
 private struct ToneHostSettings: View {
     @EnvironmentObject var store: SettingsStore
+    @State private var interfaces: [AudioDevices.Interface] = []
+    @State private var setup: ToneHostSetup?
+    @State private var failed = false
+
+    private var file: URL { store.toneHostFolder.appendingPathComponent("config.json") }
 
     var body: some View {
         Label(store.toneHostInstalled ? "rs-tonehost is set up." : "rs-tonehost isn't set up.",
               systemImage: store.toneHostInstalled ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
             .foregroundStyle(store.toneHostInstalled ? Color.green : Color.orange)
+        if store.toneHostInstalled, let setup {
+            let connected = interfaces.first { $0.name == setup.device }
+            Picker("Interface", selection: Binding(get: { setup.device }, set: choose)) {
+                if connected == nil { Text("\(setup.device) (not connected)").tag(setup.device) }
+                ForEach(interfaces.filter { $0.inputs > 0 }, id: \.name) { Text($0.name).tag($0.name) }
+            }
+            Picker("Guitar on channel", selection: Binding(get: { setup.channel }, set: { n in
+                change { $0.channel = n }
+            })) {
+                ForEach(1...max(connected?.inputs ?? 1, setup.channel), id: \.self) { Text(String($0)).tag($0) }
+            }
+            HStack {
+                Text("Gain")
+                Slider(value: Binding(get: { setup.gainDb }, set: { self.setup?.gainDb = $0 }), in: -24...36, step: 1,
+                       onEditingChanged: { editing in if !editing { save() } })
+                Text("\(Int(setup.gainDb)) dB").monospacedDigit().frame(width: 48, alignment: .trailing)
+            }
+            Picker("Sound to", selection: Binding(get: { setup.output }, set: { name in
+                change { $0.output = name }
+            })) {
+                Text("The system's output").tag(String?.none)
+                if let output = setup.output, !interfaces.contains(where: { $0.name == output }) {
+                    Text("\(output) (not connected)").tag(String?.some(output))
+                }
+                ForEach(interfaces.filter { $0.outputs > 0 }, id: \.name) { Text($0.name).tag(String?.some($0.name)) }
+            }
+            if failed {
+                Text("The host's config couldn't be written.").font(.caption).foregroundStyle(.red)
+            }
+        }
         Text(store.toneHostInstalled
-             ? "The game starts it, and it plays the guitar through your plug-in, following the game's tones. The game's own guitar is silent while it runs; the guitar fader and the volume keys still work."
+             ? "The game starts it, and it plays the guitar through your plug-in, following the game's tones. The game's own guitar is silent while it runs; the guitar fader and the volume keys still work. The sound comes soonest with the guitar and the sound on one interface. With this interface unplugged the host takes another you've chosen here before that is connected. A change restarts a running host: the game's own tones play until it's back, within half a minute."
              : "Until it is, the game keeps its own tones. Set it up with tonehost in rearmed-mods' source.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+            .onAppear {
+                interfaces = AudioDevices.interfaces()
+                setup = ToneHostConfig.read(file).flatMap(ToneHostConfig.chosen)
+            }
+    }
+
+    // An interface chosen before comes back as it was; a new one starts on channel 1, with its own output if it has one
+    private func choose(_ device: String) {
+        let config = ToneHostConfig.read(file) ?? [:]
+        let own = interfaces.contains { $0.name == device && $0.outputs > 0 } ? device : nil
+        setup = ToneHostConfig.remembered(device, in: config) ?? ToneHostSetup(device: device, output: own)
+        save()
+    }
+
+    private func change(_ edit: (inout ToneHostSetup) -> Void) {
+        guard var s = setup else { return }
+        edit(&s)
+        setup = s
+        save()
+    }
+
+    private func save() {
+        guard let setup, var config = ToneHostConfig.read(file) else { failed = true; return }
+        ToneHostConfig.choose(setup, in: &config)
+        failed = !ToneHostConfig.write(config, to: file)
+        if !failed { ToneHostConfig.restartHost(commands: store.toneHostFolder.appendingPathComponent("commands")) }
     }
 }
 
