@@ -11,7 +11,9 @@
 //   use TEMPLATE                  play a template of the config by hand
 //   mute                          fade everything out
 //   quit
-#import <Foundation/Foundation.h>
+#import <Cocoa/Cocoa.h>
+#import <AudioUnit/AUCocoaUIView.h>
+#import <CoreAudioKit/CoreAudioKit.h>
 #include <CommonCrypto/CommonDigest.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <CoreAudio/CoreAudio.h>
@@ -791,6 +793,82 @@ static NSString *config_problem(NSDictionary *c) {
   return nil;
 }
 
+// ---- Setting a sound: --edit ----
+// The plug-in's own window, with the guitar playing through it as the config's interface has it. Closing the window
+// saves what is set there as a state, and ends the host. Re-ARMed Mods' "Add a Plug-in" runs this for each sound.
+
+static NSString *g_edit_file;
+
+static int save_edit(void) {
+  slot_t *s = &slots[0];
+  atomic_store(&s->ready, 0);
+  usleep(30000);  // the audio thread is past any render of it
+  CFPropertyListRef state = NULL;
+  UInt32 size = sizeof state;
+  if (AudioUnitGetProperty(s->unit, kAudioUnitProperty_ClassInfo, kAudioUnitScope_Global, 0, &state, &size) || !state) { say("the plug-in gave no state"); return 1; }
+  NSData *data = [NSPropertyListSerialization dataWithPropertyList:CFBridgingRelease(state) format:NSPropertyListBinaryFormat_v1_0 options:0 error:NULL];
+  if (![data writeToFile:g_edit_file atomically:YES]) { say("can't write %s", g_edit_file.UTF8String); return 1; }
+  say("saved %s", g_edit_file.UTF8String);
+  return 0;
+}
+
+@interface EditWindow : NSObject <NSWindowDelegate>
+@end
+@implementation EditWindow
+- (void)windowWillClose:(NSNotification *)n {
+  int failed = save_edit();
+  AudioDeviceStop(g_out_dev, g_out_id);
+  _exit(failed);
+}
+@end
+
+// The plug-in's own view, or sliders for its parameters where it has none
+static NSView *plugin_view(AudioUnit unit) {
+  UInt32 size = 0;
+  Boolean writable = 0;
+  if (!AudioUnitGetPropertyInfo(unit, kAudioUnitProperty_CocoaUI, kAudioUnitScope_Global, 0, &size, &writable) && size >= sizeof(AudioUnitCocoaViewInfo)) {
+    AudioUnitCocoaViewInfo *info = malloc(size);
+    if (!AudioUnitGetProperty(unit, kAudioUnitProperty_CocoaUI, kAudioUnitScope_Global, 0, info, &size)) {
+      NSBundle *bundle = [NSBundle bundleWithURL:(__bridge NSURL *)info->mCocoaAUViewBundleLocation];
+      [bundle load];
+      id<AUCocoaUIBase> factory = [[bundle classNamed:(__bridge NSString *)info->mCocoaAUViewClass[0]] new];
+      NSView *view = [factory uiViewForAudioUnit:unit withSize:NSMakeSize(1100, 760)];
+      if (view) return view;
+    }
+  }
+  return [[AUGenericView alloc] initWithAudioUnit:unit];
+}
+
+static int edit_sound(NSString *file) {
+  g_edit_file = file;
+  [NSApplication sharedApplication];
+  [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+  NSView *view = plugin_view(slots[0].unit);
+  NSWindow *window = [[NSWindow alloc] initWithContentRect:view.frame styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
+                                                   backing:NSBackingStoreBuffered defer:NO];
+  static EditWindow *closer;
+  closer = [EditWindow new];
+  window.delegate = closer;
+  window.title = @"Set the sound, then close this window to save it";
+  window.contentView = view;
+  // Command-V works through an Edit menu, in the plug-in's fields and in the file dialogs it opens; Command-Q closes
+  // the window, so that it saves too
+  NSMenu *bar = [NSMenu new], *app = [NSMenu new], *edit = [[NSMenu alloc] initWithTitle:@"Edit"];
+  [app addItemWithTitle:@"Save the Sound and Close" action:@selector(performClose:) keyEquivalent:@"q"].target = window;
+  [edit addItemWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"];
+  [edit addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
+  [edit addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+  [edit addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
+  [bar addItemWithTitle:@"" action:NULL keyEquivalent:@""].submenu = app;
+  [bar addItemWithTitle:@"Edit" action:NULL keyEquivalent:@""].submenu = edit;
+  NSApp.mainMenu = bar;
+  [window center];
+  [window makeKeyAndOrderFront:nil];
+  [NSApp activateIgnoringOtherApps:YES];
+  [NSApp run];
+  return 0;
+}
+
 // What tells one set of saved states from another: a hash of every template's state, in the order of their names.
 // ToneHostProfiles.swift makes the same
 static NSString *states_stamp(NSDictionary *templates) {
@@ -862,8 +940,9 @@ int main(int argc, char **argv) { @autoreleasepool {
   }
   BOOL sound = argc == 4 && !strcmp(argv[3], "--check-sound");
   BOOL check = sound || (argc == 4 && !strcmp(argv[3], "--check"));
-  if ((argc != 3 && !check) || strcmp(argv[1], "--config")) {
-    fprintf(stderr, "usage: rs-tonehost --config FILE [--check | --check-sound]\n       rs-tonehost --plugin TYPE SUBTYPE MANUFACTURER\n");
+  BOOL edit = argc == 8 && !strcmp(argv[3], "--edit");
+  if ((argc != 3 && !check && !edit) || strcmp(argv[1], "--config")) {
+    fprintf(stderr, "usage: rs-tonehost --config FILE [--check | --check-sound | --edit TYPE SUBTYPE MANUFACTURER STATE]\n       rs-tonehost --plugin TYPE SUBTYPE MANUFACTURER\n");
     return 2;
   }
   NSDictionary *c = json_file(@(argv[2]));
@@ -872,7 +951,7 @@ int main(int argc, char **argv) { @autoreleasepool {
   g_plugin_dir = g_dir;
   // The chosen plug-in's profile goes over the config: its codes, templates and map, and its states are beside it
   NSString *profile = [c[@"profile"] isKindOfClass:NSString.class] ? c[@"profile"] : @"";
-  if (profile.length) {
+  if (profile.length && !edit) {
     if ([profile hasPrefix:@"."] || [profile containsString:@"/"]) { say("not a profile's name: %s", profile.UTF8String); return 2; }
     g_plugin_dir = [[g_dir stringByAppendingPathComponent:@"plugins"] stringByAppendingPathComponent:profile];
     NSDictionary *p = json_file([g_plugin_dir stringByAppendingPathComponent:@"profile.json"]);
@@ -882,7 +961,7 @@ int main(int argc, char **argv) { @autoreleasepool {
     c = m;
     say("plug-in: %s", profile.UTF8String);
   }
-  NSString *problem = config_problem(c);
+  NSString *problem = edit ? nil : config_problem(c);
   if (problem) { say("not set up: %s", problem.UTF8String); return 1; }
   if (sound) {
     // checked.json says these states have played: Re-ARMed Mods offers the plug-in while it matches them
@@ -912,6 +991,7 @@ int main(int argc, char **argv) { @autoreleasepool {
     }
   say("interface: %s", [c[@"input"][@"device"] description].UTF8String);
   g_plugin = plugin_of(c);
+  if (edit) g_plugin = (AudioComponentDescription){fourcc(@(argv[4])), fourcc(@(argv[5])), fourcc(@(argv[6])), 0, 0};
   g_channel = [c[@"input"][@"channel"] intValue];
   if (g_channel < 0) g_channel = 0;  // the audio thread counts buffers up to it
   g_input_gain = powf(10.f, [c[@"input"][@"gain_db"] floatValue] / 20.f);
@@ -932,13 +1012,16 @@ int main(int argc, char **argv) { @autoreleasepool {
   if (c[@"probe_peak_db"]) g_probe_peak = powf(10.f, [c[@"probe_peak_db"] floatValue] / 20.f);
 
   // First of all: the instances take seconds to open, and a write before the FIFO exists would make an ordinary file
-  const char *fifo = [c[@"fifo"] UTF8String];
-  unlink(fifo);
-  if (mkfifo(fifo, 0600)) { say("no command FIFO: %s", strerror(errno)); return 1; }
-  int fd = open(fifo, O_RDONLY | O_NONBLOCK);
-  int keep = open(fifo, O_WRONLY);  // a writer of our own: without one a read ends when the mod's goes away
-  if (fd < 0 || keep < 0) { say("no command FIFO"); return 1; }
-  fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
+  int fd = -1;
+  if (!edit) {  // setting a sound takes no commands, and the FIFO is a playing host's
+    const char *fifo = [c[@"fifo"] UTF8String];
+    unlink(fifo);
+    if (mkfifo(fifo, 0600)) { say("no command FIFO: %s", strerror(errno)); return 1; }
+    fd = open(fifo, O_RDONLY | O_NONBLOCK);
+    int keep = open(fifo, O_WRONLY);  // a writer of our own: without one a read ends when the mod's goes away
+    if (fd < 0 || keep < 0) { say("no command FIFO"); return 1; }
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
+  }
 
   AudioObjectID in_dev = find_device(c[@"input"][@"device"]);
   AudioObjectID out_dev = c[@"output"][@"device"] ? find_device(c[@"output"][@"device"]) : default_output();
@@ -947,9 +1030,16 @@ int main(int argc, char **argv) { @autoreleasepool {
   usleep(200000);
   if (device_rate(in_dev) != RATE) { say("the input must run at 48 kHz (%g)", device_rate(in_dev)); return 1; }
   if (c[@"slots"]) g_slots = MAX(2, MIN(SLOTS, [c[@"slots"] intValue]));
+  if (edit) g_slots = 1;
   for (int i = 0; i < g_slots; i++)
     if (make_slot(&slots[i])) { say("the plug-in didn't open"); return 1; }
   say("%d instances open", g_slots);
+  if (edit) {  // the sound saved before, if there is one, playing from the start
+    if ([NSFileManager.defaultManager fileExistsAtPath:@(argv[7])]) load_state(0, argv[7]);
+    else atomic_store(&slots[0].ready, 1);
+    atomic_store(&g_target, 0);
+    g_playing = 0;
+  }
   set_buffer(in_dev, frames);
 
   NSDictionary *gt = c[@"gate"];
@@ -1013,6 +1103,7 @@ int main(int argc, char **argv) { @autoreleasepool {
     }
   });
   dispatch_resume(volume);
+  if (edit) return edit_sound(@(argv[7]));
   static char line[16384];
   size_t have = 0;
   while (!atomic_load(&g_quit)) {

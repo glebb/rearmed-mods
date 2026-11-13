@@ -127,3 +127,72 @@ final class ToneHostProfilesTests: XCTestCase {
         XCTAssertNil(config["profile"])
     }
 }
+
+final class ToneHostAddingTests: XCTestCase {
+    private var folder: URL!
+    private let shed = ToneHostEffect(name: "Sound Shed: Amp One", type: "aufx", subtype: "SND1", manufacturer: "Shed", version: 0x010203)
+
+    override func setUpWithError() throws {
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        XCTAssertTrue(ToneHostConfig.write(["input": ["device": "X"]], to: folder.appendingPathComponent("config.json")))
+    }
+
+    override func tearDown() { try? FileManager.default.removeItem(at: folder) }
+
+    private func saveSounds() throws {
+        for sound in ToneHostProfiles.sounds {
+            let state: NSDictionary = ["type": ToneHostProfiles.fourCC("aufx"), "data": Data(sound.utf8)]
+            try state.write(to: ToneHostProfiles.stateFile(sound, in: folder))
+        }
+    }
+
+    private func all() -> [ToneHostPlugin] {
+        let config = ToneHostConfig.read(folder.appendingPathComponent("config.json")) ?? [:]
+        return ToneHostProfiles.all(in: folder, config: config) { _, _, _ in .init(name: "Sound Shed: Amp One", version: 0x010203) }
+    }
+
+    func testAFoldersNameFromThePlugIns() {
+        XCTAssertEqual(ToneHostProfiles.newID(for: "Archetype: Gojira X", taken: []), "archetype-gojira-x")
+        XCTAssertEqual(ToneHostProfiles.newID(for: "Helix Native", taken: ["helix-native", "helix-native-2"]), "helix-native-3")
+        XCTAssertEqual(ToneHostProfiles.newID(for: "../..", taken: []), "plug-in")
+        XCTAssertEqual(ToneHostProfiles.fourCC(ToneHostProfiles.fourCC("6HPA")), "6HPA")
+        XCTAssertEqual(shed.shortName, "Amp One")
+    }
+
+    func testAPlugInAddedHereIsOfferedOnceItsSoundsPlayed() throws {
+        XCTAssertTrue(ToneHostProfiles.startStage(in: folder))
+        try saveSounds()
+        let stage = ToneHostProfiles.stage(in: folder)
+        let profile = ToneHostProfiles.profile(for: shed)
+        XCTAssertTrue(ToneHostConfig.write(profile, to: stage.appendingPathComponent("profile.json")))
+        XCTAssertEqual(all(), [], "nothing is offered while it is being made")
+        // as rs-tonehost --check-sound leaves it
+        let stamp = ToneHostProfiles.stamp(profile["templates"] as? [String: Any] ?? [:], in: stage)
+        XCTAssertTrue(ToneHostConfig.write(["states": stamp], to: stage.appendingPathComponent("checked.json")))
+        XCTAssertTrue(ToneHostProfiles.finishStage(in: folder, as: "amp-one"))
+        var made = ToneHostPlugin(id: "amp-one", name: "Amp One")
+        made.ownSounds = true
+        XCTAssertEqual(all(), [made])
+        let config = ToneHostConfig.read(folder.appendingPathComponent("config.json"))!
+        XCTAssertEqual(ToneHostProfiles.chosen(config), "amp-one")
+        XCTAssertEqual(ToneHostConfig.chosen(config)?.device, "X", "the interface stays")
+        XCTAssertEqual(ToneHostProfiles.effect(of: profile) { _, _, _ in .init(name: "n", version: 7) }?.version, 7)
+
+        // Its sounds set again: the copy has neither the levels nor the check of the sounds before
+        try Data().write(to: folder.appendingPathComponent("plugins/amp-one/levels.plist"))
+        XCTAssertTrue(ToneHostProfiles.startStage(in: folder, from: "amp-one"))
+        let names = try FileManager.default.contentsOfDirectory(atPath: stage.path).sorted()
+        XCTAssertEqual(names, ["profile.json", "states"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ToneHostProfiles.stateFile("clean", in: folder).path))
+        XCTAssertNil(all()[0].problem, "the one in place plays on meanwhile")
+    }
+
+    func testWhatTheCheckSaid() {
+        XCTAssertEqual(ToneHostTools.problem(in: "[tonehost] slot 0: x\n[tonehost] not set up: driven is silent\n"),
+                       "The check said: driven is silent. Is the plug-in authorized, and does this sound play when you set it?")
+        XCTAssertEqual(ToneHostTools.problem(in: "[tonehost] not set up: the plug-in didn't open\n"),
+                       "The check said: the plug-in didn't open.")
+        XCTAssertEqual(ToneHostTools.problem(in: ""), "The check didn't finish.")
+    }
+}

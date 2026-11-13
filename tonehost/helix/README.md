@@ -10,6 +10,7 @@ Line 6. Run [`setup.sh`](setup.sh) with the game closed; run it again after a He
 | `base.hlx` | An empty preset, the frame of Helix's file |
 | `capture_states.m` | Selects each imported preset by MIDI and saves its state |
 | `check_states.m` | Tells whether a state has the chain just made: toggles the last block and listens |
+| `../config.default.json` | The config of a new install: `make_config.py` and `../install.sh` start from it |
 | `make_config.py` | Writes the profile, `plugins/helix-native/profile.json`, and `config.json` with it chosen, keeping the player's settings |
 | `setup.sh` | All of it, with one import by hand |
 

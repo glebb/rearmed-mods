@@ -9,6 +9,7 @@ struct ToneHostPlugin: Equatable, Identifiable {
     let name: String
     var problem: String?  // why it can't play
     var note: String?  // something to know about one that can
+    var ownSounds = false  // made here, from sounds the player set: they can be set again
 }
 
 enum ToneHostProfiles {
@@ -54,6 +55,7 @@ enum ToneHostProfiles {
             ? installed(type, subtype, manufacturer) : nil
         let name = profile["name"] as? String ?? component?.name ?? (id.isEmpty ? "The plug-in in config.json" : id)
         var plugin = ToneHostPlugin(id: id, name: name)
+        plugin.ownSounds = !id.isEmpty && profile["made_by"] as? String == madeHere
         guard [type, subtype, manufacturer].allSatisfy({ $0.utf8.count == 4 }) else {
             plugin.problem = "It names no plug-in."
             return plugin

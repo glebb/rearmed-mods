@@ -8,11 +8,7 @@ keeping the player's settings if a config exists. Both go to OUT, for setup.sh t
 import argparse, json, os
 
 PLUGIN = {"type": "aumf", "subtype": "6HPA", "manufacturer": "LSIX"}
-DEFAULTS = {
-    "input": {"device": "", "channel": 0, "gain_db": 6},
-    "buffer": 128, "fade_ms": 20, "target_db": -22.5, "probe_peak_db": -12,
-    "gate": {"margin_db": 12, "tight_db": 8, "min_db": -70, "max_db": -40, "hold_ms": [150, 40], "release_ms": [120, 30]},
-}
+DEFAULTS = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config.default.json")))
 
 
 def main():
@@ -28,7 +24,7 @@ def main():
     a.add_argument("--version", type=int)
     o = a.parse_args()
     t = json.load(open(o.tones))
-    c = json.load(open(o.config)) if os.path.exists(o.config) else json.loads(json.dumps(DEFAULTS))
+    c = json.load(open(o.config)) if os.path.exists(o.config) else DEFAULTS
     if o.input:
         c["input"]["device"] = o.input
     if o.channel:

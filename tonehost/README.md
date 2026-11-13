@@ -33,13 +33,27 @@ ends a few seconds after the game does, a crash included. `start.sh` and `stop.s
 A setup from before plug-ins had profiles keeps playing as it is. `tonehost/migrate.sh helix-native "Helix Native"` moves
 it into a profile, with nothing imported again.
 
-For another Audio Unit, set a sound in its own window and save it as a template's state:
+For another Audio Unit, with the game closed:
 
 ```bash
-build/tonehost/rs-tone-editor aufx SND1 Shed clean.plist
+tonehost/install.sh
 ```
 
-The state is written when the window closes. `auval -a` lists the codes.
+Then, in Re-ARMed Mods' settings for Your Own Plug-in, choose the interface and click Add a Plug-in. It lists the Audio
+Unit effects installed, and has you set two sounds, a clean one and a driven one, each in the plug-in's own window with
+the guitar playing through it. Closing the window saves the sound. Both are then played through the plug-in unheard, and
+the plug-in becomes a profile that can be chosen: the clean sound for a tone with no drive pedal and little amp gain,
+the driven one for the rest, each as loud as the other. Change Its Sounds opens them again. More than two sounds, or
+knobs that follow the game's, are a profile written by hand, below.
+
+By hand, the host opens that window with
+
+```bash
+open -n -W "RS Tone Host.app" --args --config config.json --edit aufx SND1 Shed clean.plist
+```
+
+and `build/tonehost/rs-tone-editor aufx SND1 Shed clean.plist` does the same with no sound and no interface. The state is
+written when the window closes. `auval -a` lists the codes.
 
 macOS asks for the microphone the first time, and again after every rebuild, as an ad-hoc signature changes with the
 build. Until it is answered the host hangs in `AudioDeviceCreateIOProcID`, and killing it there loses the question: start
@@ -108,7 +122,8 @@ and `map` in itself and no `profile` plays as before. Here they are together:
   after saving a state again, run `--check-sound` again. So write a profile
   last: make it in a folder whose name starts with a dot, which nobody reads, and rename it. `plugin_version` is what
   `rs-tonehost --plugin TYPE SUBTYPE MANUFACTURER` printed when the states were saved; with another version installed the
-  settings say so, and the plug-in still plays.
+  settings say so, and the plug-in still plays. `"made_by": "Re-ARMed Mods"` marks a profile its Add a Plug-in made,
+  whose sounds it offers to change.
 - `channel` counts from 0. The host sets 48 kHz on its devices. With no `output` the sound follows the system's output,
   as the game's does.
   Input and output on one device give the lowest latency: one callback and nothing held between them. A virtual device

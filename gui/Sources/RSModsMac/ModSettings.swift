@@ -222,6 +222,12 @@ private struct ToneHostSettings: View {
     @State private var plugins: [ToneHostPlugin] = []
     @State private var plugin = ""
     @State private var failed = false
+    @State private var adding: Adding?
+
+    private struct Adding: Identifiable {
+        let changing: String?
+        var id: String { changing ?? "" }
+    }
 
     private var file: URL { store.toneHostFolder.appendingPathComponent("config.json") }
 
@@ -249,6 +255,25 @@ private struct ToneHostSettings: View {
             ForEach(plugins.filter { $0.problem != nil }) { p in
                 Text("\(p.name) can't be chosen. \(p.problem ?? "")")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Button("Add a Plug-in…") { adding = Adding(changing: nil) }
+                if let playing, playing.ownSounds { Button("Change Its Sounds…") { adding = Adding(changing: playing.id) } }
+            }
+            .sheet(item: $adding) { target in
+                ToneHostAddSheet(folder: store.toneHostFolder, changing: target.changing) { added in
+                    adding = nil
+                    if added {
+                        load()
+                        ToneHostConfig.restartHost(commands: store.toneHostFolder.appendingPathComponent("commands"))
+                    }
+                }
+            }
+        }
+        if store.toneHostInstalled, setup == nil {
+            Picker("Interface", selection: Binding(get: { "" }, set: { if !$0.isEmpty { choose($0) } })) {
+                Text("Choose…").tag("")
+                ForEach(interfaces.filter { $0.inputs > 0 }, id: \.name) { Text($0.name).tag($0.name) }
             }
         }
         if store.toneHostInstalled, let setup {
@@ -282,18 +307,22 @@ private struct ToneHostSettings: View {
             }
         }
         Text(store.toneHostInstalled
-             ? "The game starts it, and it plays the guitar through the plug-in chosen here, following the game's tones. A plug-in appears here once its setup has finished: tonehost in rearmed-mods' source has the steps. The game's own guitar is silent while it runs; the guitar fader and the volume keys still work. The sound comes soonest with the guitar and the sound on one interface. With this interface unplugged the host takes another you've chosen here before that is connected. A change restarts a running host: the game's own tones play until it's back, within half a minute."
-             : "Until it is, the game keeps its own tones. Set it up with tonehost in rearmed-mods' source.")
+             ? "The game starts it, and it plays the guitar through the plug-in chosen here, following the game's tones. Add a Plug-in takes any Audio Unit with two sounds you set yourself; Helix Native follows every amp of the game with tonehost/helix/setup.sh in rearmed-mods' source. The game's own guitar is silent while it runs; the guitar fader and the volume keys still work. The sound comes soonest with the guitar and the sound on one interface. With this interface unplugged the host takes another you've chosen here before that is connected. A change restarts a running host: the game's own tones play until it's back, within half a minute."
+             : "Until it is, the game keeps its own tones. Install it with tonehost/install.sh in rearmed-mods' source.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .onAppear {
                 interfaces = AudioDevices.interfaces()
-                let config = ToneHostConfig.read(file) ?? [:]
-                setup = ToneHostConfig.chosen(config)
-                plugins = ToneHostProfiles.all(in: store.toneHostFolder, config: config)
-                plugin = ToneHostProfiles.chosen(config)
+                load()
             }
+    }
+
+    private func load() {
+        let config = ToneHostConfig.read(file) ?? [:]
+        setup = ToneHostConfig.chosen(config)
+        plugins = ToneHostProfiles.all(in: store.toneHostFolder, config: config)
+        plugin = ToneHostProfiles.chosen(config)
     }
 
     private func choosePlugin(_ id: String) {

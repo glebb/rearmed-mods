@@ -20,13 +20,16 @@ sound to stand: the reason to use one is to sound better than the game. So don't
 | 2. Knobs follow the game | Level 1, plus `follow` rules from the game's knobs to parameters | A plug-in that exposes parameters |
 | 3. Gear per tone | One state per amp model, generated, plus a gear table | A plug-in with many models and a preset format you can write |
 
-Start at level 1, play it, and go further only if the player asks.
+Start at level 1, play it, and go further only if the player asks. Level 1 with two sounds needs none of the steps below:
+`tonehost/install.sh`, then Add a Plug-in in Re-ARMed Mods' settings for Your Own Plug-in, where the player sets a clean and
+a driven sound with the guitar playing. Its profile, `plugins/ID/profile.json`, is the one to add rules or templates to.
 
 ## Steps
 
 1. **Find it.** `auval -a` gives the three codes, such as `aufx SND1 Shed`. Only Audio Units work: not VST3-only plug-ins. Effects
    are `aufx`, or `aumf` if they take MIDI. Check it's arm64: `lipo -archs` on the binary in the `.component`.
 2. **Save states.** `build/tonehost/rs-tone-editor TYPE SUBTYPE MANUFACTURER clean.plist` opens its window, and closing it saves.
+   That one is silent; the host's `--edit` (`tonehost/README.md`) is the same with the guitar playing.
    Saved state is the plug-in's own format: don't decode it. If it's scrambled, as Helix's is, that is the plug-in's business.
 3. **Read its parameters** before writing rules: ids, names, ranges and current values through `kAudioUnitProperty_ParameterList`.
    Helix exposes only 16 knobs and 16 switches, assigned inside each preset. Many plug-ins expose everything.
