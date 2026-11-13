@@ -33,12 +33,38 @@ final class ToneHostProfilesTests: XCTestCase {
         try state.write(to: states.appendingPathComponent(name + ".plist"))
     }
 
-    private func install(_ id: String, _ p: [String: Any], states: [String] = ["clean", "driven"]) throws -> URL {
+    // As rs-tonehost --check-sound leaves it
+    private func check(_ p: [String: Any], in home: URL) {
+        let stamp = ToneHostProfiles.stamp(p["templates"] as? [String: Any] ?? [:], in: home)
+        XCTAssertTrue(ToneHostConfig.write(["states": stamp], to: home.appendingPathComponent("checked.json")))
+    }
+
+    private func install(_ id: String, _ p: [String: Any], states: [String] = ["clean", "driven"], checked: Bool = true) throws -> URL {
         let home = folder.appendingPathComponent("plugins/\(id)", isDirectory: true)
         try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
         XCTAssertTrue(ToneHostConfig.write(p, to: home.appendingPathComponent("profile.json")))
         for s in states { try save(s, in: home) }
+        if checked { check(p, in: home) }
         return home
+    }
+
+    func testOnlySoundsThatPlayedCount() throws {
+        let home = try install("helix-native", profile(), checked: false)
+        let unplayed = "Its sounds haven't been played through the plug-in to check them."
+        XCTAssertEqual(ToneHostProfiles.all(in: folder, config: [:], installed: helix)[0].problem, unplayed)
+        check(profile(), in: home)
+        XCTAssertNil(ToneHostProfiles.all(in: folder, config: [:], installed: helix)[0].problem)
+        let state: NSDictionary = ["type": ToneHostProfiles.fourCC("aumf"), "data": Data([2])]
+        try state.write(to: home.appendingPathComponent("states/driven.plist"))
+        XCTAssertEqual(ToneHostProfiles.all(in: folder, config: [:], installed: helix)[0].problem, unplayed,
+                       "a state saved again hasn't played")
+    }
+
+    // What rs-tonehost's states_stamp gives for the same two files
+    func testTheStampIsTheHosts() throws {
+        try Data("one".utf8).write(to: folder.appendingPathComponent("a.plist"))
+        try Data("two".utf8).write(to: folder.appendingPathComponent("b.plist"))
+        XCTAssertEqual(ToneHostProfiles.stamp(["b": ["state": "b.plist"], "a": ["state": "a.plist"]], in: folder), "11914c19a28a98c57d12f3cce6c32b7944784f4b4781a706c24eb1dc284e2856")
     }
 
     func testNothingIsOfferedBeforeASetup() {
@@ -90,6 +116,7 @@ final class ToneHostProfilesTests: XCTestCase {
         var config = profile { $0["name"] = nil }
         try save("clean", in: folder)
         try save("driven", in: folder)
+        check(config, in: folder)
         _ = try install("other", profile { $0["name"] = "Other" })
         XCTAssertEqual(ToneHostProfiles.all(in: folder, config: config, installed: helix).map(\.name),
                        ["Line 6: Helix Native", "Other"])

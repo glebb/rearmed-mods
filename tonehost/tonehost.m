@@ -791,6 +791,65 @@ static NSString *config_problem(NSDictionary *c) {
   return nil;
 }
 
+// What tells one set of saved states from another: a hash of every template's state, in the order of their names.
+// ToneHostProfiles.swift makes the same
+static NSString *states_stamp(NSDictionary *templates) {
+  NSMutableData *all = [NSMutableData data];
+  for (NSString *name in [templates.allKeys sortedArrayUsingComparator:^(NSString *a, NSString *b) { return [a compare:b options:NSLiteralSearch]; }]) {
+    NSData *state = [NSData dataWithContentsOfFile:state_path(templates[name])] ?: [NSData data];
+    unsigned char hash[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(state.bytes, (CC_LONG)state.length, hash);
+    [all appendBytes:hash length:sizeof hash];
+  }
+  unsigned char hash[CC_SHA256_DIGEST_LENGTH];
+  CC_SHA256(all.bytes, (CC_LONG)all.length, hash);
+  NSMutableString *hex = [NSMutableString string];
+  for (size_t i = 0; i < sizeof hash; i++) [hex appendFormat:@"%02x", hash[i]];
+  return hex;
+}
+
+// What keeps the plug-in from playing a config that config_problem passes, or nil: it opens the plug-in, with no device
+// and nothing heard, and sends the reference pluck through every template's state. A plug-in that isn't authorized, or a
+// state it refuses, is silent here
+static NSString *sound_problem(NSDictionary *c) {
+  NSDictionary *templates = c[@"templates"];
+  if (templates.count > 1) {
+    NSMutableSet *different = [NSMutableSet set];
+    for (NSString *name in templates) [different addObject:[NSData dataWithContentsOfFile:state_path(templates[name])] ?: [NSData data]];
+    if (different.count == 1) return @"every template has the same state";
+  }
+  g_plugin = plugin_of(c);
+  if (c[@"probe_peak_db"]) g_probe_peak = powf(10.f, [c[@"probe_peak_db"] floatValue] / 20.f);
+  slot_t *s = &slots[0];
+  if (make_slot(s)) return @"the plug-in didn't open";
+  NSString *problem = nil;
+  for (NSString *name in [templates.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+    load_state(0, state_path(templates[name]).UTF8String);
+    if (!atomic_load(&s->ready)) { problem = [NSString stringWithFormat:@"the plug-in refused %@'s state", name]; break; }
+    // The state as it was saved, and the template's own parameters: a rule would follow a knob of no tone, and an amp
+    // with its gain at nothing is silent
+    NSDictionary *fixed = [templates[name] objectForKey:@"params"];
+    for (NSString *id in fixed) AudioUnitSetParameter(s->unit, id.intValue, kAudioUnitScope_Global, 0, [fixed[id] floatValue], 0);
+    usleep(50000);  // a plug-in may take a state in its own time
+    atomic_store(&s->probing, 1);
+    float level = -120.f, before;
+    for (int i = 0; i < 6; i++) {  // as measure does, with the plucks rendered here
+      atomic_store(&s->probe_count, 0);
+      s->probe_sum = 0;
+      for (int n = 0; n < 12000; n += 250) render_slot(s, 250);
+      before = level;
+      level = 10 * log10f((float)(s->probe_sum / 12000) + 1e-12f);
+      if (i && fabsf(level - before) < 0.5f) break;
+    }
+    atomic_store(&s->probing, 0);
+    say("%s: %.1f dB", name.UTF8String, level);
+    if (level < -90.f) { problem = [NSString stringWithFormat:@"%@ is silent", name]; break; }
+  }
+  AudioUnitUninitialize(s->unit);
+  AudioComponentInstanceDispose(s->unit);
+  return problem;
+}
+
 int main(int argc, char **argv) { @autoreleasepool {
   // An installed plug-in's version, as a profile keeps it: nothing is opened
   if (argc == 5 && !strcmp(argv[1], "--plugin")) {
@@ -801,9 +860,10 @@ int main(int argc, char **argv) { @autoreleasepool {
     printf("%u\n", version);
     return 0;
   }
-  BOOL check = argc == 4 && !strcmp(argv[3], "--check");
+  BOOL sound = argc == 4 && !strcmp(argv[3], "--check-sound");
+  BOOL check = sound || (argc == 4 && !strcmp(argv[3], "--check"));
   if ((argc != 3 && !check) || strcmp(argv[1], "--config")) {
-    fprintf(stderr, "usage: rs-tonehost --config FILE [--check]\n       rs-tonehost --plugin TYPE SUBTYPE MANUFACTURER\n");
+    fprintf(stderr, "usage: rs-tonehost --config FILE [--check | --check-sound]\n       rs-tonehost --plugin TYPE SUBTYPE MANUFACTURER\n");
     return 2;
   }
   NSDictionary *c = json_file(@(argv[2]));
@@ -824,6 +884,17 @@ int main(int argc, char **argv) { @autoreleasepool {
   }
   NSString *problem = config_problem(c);
   if (problem) { say("not set up: %s", problem.UTF8String); return 1; }
+  if (sound) {
+    // checked.json says these states have played: Re-ARMed Mods offers the plug-in while it matches them
+    NSString *stamp = [g_plugin_dir stringByAppendingPathComponent:@"checked.json"];
+    if ((problem = sound_problem(c))) {
+      unlink(stamp.fileSystemRepresentation);
+      say("not set up: %s", problem.UTF8String);
+      return 1;
+    }
+    NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"states": states_stamp(c[@"templates"])} options:0 error:NULL];
+    if (![json writeToFile:stamp atomically:YES]) { say("can't write %s", stamp.UTF8String); return 1; }
+  }
   if (check) { say("set up: %lu templates", (unsigned long)[c[@"templates"] count]); return 0; }
   // The chosen interface, or with it unplugged the first of "setups" that is connected: every interface played before
   BOOL (^connected)(NSDictionary *) = ^BOOL(NSDictionary *s) {

@@ -416,8 +416,8 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     work. Without the host the game keeps its tones. It is built from source and
     isn't in the app: set it up from that folder.
   * Once it is set up, the app's settings for this mod choose the plug-in, the interface the guitar is on, its channel
-    and gain, and where the sound goes. A plug-in can be chosen once its setup has finished: it is installed and every
-    sound it needs is saved. One that isn't is named with what it lacks. Each interface chosen is kept, so with one unplugged the host takes another that is
+    and gain, and where the sound goes. A plug-in can be chosen once its setup has finished: it is installed, every
+    sound it needs is saved, and each has played through the plug-in in a check nobody hears. One that isn't is named with what it lacks. Each interface chosen is kept, so with one unplugged the host takes another that is
     connected.
   * `ToneHost`
 

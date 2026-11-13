@@ -99,8 +99,13 @@ and `map` in itself and no `profile` plays as before. Here they are together:
 
 - **When a plug-in is set up.** The host starts only if the plug-in is installed, `clean`, `driven` and every `by_prefix`
   name a template, and every template's state is there and was saved from this plug-in; otherwise `host.log` says what is
-  missing and the game keeps its tones. `rs-tonehost --config FILE --check` says the same and opens nothing. Re-ARMed
-  Mods' Tone Host settings offer only the plug-ins that pass, and name the others with the reason. So write a profile
+  missing and the game keeps its tones. `rs-tonehost --config FILE --check` says the same and opens nothing.
+  `--check-sound` goes on from there: it opens the plug-in, with no device and nothing heard, sends the reference pluck
+  through every template's state with its `params`, and fails on a state the plug-in refuses or one that is silent, as
+  a plug-in that isn't authorized is. When all play it writes `checked.json` beside the states, with a hash of them. Run
+  it with the network guard, as `helix/setup.sh` does. Re-ARMed Mods' Tone Host settings offer only the plug-ins that
+  pass the first check and whose `checked.json` is of the states as they are, and name the others with the reason: so
+  after saving a state again, run `--check-sound` again. So write a profile
   last: make it in a folder whose name starts with a dot, which nobody reads, and rename it. `plugin_version` is what
   `rs-tonehost --plugin TYPE SUBTYPE MANUFACTURER` printed when the states were saved; with another version installed the
   settings say so, and the plug-in still plays.

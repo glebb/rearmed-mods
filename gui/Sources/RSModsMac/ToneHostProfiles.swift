@@ -1,4 +1,5 @@
 import AudioToolbox
+import CryptoKit
 import Foundation
 
 // A plug-in rs-tonehost can play (tonehost/README.md): a profile in plugins/ID, or the one a config from before
@@ -43,7 +44,8 @@ enum ToneHostProfiles {
         return found
     }
 
-    // The same checks as rs-tonehost's config_problem, none of which opens the plug-in
+    // The same checks as rs-tonehost's config_problem, none of which opens the plug-in, and then that the host's
+    // --check-sound has played these very states: it leaves their stamp in checked.json
     static func plugin(id: String, profile: [String: Any], states: URL, installed: Lookup) -> ToneHostPlugin {
         let codes = profile["plugin"] as? [String: Any] ?? [:]
         let type = codes["type"] as? String ?? "", subtype = codes["subtype"] as? String ?? ""
@@ -74,9 +76,7 @@ enum ToneHostProfiles {
         let want = [fourCC(type), fourCC(subtype), fourCC(manufacturer)]
         var missing = 0, foreign = 0
         for template in templates.values {
-            let path = (template as? [String: Any])?["state"] as? String ?? ""
-            let file = path.hasPrefix("/") ? URL(fileURLWithPath: path) : states.appendingPathComponent(path)
-            guard !path.isEmpty, let state = NSDictionary(contentsOf: file) else {
+            guard let state = stateFile(template, in: states).flatMap({ NSDictionary(contentsOf: $0) }) else {
                 missing += 1
                 continue
             }
@@ -88,11 +88,29 @@ enum ToneHostProfiles {
                 : "\(missing) of its \(templates.count) sounds aren't saved."
         } else if foreign > 0 {
             plugin.problem = "Its sounds were saved from another plug-in."
+        } else if ToneHostConfig.read(states.appendingPathComponent("checked.json"))?["states"] as? String
+                    != stamp(templates, in: states) {
+            plugin.problem = "Its sounds haven't been played through the plug-in to check them."
         } else if let made = (profile["plugin_version"] as? NSNumber)?.uint32Value, made != component.version {
             plugin.note = "Set up with version \(version(made)) of the plug-in, and \(version(component.version)) is installed. "
                 + "If tones sound wrong, set it up again."
         }
         return plugin
+    }
+
+    private static func stateFile(_ template: Any, in states: URL) -> URL? {
+        guard let path = (template as? [String: Any])?["state"] as? String, !path.isEmpty else { return nil }
+        return path.hasPrefix("/") ? URL(fileURLWithPath: path) : states.appendingPathComponent(path)
+    }
+
+    // rs-tonehost's states_stamp: a hash of every state's hash, the templates in the order of their names
+    static func stamp(_ templates: [String: Any], in states: URL) -> String {
+        var all = Data()
+        for name in templates.keys.sorted(by: { Array($0.utf16).lexicographicallyPrecedes(Array($1.utf16)) }) {
+            let state = stateFile(templates[name] as Any, in: states).flatMap { try? Data(contentsOf: $0) } ?? Data()
+            all.append(contentsOf: SHA256.hash(data: state))
+        }
+        return SHA256.hash(data: all).map { String(format: "%02x", $0) }.joined()
     }
 
     // An Audio Unit's version as its maker writes it: 0x00030802 is 3.8.2

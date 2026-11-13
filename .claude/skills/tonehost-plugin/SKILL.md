@@ -33,8 +33,9 @@ Start at level 1, play it, and go further only if the player asks.
 4. **Write the profile**, `RS Re-ARMed/tonehost/plugins/ID/profile.json`, with the states beside it: `name`, `plugin`,
    `plugin_version` (`rs-tonehost --plugin TYPE SUBTYPE MANUFACTURER` prints it), `templates`, and `map` with `clean`,
    `driven` and `driven_from_gain`. Make the folder as `.ID.new` and rename it when it is whole, then set `"profile": "ID"`
-   in `config.json`, or let the player choose it in Re-ARMed Mods. `rs-tonehost --config FILE --check` tells whether it
-   would play. The game's tone data is what the mod sends: to see real knob names, read the `tone:` lines in `host.log`
+   in `config.json`, or let the player choose it in Re-ARMed Mods. `rs-tonehost --config FILE --check-sound`, run with the network
+   guard, plays every state through the plug-in unheard and writes `checked.json`: Re-ARMed Mods offers the plug-in
+   only with that, so run it again after saving a state again. The game's tone data is what the mod sends: to see real knob names, read the `tone:` lines in `host.log`
    and the gear manifests. A rule's value is `scale * knob + offset`. Game knobs are mostly 0-100, some in dB or ms.
 5. **Levels.** Set `target_db` and leave `output_db` to the measurement: each tone is measured through the instance nobody
    hears. Tones with and without a compressor differed by up to 9 dB before that. Use `trim_db` for a template that sits wrong.

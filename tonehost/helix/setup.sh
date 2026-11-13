@@ -88,5 +88,6 @@ mv "$stage" "$dest/plugins/$id"
 cp "$work/new/config.json" "$dest/config.json.new"
 mv "$dest/config.json.new" "$dest/config.json"
 rm -rf "$dest/states" "$dest/levels.plist"  # of a setup from before profiles
-"$dest/RS Tone Host.app/Contents/MacOS/rs-tonehost" --config "$dest/config.json" --check
+# Every state through the plug-in, heard by nobody: only then do Re-ARMed Mods' settings offer it
+DYLD_INSERT_LIBRARIES=$guard "$dest/RS Tone Host.app/Contents/MacOS/rs-tonehost" --config "$dest/config.json" --check-sound 2>&1 | tail -1
 echo "Done. Turn on ToneHost in rearmed-mods; macOS asks for the microphone the first time the host runs."
