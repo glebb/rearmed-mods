@@ -30,6 +30,9 @@ game starts the host (three times, 30 s apart, if it doesn't come; again when on
 ends a few seconds after the game does, a crash included. `start.sh` and `stop.sh` in
 `RS Re-ARMed/tonehost` do it by hand; `"stay_after_game": true` keeps it running. Everything is in that folder.
 
+A setup from before plug-ins had profiles keeps playing as it is. `tonehost/migrate.sh helix-native "Helix Native"` moves
+it into a profile, with nothing imported again.
+
 For another Audio Unit, set a sound in its own window and save it as a template's state:
 
 ```bash
@@ -45,17 +48,36 @@ system `perl` drops `DYLD_INSERT_LIBRARIES`, and the network guard with it.
 
 The mod looks for the FIFO at `~/Library/Application Support/RS Re-ARMed/tonehost/commands`, or at `RS_TONEHOST_FIFO`.
 
-## The config
+## The config and a plug-in's profile
+
+`config.json` is the player's: the interface, the buffer, the gate, and `profile`, the plug-in chosen. A plug-in is a
+folder, `plugins/ID`, with `profile.json` and its states; `levels.plist` is kept there too, so going back to a plug-in
+keeps what was measured.
+
+```
+tonehost/
+  config.json                 "profile": "helix-native"
+  plugins/helix-native/
+    profile.json              name, plugin, plugin_version, templates, map
+    states/*.plist
+```
+
+The host lays the profile over the config, so anything below can be in either, and a config with `plugin`, `templates`
+and `map` in itself and no `profile` plays as before. Here they are together:
 
 ```json
 {
-  "plugin": {"type": "aumf", "subtype": "6HPA", "manufacturer": "LSIX"},
+  "profile": "helix-native",
   "input": {"device": "HX Stomp", "channel": 4, "gain_db": 0},
   "output": {"device": "HX Stomp"},
   "buffer": 64,
   "fade_ms": 20,
   "gate": {"margin_db": 12, "tight_db": 8, "min_db": -72, "max_db": -40, "hold_ms": [150, 40], "release_ms": [120, 30]},
   "fifo": "/path/to/commands",
+
+  "name": "Helix Native",
+  "plugin": {"type": "aumf", "subtype": "6HPA", "manufacturer": "LSIX"},
+  "plugin_version": 198658,
   "templates": {
     "clean": {"state": "clean.plist", "output_db": 14.56, "params": {"0": 0.5, "32": -13.95}},
     "driven": {
@@ -75,6 +97,13 @@ The mod looks for the FIFO at `~/Library/Application Support/RS Re-ARMed/tonehos
 }
 ```
 
+- **When a plug-in is set up.** The host starts only if the plug-in is installed, `clean`, `driven` and every `by_prefix`
+  name a template, and every template's state is there and was saved from this plug-in; otherwise `host.log` says what is
+  missing and the game keeps its tones. `rs-tonehost --config FILE --check` says the same and opens nothing. Re-ARMed
+  Mods' Tone Host settings offer only the plug-ins that pass, and name the others with the reason. So write a profile
+  last: make it in a folder whose name starts with a dot, which nobody reads, and rename it. `plugin_version` is what
+  `rs-tonehost --plugin TYPE SUBTYPE MANUFACTURER` printed when the states were saved; with another version installed the
+  settings say so, and the plug-in still plays.
 - `channel` counts from 0. The host sets 48 kHz on its devices. With no `output` the sound follows the system's output,
   as the game's does.
   Input and output on one device give the lowest latency: one callback and nothing held between them. A virtual device
@@ -82,13 +111,14 @@ The mod looks for the FIFO at `~/Library/Application Support/RS Re-ARMed/tonehos
   from RS Re-ARMed 1.9.0, and the host sets its size again if something changes it.
 - For more than one interface, `"setups": [{"input": {…}, "output": {…}}, …]`: when the host starts with the devices of
   `input` and `output` not connected, the first of these that is connected takes their place. Re-ARMed Mods' Tone Host
-  settings choose the interface, its channel, gain and output, and keep each one played in this list.
+  settings choose the plug-in and the interface, its channel, gain and output, and keep each interface played in this list.
 - `gate` works on the input after `gain_db`, ahead of the plug-in; leave it out for none. It learns the guitar's noise,
   the quietest 100 ms lately, rising only for a level that holds steady, so a note ringing out doesn't take the gate up
   with it. It opens `margin_db` above that, kept between `min_db` and `max_db`. A tone's gain moves it
   from loose to tight: `tight_db` more threshold, and `hold_ms` and `release_ms` from their first value to the second. A
   template's `tight` scales that. The game's Noise Gate pedal, where a tone has one, sets a lowest threshold.
-- `state` is an Audio Unit's `ClassInfo` saved as a property list, relative to the config.
+- `state` is an Audio Unit's `ClassInfo` saved as a property list, relative to the profile's folder, or to the config's
+  where the config has the plug-in itself.
 - `params` are Audio Unit parameter ids and values, set when the template starts. `follow` puts a game knob on a
   parameter: `amp_gain` is the amp's gain knob from 0 to 1, anything else a knob whose name ends in `from`.
 - The game says a tone only as it changes, and a state's load and its knobs' ramps take half a second after that. So

@@ -219,14 +219,38 @@ private struct ToneHostSettings: View {
     @EnvironmentObject var store: SettingsStore
     @State private var interfaces: [AudioDevices.Interface] = []
     @State private var setup: ToneHostSetup?
+    @State private var plugins: [ToneHostPlugin] = []
+    @State private var plugin = ""
     @State private var failed = false
 
     private var file: URL { store.toneHostFolder.appendingPathComponent("config.json") }
 
     var body: some View {
-        Label(store.toneHostInstalled ? "rs-tonehost is set up." : "rs-tonehost isn't set up.",
+        Label(store.toneHostInstalled ? "rs-tonehost is installed." : "rs-tonehost isn't installed.",
               systemImage: store.toneHostInstalled ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
             .foregroundStyle(store.toneHostInstalled ? Color.green : Color.orange)
+        if store.toneHostInstalled {
+            let ready = plugins.filter { $0.problem == nil }
+            let playing = plugins.first { $0.id == plugin }
+            if ready.isEmpty {
+                Label("No plug-in is set up, so the game keeps its own tones.", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Color.orange)
+            } else {
+                Picker("Plug-in", selection: Binding(get: { plugin }, set: choosePlugin)) {
+                    if playing?.problem != nil || playing == nil {
+                        Text(playing.map { "\($0.name) (not set up)" } ?? "None").tag(plugin)
+                    }
+                    ForEach(ready) { Text($0.name).tag($0.id) }
+                }
+            }
+            if let note = playing?.note {
+                Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(plugins.filter { $0.problem != nil }) { p in
+                Text("\(p.name) can't be chosen. \(p.problem ?? "")")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
         if store.toneHostInstalled, let setup {
             let connected = interfaces.first { $0.name == setup.device }
             Picker("Interface", selection: Binding(get: { setup.device }, set: choose)) {
@@ -258,15 +282,25 @@ private struct ToneHostSettings: View {
             }
         }
         Text(store.toneHostInstalled
-             ? "The game starts it, and it plays the guitar through your plug-in, following the game's tones. The game's own guitar is silent while it runs; the guitar fader and the volume keys still work. The sound comes soonest with the guitar and the sound on one interface. With this interface unplugged the host takes another you've chosen here before that is connected. A change restarts a running host: the game's own tones play until it's back, within half a minute."
+             ? "The game starts it, and it plays the guitar through the plug-in chosen here, following the game's tones. A plug-in appears here once its setup has finished: tonehost in rearmed-mods' source has the steps. The game's own guitar is silent while it runs; the guitar fader and the volume keys still work. The sound comes soonest with the guitar and the sound on one interface. With this interface unplugged the host takes another you've chosen here before that is connected. A change restarts a running host: the game's own tones play until it's back, within half a minute."
              : "Until it is, the game keeps its own tones. Set it up with tonehost in rearmed-mods' source.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .onAppear {
                 interfaces = AudioDevices.interfaces()
-                setup = ToneHostConfig.read(file).flatMap(ToneHostConfig.chosen)
+                let config = ToneHostConfig.read(file) ?? [:]
+                setup = ToneHostConfig.chosen(config)
+                plugins = ToneHostProfiles.all(in: store.toneHostFolder, config: config)
+                plugin = ToneHostProfiles.chosen(config)
             }
+    }
+
+    private func choosePlugin(_ id: String) {
+        guard var config = ToneHostConfig.read(file) else { failed = true; return }
+        ToneHostProfiles.choose(id, in: &config)
+        write(config)
+        if !failed { plugin = id }
     }
 
     // An interface chosen before comes back as it was; a new one starts on channel 1, with its own output if it has one
@@ -287,6 +321,10 @@ private struct ToneHostSettings: View {
     private func save() {
         guard let setup, var config = ToneHostConfig.read(file) else { failed = true; return }
         ToneHostConfig.choose(setup, in: &config)
+        write(config)
+    }
+
+    private func write(_ config: [String: Any]) {
         failed = !ToneHostConfig.write(config, to: file)
         if !failed { ToneHostConfig.restartHost(commands: store.toneHostFolder.appendingPathComponent("commands")) }
     }

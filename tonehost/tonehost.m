@@ -363,7 +363,7 @@ static void load_state(int n, const char *path) {
 // A template of the config: a saved state, parameter values and an output gain. Which template a tone gets, and what
 // of the game's knobs reaches which parameter, is the "map" of the config, so another plug-in needs no code.
 static NSDictionary *g_templates, *g_map;
-static NSString *g_dir, *g_loaded[SLOTS], *g_config_stamp;  // the stamp: a hash of what a measured level depends on
+static NSString *g_dir, *g_plugin_dir, *g_loaded[SLOTS], *g_config_stamp;  // the stamp: a hash of what a measured level depends on
 static int g_playing = -1, g_slots = 2;
 static NSString *g_playing_key, *g_playing_name;  // the tone in g_playing
 static NSDictionary *g_playing_gear;
@@ -464,11 +464,17 @@ static int slot_for(NSString *key) {
   return n;
 }
 
+// A template's state is beside the plug-in's profile, or beside the config where the config has the plug-in itself
+static NSString *state_path(NSDictionary *t) {
+  NSString *state = [t isKindOfClass:NSDictionary.class] && [t[@"state"] isKindOfClass:NSString.class] ? t[@"state"] : @"";
+  return [state hasPrefix:@"/"] ? state : [g_plugin_dir stringByAppendingPathComponent:state];
+}
+
 // The state and the knobs, in a slot that renders by now. NO if it had the tone already: then there is nothing to wait for
 static BOOL make_ready(int n, NSString *name, NSDictionary *gear, NSString *key) {
   NSDictionary *t = g_templates[name];
   if (![g_loaded[n] isEqual:name]) {
-    NSString *path = [t[@"state"] hasPrefix:@"/"] ? t[@"state"] : [g_dir stringByAppendingPathComponent:t[@"state"]];
+    NSString *path = state_path(t);
     load_state(n, path.UTF8String);
     g_loaded[n] = name;
     g_held[n] = nil;
@@ -486,7 +492,7 @@ static float ready_level(int n, NSString *name, NSDictionary *gear, NSString *ke
   static NSMutableDictionary<NSString *, NSNumber *> *levels;
   static NSString *file;
   if (!levels) {
-    file = [g_dir stringByAppendingPathComponent:@"levels.plist"];
+    file = [g_plugin_dir stringByAppendingPathComponent:@"levels.plist"];
     NSDictionary *saved = [NSDictionary dictionaryWithContentsOfFile:file];
     levels = [saved[@"config"] isEqual:g_config_stamp] ? [saved[@"levels"] mutableCopy] : nil;
     if (!levels) levels = [NSMutableDictionary dictionary];
@@ -746,11 +752,79 @@ static uint32_t fourcc(NSString *s) {
   return (uint32_t)c[0] << 24 | (uint32_t)c[1] << 16 | (uint32_t)c[2] << 8 | (uint32_t)c[3];
 }
 
+static NSDictionary *json_file(NSString *path) {
+  NSData *data = [NSData dataWithContentsOfFile:path];
+  id json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:NULL] : nil;
+  return [json isKindOfClass:NSDictionary.class] ? json : nil;
+}
+
+static AudioComponentDescription plugin_of(NSDictionary *c) {
+  NSDictionary *pl = [c[@"plugin"] isKindOfClass:NSDictionary.class] ? c[@"plugin"] : @{};
+  return (AudioComponentDescription){fourcc(pl[@"type"]), fourcc(pl[@"subtype"]), fourcc(pl[@"manufacturer"]), 0, 0};
+}
+
+// What keeps a config from playing, found without opening the plug-in, or nil. Re-ARMed Mods' Tone Host settings
+// check the same (ToneHostProfiles.swift), to offer only a plug-in that is set up
+static NSString *config_problem(NSDictionary *c) {
+  AudioComponentDescription d = plugin_of(c);
+  if (!d.componentType || !d.componentSubType || !d.componentManufacturer) return @"it names no plug-in";
+  if (!AudioComponentFindNext(NULL, &d)) return @"the plug-in isn't installed";
+  NSDictionary *templates = c[@"templates"], *map = c[@"map"];
+  if (![templates isKindOfClass:NSDictionary.class] || !templates.count) return @"it has no templates";
+  if (![map isKindOfClass:NSDictionary.class]) return @"it has no map";
+  NSMutableArray *named = [NSMutableArray array];
+  for (NSString *k in @[@"clean", @"driven"]) {
+    if (![map[k] isKindOfClass:NSString.class]) return [NSString stringWithFormat:@"the map has no \"%@\" template", k];
+    [named addObject:map[k]];
+  }
+  if ([map[@"by_prefix"] isKindOfClass:NSDictionary.class]) [named addObjectsFromArray:[map[@"by_prefix"] allValues]];
+  for (id name in named)
+    if (![name isKindOfClass:NSString.class] || !templates[name]) return [NSString stringWithFormat:@"the map names a template that isn't there: %@", name];
+  for (NSString *name in [templates.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+    NSString *path = state_path(templates[name]);
+    NSDictionary *state = [NSDictionary dictionaryWithContentsOfFile:path];
+    if (!state) return [NSString stringWithFormat:@"%@ has no state: %@", name, path];
+    NSDictionary *codes = @{@"type": @(d.componentType), @"subtype": @(d.componentSubType), @"manufacturer": @(d.componentManufacturer)};
+    for (NSString *k in codes)
+      if (state[k] && ![state[k] isEqual:codes[k]]) return [NSString stringWithFormat:@"%@'s state is another plug-in's", name];
+  }
+  return nil;
+}
+
 int main(int argc, char **argv) { @autoreleasepool {
-  if (argc < 3 || strcmp(argv[1], "--config")) { fprintf(stderr, "usage: rs-tonehost --config FILE\n"); return 2; }
-  NSData *cfg = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:argv[2]]];
-  NSDictionary *c = cfg ? [NSJSONSerialization JSONObjectWithData:cfg options:0 error:NULL] : nil;
+  // An installed plug-in's version, as a profile keeps it: nothing is opened
+  if (argc == 5 && !strcmp(argv[1], "--plugin")) {
+    AudioComponentDescription d = {fourcc(@(argv[2])), fourcc(@(argv[3])), fourcc(@(argv[4])), 0, 0};
+    AudioComponent found = d.componentType && d.componentSubType && d.componentManufacturer ? AudioComponentFindNext(NULL, &d) : NULL;
+    UInt32 version = 0;
+    if (!found || AudioComponentGetVersion(found, &version)) { fprintf(stderr, "not installed\n"); return 1; }
+    printf("%u\n", version);
+    return 0;
+  }
+  BOOL check = argc == 4 && !strcmp(argv[3], "--check");
+  if ((argc != 3 && !check) || strcmp(argv[1], "--config")) {
+    fprintf(stderr, "usage: rs-tonehost --config FILE [--check]\n       rs-tonehost --plugin TYPE SUBTYPE MANUFACTURER\n");
+    return 2;
+  }
+  NSDictionary *c = json_file(@(argv[2]));
   if (!c) { say("can't read the config"); return 2; }
+  g_dir = [@(argv[2]) stringByDeletingLastPathComponent];
+  g_plugin_dir = g_dir;
+  // The chosen plug-in's profile goes over the config: its codes, templates and map, and its states are beside it
+  NSString *profile = [c[@"profile"] isKindOfClass:NSString.class] ? c[@"profile"] : @"";
+  if (profile.length) {
+    if ([profile hasPrefix:@"."] || [profile containsString:@"/"]) { say("not a profile's name: %s", profile.UTF8String); return 2; }
+    g_plugin_dir = [[g_dir stringByAppendingPathComponent:@"plugins"] stringByAppendingPathComponent:profile];
+    NSDictionary *p = json_file([g_plugin_dir stringByAppendingPathComponent:@"profile.json"]);
+    if (!p) { say("can't read the profile of %s", profile.UTF8String); return 2; }
+    NSMutableDictionary *m = [c mutableCopy];
+    [m addEntriesFromDictionary:p];
+    c = m;
+    say("plug-in: %s", profile.UTF8String);
+  }
+  NSString *problem = config_problem(c);
+  if (problem) { say("not set up: %s", problem.UTF8String); return 1; }
+  if (check) { say("set up: %lu templates", (unsigned long)[c[@"templates"] count]); return 0; }
   // The chosen interface, or with it unplugged the first of "setups" that is connected: every interface played before
   BOOL (^connected)(NSDictionary *) = ^BOOL(NSDictionary *s) {
     NSString *out = s[@"output"][@"device"];
@@ -766,8 +840,7 @@ int main(int argc, char **argv) { @autoreleasepool {
       break;
     }
   say("interface: %s", [c[@"input"][@"device"] description].UTF8String);
-  NSDictionary *pl = c[@"plugin"];
-  g_plugin = (AudioComponentDescription){fourcc(pl[@"type"]), fourcc(pl[@"subtype"]), fourcc(pl[@"manufacturer"]), 0, 0};
+  g_plugin = plugin_of(c);
   g_channel = [c[@"input"][@"channel"] intValue];
   if (g_channel < 0) g_channel = 0;  // the audio thread counts buffers up to it
   g_input_gain = powf(10.f, [c[@"input"][@"gain_db"] floatValue] / 20.f);
@@ -783,7 +856,6 @@ int main(int argc, char **argv) { @autoreleasepool {
   unsigned char hash[CC_SHA256_DIGEST_LENGTH];
   CC_SHA256(measured.bytes, (CC_LONG)measured.length, hash);
   g_config_stamp = [[NSData dataWithBytes:hash length:sizeof hash] base64EncodedStringWithOptions:0];
-  g_dir = [[NSString stringWithUTF8String:argv[2]] stringByDeletingLastPathComponent];
   if (c[@"target_db"]) g_target_db = [c[@"target_db"] floatValue];
   if (c[@"early_ms"]) g_early = [c[@"early_ms"] doubleValue] / 1000;
   if (c[@"probe_peak_db"]) g_probe_peak = powf(10.f, [c[@"probe_peak_db"] floatValue] / 20.f);

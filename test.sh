@@ -43,6 +43,7 @@ $cc "$here/tests/test_song_plan.c" "$here/src/song_plan.c" -o "$out/test_song_pl
 "$out/test_cache"
 "$out/test_song_info"
 "$out/test_discord"
+"$here/tests/test_tonehost_migrate.sh"
 
 cd "$here/gui"
 swift test

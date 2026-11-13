@@ -67,11 +67,26 @@ print(max(r['param'] for r in f if 'present' in r), [r['param'] for r in f if r.
 DYLD_INSERT_LIBRARIES=$guard "$out/check_states" "$work/states/$first" "$reverb_switch" "$reverb_mix" ||
   { echo "These presets aren't the ones just made: was the right setlist.hls imported? Nothing was installed." >&2; exit 1; }
 
+# The profile whole, or not at all: Re-ARMed Mods offers a plug-in whose folder is there
+id=helix-native
+host="$out/RS Tone Host.app/Contents/MacOS/rs-tonehost"
+mkdir "$work/new"
+python3 "$here/make_config.py" "$work/tones.json" "$dest/config.json" --out "$work/new" --id "$id" --name "Helix Native" \
+  --version "$("$host" --plugin aumf 6HPA LSIX)" "$@"
+stage=$dest/plugins/.$id.new
+rm -rf "$stage"
+mkdir -p "$stage"
+cp -R "$work/states" "$stage/states"
+cp "$work/new/profile.json" "$stage/"
+
 pgrep -f "RS Tone Host.app" > /dev/null && echo quit > "$dest/commands"  # nobody reading: a write would wait for ever
-rm -rf "$dest/states" "$dest/RS Tone Host.app"
-cp -R "$work/states" "$dest/states"
-rm -f "$dest/levels.plist"  # measured with the states before these
+rm -rf "$dest/RS Tone Host.app"
 cp -R "$out/RS Tone Host.app" "$dest/"
 cp "$out/start.sh" "$out/stop.sh" "$dest/"
-python3 "$here/make_config.py" "$work/tones.json" "$dest/config.json" "$@"
+rm -rf "$dest/plugins/$id"  # and its levels.plist, measured with the states before these
+mv "$stage" "$dest/plugins/$id"
+cp "$work/new/config.json" "$dest/config.json.new"
+mv "$dest/config.json.new" "$dest/config.json"
+rm -rf "$dest/states" "$dest/levels.plist"  # of a setup from before profiles
+"$dest/RS Tone Host.app/Contents/MacOS/rs-tonehost" --config "$dest/config.json" --check
 echo "Done. Turn on ToneHost in rearmed-mods; macOS asks for the microphone the first time the host runs."

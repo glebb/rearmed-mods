@@ -10,7 +10,7 @@ Line 6. Run [`setup.sh`](setup.sh) with the game closed; run it again after a He
 | `base.hlx` | An empty preset, the frame of Helix's file |
 | `capture_states.m` | Selects each imported preset by MIDI and saves its state |
 | `check_states.m` | Tells whether a state has the chain just made: toggles the last block and listens |
-| `make_config.py` | Writes `config.json`, keeping the player's settings |
+| `make_config.py` | Writes the profile, `plugins/helix-native/profile.json`, and `config.json` with it chosen, keeping the player's settings |
 | `setup.sh` | All of it, with one import by hand |
 
 ## Correcting the gear
@@ -18,7 +18,8 @@ Line 6. Run [`setup.sh`](setup.sh) with the game closed; run it again after a He
 An amp that sounds wrong: change its line in `gear.json`, `"Amp_GB38": "AmpBritJ45Nrm"`, to another Helix amp. Helix's amps are
 in `HX_ModelCatalog.json` in `/Library/Application Support/Line 6/Helix Native/res`; drop `HD2_` from the id. Then run `setup.sh`:
 a Helix amp not used so far needs a new preset, so it takes the import again. Moving a game amp to a Helix amp already in use
-needs only `make_presets.py` and `make_config.py`, as the states are kept by Helix amp. The names of disguised amps are a best
+needs only `make_presets.py` and `make_config.py`, as the states are kept by Helix amp: `make_config.py` writes to a
+folder, `--out`, and its `profile.json` goes over the one in `plugins/helix-native`. The names of disguised amps are a best
 guess, and the cab is always Helix's default for the amp, whatever the song has. A Helix preamp, `Preamp...`, has no cab, and
 `amp_set` sets its parameters, as `MicLine` for Studio Tube Pre.
 
