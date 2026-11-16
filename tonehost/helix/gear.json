@@ -31,6 +31,8 @@
   "fallback": {"clean": "AmpUSDeluxeNrm", "driven": "AmpBrit2204"},
   "trim": [{"db": 1.5, "with": ["Pedal_AcousticEmulator"]}],
   "high_gain": ["AmpCaliRectifire", "AmpDasBenzinMega", "AmpMandarinRocker", "AmpSoloLeadOD"],
+  "tone_db": ["Bass_Amp_BT880B", "Bass_Amp_BT975B", "Bass_Amp_CH300B", "Bass_Amp_CH600B", "Bass_Amp_CS75B",
+              "Bass_Amp_EdenE300", "Bass_Amp_EdenWT550", "Bass_Amp_EdenWT800", "Bass_Amp_HT400B"],
   "blocks": {
     "octave_up": {"model": "HD2_PitchSimplePitch", "set": {"Interval1": 12}, "knobs": {"Mix": 9}, "gear": {"Pedal_OctaveUp": {}}},
     "octave_down": {"model": "HD2_PitchSimplePitch", "set": {"Interval1": -12, "Mix": 0.5}, "gear": {"Pedal_Octavius": {}, "Bass_Pedal_BassSubOctave": {}}},

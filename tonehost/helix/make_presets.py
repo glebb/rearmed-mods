@@ -130,8 +130,13 @@ def rules(gear):
     f = [{"param": 0, "from": "amp_gain", "scale": 0.93, "offset": 0},
          {"param": 32, "from": "amp_gain", "scale": 39.5, "offset": -14, "with": pedals},
          {"param": 32, "from": "amp_gain", "scale": 28, "offset": -14, "without": pedals}]
-    for suffix, k in (("_Bass", 1), ("_Mid", 2), ("_Treble", 3), ("_Pres", 4)):
-        f.append({"param": k, "from": suffix, "contains": "Amp_", "scale": 0.01, "offset": 0})
+    # An amp's tone knobs go from 1 to 100, but on the amps in tone_db Bass, Mid and Treble are in dB, -12 to 12: 0 dB
+    # is the middle of Helix's knob. The scale is 1/24 rounded down, so that 12 dB stays on the knob.
+    db = [a + "_" for a in gear.get("tone_db", [])]
+    for suffix, k in (("_Bass", 1), ("_Mid", 2), ("_Treble", 3)):
+        f.append({"param": k, "from": suffix, "contains": "Amp_", "scale": 0.01, "offset": 0, "without": db})
+        f.append({"param": k, "from": suffix, "contains": "Amp_", "scale": 0.041666, "offset": 0.5, "with": db})
+    f.append({"param": 4, "from": "_Pres", "contains": "Amp_", "scale": 0.01, "offset": 0})
     # The octave's mix is the game's own, from a faint shimmer to a whole octave lead; the flanger's rate gave it its knob
     how = {("octave_up", "Mix"): ("_Mix", 0.01, 0), ("drive", "Gain"): ("_Gain", 0.0098, 0), ("drive", "Tone"): ("_Tone", 0.01, 0),
            ("compressor", "Threshold"): ("_Threshold", 1 / 60, 1), ("fuzz", "Sustain"): ("_Gain", 0.0098, 0), ("metal", "Drive"): ("_Gain", 0.0098, 0),

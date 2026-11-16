@@ -26,6 +26,10 @@ guess, and the cab is always Helix's default for the amp, whatever the song has.
 
 `high_gain` lists Helix amps that get less input and drive for the same knob, and a tighter gate.
 
+`tone_db` lists the game's amps whose Bass, Mid and Treble are in dB, from -12 to 12, as nine bass amps' are; the others
+go from 1 to 100. On these, 0 dB is the middle of Helix's knob. The game's `gears.psarc` has every knob's unit and range,
+in `manifests/gears`. A change here needs only `make_presets.py` and `make_config.py`, as above.
+
 ## The chain
 
 Every preset is the same chain, so knobs and switches mean the same everywhere. The numbers are Audio Unit parameters.
