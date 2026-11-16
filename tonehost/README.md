@@ -25,13 +25,15 @@ For Helix Native, with the game closed:
 tonehost/helix/setup.sh --input "HX Stomp" --channel 5 --output "HX Stomp"
 ```
 
-It asks you for one import and puts your Helix library back afterwards. Then set `ToneHost = on` in `RSMods.ini`: the
+Helix Native has to be installed and authorized, no more: nothing is done by hand, and Helix's own library isn't
+touched. The interface can be chosen in Re-ARMed Mods' Tone Host settings in place of `--input`, `--channel` and
+`--output`. Then set `ToneHost = on` in `RSMods.ini`: the
 game starts the host (three times, 30 s apart, if it doesn't come; again when one that came has ended), and the host
 ends a few seconds after the game does, a crash included. `start.sh` and `stop.sh` in
 `RS Re-ARMed/tonehost` do it by hand; `"stay_after_game": true` keeps it running. Everything is in that folder.
 
 A setup from before plug-ins had profiles keeps playing as it is. `tonehost/migrate.sh helix-native "Helix Native"` moves
-it into a profile, with nothing imported again.
+it into a profile as it is.
 
 For another Audio Unit, with the game closed:
 
@@ -65,15 +67,15 @@ The mod looks for the FIFO at `~/Library/Application Support/RS Re-ARMed/tonehos
 ## The config and a plug-in's profile
 
 `config.json` is the player's: the interface, the buffer, the gate, and `profile`, the plug-in chosen. A plug-in is a
-folder, `plugins/ID`, with `profile.json` and its states; `levels.plist` is kept there too, so going back to a plug-in
-keeps what was measured.
+folder, `plugins/ID`, with `profile.json` and its states, or for Helix Native its presets; `levels.plist` is kept there
+too, so going back to a plug-in keeps what was measured.
 
 ```
 tonehost/
   config.json                 "profile": "helix-native"
   plugins/helix-native/
     profile.json              name, plugin, plugin_version, templates, map
-    states/*.plist
+    presets/*.bin             Helix Native's sounds; another plug-in has states/*.plist
 ```
 
 The host lays the profile over the config, so anything below can be in either, and a config with `plugin`, `templates`
@@ -112,14 +114,16 @@ and `map` in itself and no `profile` plays as before. Here they are together:
 ```
 
 - **When a plug-in is set up.** The host starts only if the plug-in is installed, `clean`, `driven` and every `by_prefix`
-  name a template, and every template's state is there and was saved from this plug-in; otherwise `host.log` says what is
-  missing and the game keeps its tones. `rs-tonehost --config FILE --check` says the same and opens nothing.
+  name a template, and every template's state is there and was saved from this plug-in, or its preset where it has
+  that and no state; otherwise `host.log` says what is missing and the game keeps its tones. `rs-tonehost --config FILE --check` says the same and opens nothing.
   `--check-sound` goes on from there: it opens the plug-in, with no device and nothing heard, sends the reference pluck
   through every template's state with its `params`, and fails on a state the plug-in refuses or one that is silent, as
-  a plug-in that isn't authorized is. When all play it writes `checked.json` beside the states, with a hash of them. Run
+  a plug-in that isn't authorized is. A template with a preset and no state has its preset handed to the engine, which
+  has to take it unchanged, and that has to sound. When all play it writes `checked.json` beside the states, with a hash
+  of them, and one of the presets. Run
   it with the network guard, as `helix/setup.sh` does. Re-ARMed Mods' Tone Host settings offer only the plug-ins that
-  pass the first check and whose `checked.json` is of the states as they are, and name the others with the reason: so
-  after saving a state again, run `--check-sound` again. So write a profile
+  pass the first check and whose `checked.json` is of the states, or of the presets where there are no states, as they
+  are, and name the others with the reason: so after saving a state again, run `--check-sound` again. So write a profile
   last: make it in a folder whose name starts with a dot, which nobody reads, and rename it. `plugin_version` is what
   `rs-tonehost --plugin TYPE SUBTYPE MANUFACTURER` printed when the states were saved; with another version installed the
   settings say so, and the plug-in still plays. `"made_by": "Re-ARMed Mods"` marks a profile its Add a Plug-in made,
@@ -139,6 +143,12 @@ and `map` in itself and no `profile` plays as before. Here they are together:
   template's `tight` scales that. The game's Noise Gate pedal, where a tone has one, sets a lowest threshold.
 - `state` is an Audio Unit's `ClassInfo` saved as a property list, relative to the profile's folder, or to the config's
   where the config has the plug-in itself.
+- A template can have a `preset` in place of a state, where the profile names the plug-in's `engine`: the preset as that
+  engine takes it, with `places`, where each parameter has its value in it. Helix Native's profile is made of these
+  ([`helix/README.md`](helix/README.md)). A tone is then the preset with the tone's values written in, handed to the
+  engine: no state loads and no knob moves. Only presets `--check-sound` has passed are played. A template with both
+  goes by its state unless the config has `"direct": true`; then `--check-sound` also holds each preset against what the
+  plug-in has with the state loaded, and if the engine refuses a preset `host.log` says so and tones go by their states.
 - `params` are Audio Unit parameter ids and values, set when the template starts. `follow` puts a game knob on a
   parameter: `amp_gain` is the amp's gain knob from 0 to 1, anything else a knob whose name ends in `from`.
 - The game says a tone only as it changes, and a state's load and its knobs' ramps take half a second after that. So
@@ -152,7 +162,7 @@ and `map` in itself and no `profile` plays as before. Here they are together:
   goes through the instance nobody hears, and its gain is set from the level that comes out. `trim_db` in a template
   moves it from there.
   The pluck repeats until two agree, as a plug-in ramps a knob that was moved, and the level is kept in `levels.plist`
-  until the config's templates or rules change: a tone measured once changes within 0.1 s where its slot still has it, else in 0.3 s and a load. Without `target_db` the template's `output_db` applies.
+  until the config's templates or rules change: a tone measured once changes within 0.1 s where its slot still has it, else in 0.3 s and a load, or in 0.1 s and a load where it is a preset handed to the engine, which has no knobs to ramp. Without `target_db` the template's `output_db` applies.
 - The system's volume controls the guitar, wherever the sound goes, and so does the game's guitar fader, which the mod
   passes on. `"ignore_system_volume": true` turns the first off.
 - `trim` in the map, `{"db": 1.5, "with": ["Pedal_X"], "clean": true}`, moves the level of a tone that has that gear, or of a
@@ -162,9 +172,8 @@ and `map` in itself and no `profile` plays as before. Here they are together:
 - `by_prefix` picks a template by a knob name's start; otherwise a drive pedal or an amp gain from `driven_from_gain`
   up picks `driven`, and anything else `clean`.
 
-`helix/` makes all this for Helix Native: `gear.json` is the game's gear onto Helix models, `make_presets.py` writes a
-setlist with one preset per Helix amp and the rules, from Line 6's model files in the install, and `capture_states.m`
-saves each preset's state after a one-time import. The setlist isn't needed after that.
+`helix/` makes all this for Helix Native: `gear.json` is the game's gear onto Helix models, and `make_presets.py` writes
+one preset per Helix amp as the plug-in's engine takes it, and the rules, from Line 6's model files in the install.
 
 Commands on the FIFO: `gear KEY=VALUE ...`, `mixer VALUE`, `time SONG SECONDS` and a song's plan (`plan SONG`,
 `plantone SLOT KEY=VALUE ...`, `planat TIME:SLOT ...`, `planend`) from the mod, `offset VALUE` from

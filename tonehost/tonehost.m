@@ -2,7 +2,9 @@
 // licence check, window or crash stays out of the game. The mod (tonehost_mod.c) reports the gear of each tone as the
 // game applies it, about two seconds ahead of the change in the songs tried. Two instances take turns: one plays, the
 // other gets the next tone's saved state, and a crossfade joins them, because a load is audible and an instance
-// standing by is not. Nothing here knows a plug-in: a template is a saved state, parameter values and a gain.
+// standing by is not. Nothing here knows a plug-in: a template is a saved state, parameter values and a gain. Where a
+// plug-in's engine takes a preset from outside, as Helix Native's does (helix/engine.h), a template can have that preset
+// in the state's place, and the host hands it over with the tone's values in it.
 //
 //   rs-tonehost --config FILE     FILE is JSON: see README.md
 //
@@ -29,6 +31,8 @@
 #include <time.h>
 #include <unistd.h>
 #include "gate_floor.h"
+#include "helix/engine.h"
+#include "preset_places.h"
 #include "tone_gain.h"
 
 #define SLOTS 4  // at most: "slots" in the config says how many, 2 if it doesn't
@@ -400,9 +404,12 @@ static NSString *pick(NSDictionary *gear) {
   return g >= [g_map[@"driven_from_gain"] floatValue] ? g_map[@"driven"] : g_map[@"clean"];
 }
 
-static void apply(int n, NSDictionary *t, NSDictionary *gear) {
+// A tone's parameters and their values, in the order they are set, a later one over an earlier: the template's own, then
+// what the rules make of the game's knobs
+static NSArray<NSArray<NSNumber *> *> *tone_params(NSDictionary *t, NSDictionary *gear) {
+  NSMutableArray<NSArray<NSNumber *> *> *out = [NSMutableArray array];
   NSDictionary *fixed = t[@"params"];
-  for (NSString *id in fixed) AudioUnitSetParameter(slots[n].unit, id.intValue, kAudioUnitScope_Global, 0, [fixed[id] floatValue], 0);
+  for (NSString *id in fixed) [out addObject:@[@(id.intValue), @([fixed[id] floatValue])]];
   // {"param": P, "from": "_Gain", "scale": 0.01, "offset": 0}: a knob of the game onto a parameter. The "map" has the
   // rules every template shares; a template can add its own.
   float gain = amp_gain(gear);
@@ -412,7 +419,7 @@ static void apply(int n, NSDictionary *t, NSDictionary *gear) {
         BOOL on = NO;
         for (NSString *k in gear)
           for (NSString *p in f[@"present"]) on = on || [k hasPrefix:p];
-        AudioUnitSetParameter(slots[n].unit, [f[@"param"] intValue], kAudioUnitScope_Global, 0, on ? 1.f : 0.f, 0);
+        [out addObject:@[@([f[@"param"] intValue]), @(on ? 1.f : 0.f)]];
         continue;
       }
       BOOL has = NO;
@@ -422,8 +429,13 @@ static void apply(int n, NSDictionary *t, NSDictionary *gear) {
       BOOL is_gain = [f[@"from"] isEqual:@"amp_gain"];
       float v = is_gain ? gain : number_of(gear, f[@"from"], f[@"prefix"], f[@"contains"]);
       if (v == -FLT_MAX) continue;
-      AudioUnitSetParameter(slots[n].unit, [f[@"param"] intValue], kAudioUnitScope_Global, 0, v * [f[@"scale"] floatValue] + [f[@"offset"] floatValue], 0);
+      [out addObject:@[@([f[@"param"] intValue]), @(v * [f[@"scale"] floatValue] + [f[@"offset"] floatValue])]];
     }
+  return out;
+}
+
+static void apply(int n, NSDictionary *t, NSDictionary *gear) {
+  for (NSArray<NSNumber *> *p in tone_params(t, gear)) AudioUnitSetParameter(slots[n].unit, p[0].unsignedIntValue, kAudioUnitScope_Global, 0, p[1].floatValue, 0);
 }
 
 // Plays the reference pluck through a slot nobody hears and returns the level it comes out at
@@ -447,6 +459,27 @@ static float measure(int n) {
   return level;
 }
 
+// The same pluck rendered here, and its level: for a slot that no audio thread renders
+static float pluck_level(slot_t *s) {
+  atomic_store(&s->probing, 1);
+  atomic_store(&s->probe_count, 0);
+  s->probe_sum = 0;
+  for (int n = 0; n < 12000; n += 250) render_slot(s, 250);
+  atomic_store(&s->probing, 0);
+  return 10 * log10f((float)(s->probe_sum / 12000) + 1e-12f);
+}
+
+// As measure does: one pluck after another, until two agree
+static float settled_level(slot_t *s) {
+  float level = -120.f, before;
+  for (int i = 0; i < 6; i++) {
+    before = level;
+    level = pluck_level(s);
+    if (i && fabsf(level - before) < 0.5f) break;
+  }
+  return level;
+}
+
 // What makes a tone's level, and a slot ready for it: its template, its knobs and the song's correction
 static NSString *tone_key(NSString *name, NSDictionary *gear) {
   NSMutableString *key = [NSMutableString stringWithFormat:@"%@ %g", name, g_gain_offset];
@@ -466,22 +499,120 @@ static int slot_for(NSString *key) {
   return n;
 }
 
+// A template has a saved state, or, where the plug-in's engine takes presets, it may have a preset alone
+static BOOL has_state(NSDictionary *t) { return [t isKindOfClass:NSDictionary.class] && [t[@"state"] isKindOfClass:NSString.class] && [t[@"state"] length]; }
+
+static BOOL any_state(NSDictionary *templates) {
+  for (NSString *name in templates)
+    if (has_state(templates[name])) return YES;
+  return NO;
+}
+
 // A template's state is beside the plug-in's profile, or beside the config where the config has the plug-in itself
 static NSString *state_path(NSDictionary *t) {
   NSString *state = [t isKindOfClass:NSDictionary.class] && [t[@"state"] isKindOfClass:NSString.class] ? t[@"state"] : @"";
   return [state hasPrefix:@"/"] ? state : [g_plugin_dir stringByAppendingPathComponent:state];
 }
 
+// ---- Presets straight to the plug-in's engine ----
+// A profile may name the plug-in's engine ("engine": "helix") and give a template the preset as that engine takes it
+// ("preset"), with the place of each parameter's value in it ("places": preset_places.h). With "direct" in the config a
+// tone is then its template's preset with the tone's values written in, handed to the engine: no state is loaded for it
+// and no knob moved, so nothing ramps. The parameters that have no place are set on the plug-in as ever. Templates
+// with presets need no states: a profile whose templates have none always goes this way. Where they have both,
+// "direct" chooses, a slot's first tone still loads its state, once, and --check-sound says whether the presets are
+// the plug-in's own, which only a state can tell. Only presets that --check-sound has passed are used.
+static BOOL g_direct;
+static int g_engine[SLOTS];         // a slot's instance in the engine
+static NSData *g_in_engine[SLOTS];  // the preset a slot's engine was handed last
+
+static NSString *preset_path(NSDictionary *t) {
+  NSString *preset = [t isKindOfClass:NSDictionary.class] && [t[@"preset"] isKindOfClass:NSString.class] ? t[@"preset"] : @"";
+  return [preset hasPrefix:@"/"] ? preset : [g_plugin_dir stringByAppendingPathComponent:preset];
+}
+
+static int place_of(NSArray<NSNumber *> *place, double at[3]) {
+  if (![place isKindOfClass:NSArray.class] || place.count > 3) return 0;
+  for (NSUInteger i = 0; i < place.count; i++) at[i] = [place[i] doubleValue];
+  return (int)place.count;
+}
+
+// A template's preset with these values in their places, or nil if a place isn't in it. A value that has no place is
+// set on the unit, where there is one
+static NSMutableData *placed(NSDictionary *t, NSArray<NSArray<NSNumber *> *> *values, AudioUnit unit) {
+  NSMutableData *preset = [NSMutableData dataWithContentsOfFile:preset_path(t)];
+  NSDictionary *places = [t[@"places"] isKindOfClass:NSDictionary.class] ? t[@"places"] : nil;
+  if (!preset.length || !places) return nil;
+  for (NSArray<NSNumber *> *v in values) {
+    id place = places[v[0].stringValue];
+    double at[3] = {0};
+    if (!place) {
+      if (unit) AudioUnitSetParameter(unit, v[0].unsignedIntValue, kAudioUnitScope_Global, 0, v[1].floatValue, 0);
+    } else if (place_value(preset.mutableBytes, preset.length, at, place_of(place, at), v[1].floatValue))
+      return nil;
+  }
+  return preset;
+}
+
+// Whether a preset of ours is the one the plug-in has, but for the last digits of a knob
+static BOOL same_preset(NSMutableData *ours, NSData *theirs, NSDictionary *places) {
+  if (!ours || ours.length != theirs.length) return NO;
+  for (NSString *id in places) {
+    double at[3] = {0};
+    if (!place_same(ours.mutableBytes, theirs.bytes, ours.length, at, place_of(places[id], at))) return NO;
+  }
+  return [ours isEqualToData:theirs];
+}
+
+// Whether slot n is this instance of the engine: silent with that one muted, and not without. The engine numbers its
+// instances as they are made, and so are the slots, but a wrong one would change the tone that is playing
+static BOOL engine_is(int n, int instance) {
+  slot_t *s = &slots[n];
+  if (helix_engine_mute(instance, 1)) return NO;
+  pluck_level(s);
+  float muted = pluck_level(s);
+  helix_engine_mute(instance, 0);
+  pluck_level(s);
+  return muted < -90.f && pluck_level(s) > -90.f;
+}
+
+// The tone's preset in the slot's engine. NO if that can't be: the tone then goes by its state
+static BOOL load_direct(int n, NSString *name, NSDictionary *t, NSDictionary *gear) {
+  slot_t *s = &slots[n];
+  if (!g_loaded[n] && has_state(t)) load_state(n, state_path(t).UTF8String);  // once, where there is one
+  g_loaded[n] = name;
+  NSData *preset = placed(t, tone_params(t, gear), s->unit);
+  if (!preset) { say("%s has no preset, or a place outside it", name.UTF8String); return NO; }
+  if ([preset isEqualToData:g_in_engine[n]]) return YES;
+  atomic_store(&s->ready, 0);
+  usleep(30000);  // the audio thread is past any render of it
+  int refused = helix_engine_load(g_engine[n], preset.bytes, preset.length);
+  atomic_store(&s->ready, 1);
+  if (refused) { say("slot %d: the engine refused %s's preset (%d)", n, name.UTF8String, refused); return NO; }
+  g_in_engine[n] = preset;
+  return YES;
+}
+
 // The state and the knobs, in a slot that renders by now. NO if it had the tone already: then there is nothing to wait for
 static BOOL make_ready(int n, NSString *name, NSDictionary *gear, NSString *key) {
   NSDictionary *t = g_templates[name];
-  if (![g_loaded[n] isEqual:name]) {
-    NSString *path = state_path(t);
-    load_state(n, path.UTF8String);
-    g_loaded[n] = name;
-    g_held[n] = nil;
+  if (g_direct && !load_direct(n, name, t, gear)) {
+    if (has_state(t)) {
+      say("tones go by their saved states from here");
+      g_direct = NO;
+      for (int i = 0; i < SLOTS; i++) g_loaded[i] = g_held[i] = nil, g_in_engine[i] = nil;  // no slot's plug-in knows what its engine has
+    } else
+      say("slot %d keeps the tone it had: %s has no state to go by", n, name.UTF8String);
   }
-  apply(n, t, gear);
+  if (!g_direct) {
+    if (![g_loaded[n] isEqual:name]) {
+      NSString *path = state_path(t);
+      load_state(n, path.UTF8String);
+      g_loaded[n] = name;
+      g_held[n] = nil;
+    }
+    apply(n, t, gear);
+  }
   BOOL had = [key isEqual:g_held[n]];
   g_held[n] = key;
   return !had;
@@ -503,7 +634,9 @@ static float ready_level(int n, NSString *name, NSDictionary *gear, NSString *ke
   BOOL changed = make_ready(n, name, gear, key);
   *measured = !known;
   if (known) {
-    if (changed) usleep(300000);  // the knobs' ramps
+    // The knobs' ramps. A preset handed to the engine has its values from the start, but for some 60 to 80 ms after any
+    // load the engine plays under its level
+    if (changed) usleep(g_direct ? 100000 : 300000);
     return known.floatValue;
   }
   float level = measure(n);
@@ -783,7 +916,14 @@ static NSString *config_problem(NSDictionary *c) {
   for (id name in named)
     if (![name isKindOfClass:NSString.class] || !templates[name]) return [NSString stringWithFormat:@"the map names a template that isn't there: %@", name];
   for (NSString *name in [templates.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
-    NSString *path = state_path(templates[name]);
+    NSDictionary *t = templates[name];
+    if (!has_state(t)) {  // then a preset for the plug-in's engine
+      BOOL preset = [c[@"engine"] isEqual:@"helix"] && [t isKindOfClass:NSDictionary.class] && [t[@"preset"] isKindOfClass:NSString.class] &&
+                    [t[@"places"] isKindOfClass:NSDictionary.class] && [[NSData dataWithContentsOfFile:preset_path(t)] length];
+      if (!preset) return [NSString stringWithFormat:@"%@ has neither a state nor a preset", name];
+      continue;
+    }
+    NSString *path = state_path(t);
     NSDictionary *state = [NSDictionary dictionaryWithContentsOfFile:path];
     if (!state) return [NSString stringWithFormat:@"%@ has no state: %@", name, path];
     NSDictionary *codes = @{@"type": @(d.componentType), @"subtype": @(d.componentSubType), @"manufacturer": @(d.componentManufacturer)};
@@ -886,22 +1026,102 @@ static NSString *states_stamp(NSDictionary *templates) {
   return hex;
 }
 
+// As states_stamp, of the presets for the plug-in's engine and the places in them; nil if a template has none
+static NSString *presets_stamp(NSDictionary *templates) {
+  NSMutableData *all = [NSMutableData data];
+  for (NSString *name in [templates.allKeys sortedArrayUsingComparator:^(NSString *a, NSString *b) { return [a compare:b options:NSLiteralSearch]; }]) {
+    NSDictionary *t = templates[name];
+    NSData *preset = [t isKindOfClass:NSDictionary.class] && [t[@"preset"] isKindOfClass:NSString.class] ? [NSData dataWithContentsOfFile:preset_path(t)] : nil;
+    if (!preset.length || ![t[@"places"] isKindOfClass:NSDictionary.class]) return nil;
+    [all appendData:preset];
+    [all appendData:[NSJSONSerialization dataWithJSONObject:t[@"places"] options:NSJSONWritingSortedKeys error:NULL]];
+  }
+  unsigned char hash[CC_SHA256_DIGEST_LENGTH];
+  CC_SHA256(all.bytes, (CC_LONG)all.length, hash);
+  NSMutableString *hex = [NSMutableString string];
+  for (size_t i = 0; i < sizeof hash; i++) [hex appendFormat:@"%02x", hash[i]];
+  return hex;
+}
+
+// What keeps the tones' presets from going straight to the plug-in's engine, or nil. The slots are open and no audio
+// runs yet: finding a slot's instance in the engine renders it here
+static NSString *direct_problem(NSDictionary *c) {
+  NSString *stamp = presets_stamp(c[@"templates"]);
+  if (![c[@"engine"] isEqual:@"helix"] || !stamp) return @"the profile has no presets for an engine";
+  if (![json_file([g_plugin_dir stringByAppendingPathComponent:@"checked.json"])[@"presets"] isEqual:stamp]) return @"--check-sound hasn't passed these presets";
+  if (!helix_engine_find()) return @"the plug-in's engine isn't there";
+  for (int i = 0; i < g_slots; i++) {
+    if (!engine_is(i, i)) return [NSString stringWithFormat:@"instance %d isn't the engine's %d", i, i];
+    g_engine[i] = i;
+  }
+  return nil;
+}
+
+// What keeps a template's preset from standing in for its state, or nil: it has to be the preset the plug-in itself
+// has. The slot, which nothing else renders, has the template's state and its own parameters, and plays at `level`
+static NSString *preset_problem(NSString *name, NSDictionary *t, slot_t *s, float level) {
+  NSDictionary *places = t[@"places"], *own = t[@"params"];
+  NSMutableArray *fixed = [NSMutableArray array], *moved = [NSMutableArray array];
+  for (NSString *id in own) [fixed addObject:@[@(id.intValue), @([own[id] floatValue])]];
+  NSMutableData *ours = placed(t, fixed, NULL), *theirs = [NSMutableData dataWithLength:ours.length];
+  if (!ours) return [NSString stringWithFormat:@"%@ has no preset, or a place outside it", name];
+  if (helix_engine_read(0, theirs.mutableBytes, theirs.length) || !same_preset(ours, theirs, places))
+    return [NSString stringWithFormat:@"%@'s preset isn't the one the plug-in has", name];
+  // Every knob and switch moved on the plug-in and in the preset: where the two agree again, the places are right
+  for (NSString *id in places) {
+    float v = [places[id] count] == 1 ? 1.f : 0.25f;
+    AudioUnitSetParameter(s->unit, (AudioUnitParameterID)id.intValue, kAudioUnitScope_Global, 0, v, 0);
+    [moved addObject:@[@(id.intValue), @(v)]];
+  }
+  if (helix_engine_read(0, theirs.mutableBytes, theirs.length) || !same_preset(placed(t, moved, NULL), theirs, places))
+    return [NSString stringWithFormat:@"%@'s knobs aren't where its places say", name];
+  // And handed to the engine it plays as the state did
+  if (helix_engine_load(0, ours.bytes, ours.length)) return [NSString stringWithFormat:@"the engine refused %@'s preset", name];
+  float direct = settled_level(s);
+  if (fabsf(direct - level) > 0.3f) return [NSString stringWithFormat:@"%@'s preset plays at %.1f dB, its state at %.1f", name, direct, level];
+  return nil;
+}
+
 // What keeps the plug-in from playing a config that config_problem passes, or nil: it opens the plug-in, with no device
 // and nothing heard, and sends the reference pluck through every template's state. A plug-in that isn't authorized, or a
-// state it refuses, is silent here
-static NSString *sound_problem(NSDictionary *c) {
+// state it refuses, is silent here. `presets` gets what keeps the templates' presets from going straight to the
+// plug-in's engine, or nil if they can: "" where the profile has none
+static NSString *sound_problem(NSDictionary *c, NSString **presets) {
   NSDictionary *templates = c[@"templates"];
-  if (templates.count > 1) {
-    NSMutableSet *different = [NSMutableSet set];
-    for (NSString *name in templates) [different addObject:[NSData dataWithContentsOfFile:state_path(templates[name])] ?: [NSData data]];
-    if (different.count == 1) return @"every template has the same state";
-  }
+  NSMutableSet *different = [NSMutableSet set];
+  NSUInteger with_state = 0;
+  for (NSString *name in templates)
+    if (has_state(templates[name])) {
+      with_state++;
+      [different addObject:[NSData dataWithContentsOfFile:state_path(templates[name])] ?: [NSData data]];
+    }
+  if (with_state > 1 && different.count == 1) return @"every template has the same state";
   g_plugin = plugin_of(c);
   if (c[@"probe_peak_db"]) g_probe_peak = powf(10.f, [c[@"probe_peak_db"] floatValue] / 20.f);
   slot_t *s = &slots[0];
   if (make_slot(s)) return @"the plug-in didn't open";
   NSString *problem = nil;
+  *presets = ![c[@"engine"] isEqual:@"helix"] || !presets_stamp(templates) ? @"" : !helix_engine_find() ? @"the plug-in's engine isn't there" : nil;
+  BOOL first = YES;
   for (NSString *name in [templates.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+    if (!has_state(templates[name])) {
+      // A preset alone: the engine has to take it as it is, and it has to sound. Nothing says here that its values
+      // are in the engine's order: helix/verify.sh does, against the plug-in's own presets
+      NSDictionary *t = templates[name], *own = t[@"params"];
+      NSMutableArray *fixed = [NSMutableArray array];
+      for (NSString *id in own) [fixed addObject:@[@(id.intValue), @([own[id] floatValue])]];
+      NSMutableData *ours = placed(t, fixed, s->unit), *theirs = [NSMutableData dataWithLength:ours.length];
+      if (*presets) problem = (*presets).length ? *presets : @"the profile names no engine for its presets";
+      else if (first && !engine_is(0, 0)) problem = @"the plug-in's instance isn't the engine's first";
+      else if (!ours || helix_engine_load(0, ours.bytes, ours.length)) problem = [NSString stringWithFormat:@"the engine refused %@'s preset", name];
+      else if (helix_engine_read(0, theirs.mutableBytes, theirs.length) || ![ours isEqualToData:theirs]) problem = [NSString stringWithFormat:@"the engine changed %@'s preset", name];
+      if (problem) break;
+      float level = settled_level(s);
+      say("%s: %.1f dB", name.UTF8String, level);
+      if (level < -90.f) { problem = [NSString stringWithFormat:@"%@ is silent", name]; break; }
+      first = NO;
+      continue;
+    }
     load_state(0, state_path(templates[name]).UTF8String);
     if (!atomic_load(&s->ready)) { problem = [NSString stringWithFormat:@"the plug-in refused %@'s state", name]; break; }
     // The state as it was saved, and the template's own parameters: a rule would follow a knob of no tone, and an amp
@@ -909,19 +1129,12 @@ static NSString *sound_problem(NSDictionary *c) {
     NSDictionary *fixed = [templates[name] objectForKey:@"params"];
     for (NSString *id in fixed) AudioUnitSetParameter(s->unit, id.intValue, kAudioUnitScope_Global, 0, [fixed[id] floatValue], 0);
     usleep(50000);  // a plug-in may take a state in its own time
-    atomic_store(&s->probing, 1);
-    float level = -120.f, before;
-    for (int i = 0; i < 6; i++) {  // as measure does, with the plucks rendered here
-      atomic_store(&s->probe_count, 0);
-      s->probe_sum = 0;
-      for (int n = 0; n < 12000; n += 250) render_slot(s, 250);
-      before = level;
-      level = 10 * log10f((float)(s->probe_sum / 12000) + 1e-12f);
-      if (i && fabsf(level - before) < 0.5f) break;
-    }
-    atomic_store(&s->probing, 0);
+    float level = settled_level(s);
     say("%s: %.1f dB", name.UTF8String, level);
     if (level < -90.f) { problem = [NSString stringWithFormat:@"%@ is silent", name]; break; }
+    if (!*presets && first && !engine_is(0, 0)) *presets = @"the plug-in's instance isn't the engine's first";
+    if (!*presets) *presets = preset_problem(name, templates[name], s, level);
+    first = NO;
   }
   AudioUnitUninitialize(s->unit);
   AudioComponentInstanceDispose(s->unit);
@@ -965,13 +1178,18 @@ int main(int argc, char **argv) { @autoreleasepool {
   if (problem) { say("not set up: %s", problem.UTF8String); return 1; }
   if (sound) {
     // checked.json says these states have played: Re-ARMed Mods offers the plug-in while it matches them
-    NSString *stamp = [g_plugin_dir stringByAppendingPathComponent:@"checked.json"];
-    if ((problem = sound_problem(c))) {
+    NSString *stamp = [g_plugin_dir stringByAppendingPathComponent:@"checked.json"], *no_presets = nil;
+    if ((problem = sound_problem(c, &no_presets))) {
       unlink(stamp.fileSystemRepresentation);
       say("not set up: %s", problem.UTF8String);
       return 1;
     }
-    NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"states": states_stamp(c[@"templates"])} options:0 error:NULL];
+    // And, where the profile has presets for the plug-in's engine, that they are the plug-in's own: "direct" needs that
+    NSMutableDictionary *mark = [@{@"states": states_stamp(c[@"templates"])} mutableCopy];
+    if (!no_presets) mark[@"presets"] = presets_stamp(c[@"templates"]);
+    if (no_presets.length) say("the presets can't go straight to the engine: %s", no_presets.UTF8String);
+    else if (!no_presets) say(any_state(c[@"templates"]) ? "the presets are the plug-in's own: they can go straight to its engine" : "the presets play through the plug-in's engine");
+    NSData *json = [NSJSONSerialization dataWithJSONObject:mark options:0 error:NULL];
     if (![json writeToFile:stamp atomically:YES]) { say("can't write %s", stamp.UTF8String); return 1; }
   }
   if (check) { say("set up: %lu templates", (unsigned long)[c[@"templates"] count]); return 0; }
@@ -1034,6 +1252,14 @@ int main(int argc, char **argv) { @autoreleasepool {
   for (int i = 0; i < g_slots; i++)
     if (make_slot(&slots[i])) { say("the plug-in didn't open"); return 1; }
   say("%d instances open", g_slots);
+  BOOL states = any_state(c[@"templates"]);
+  if (([c[@"direct"] boolValue] || !states) && !edit) {  // before any audio runs: finding a slot's instance in the engine renders it here
+    NSString *why = direct_problem(c);
+    g_direct = !why;
+    if (why && !states) { say("not set up: %s", why.UTF8String); return 1; }
+    if (why) say("direct is off, tones go by their saved states: %s", why.UTF8String);
+    else say("direct: a tone's preset goes straight to the plug-in's engine");
+  }
   if (edit) {  // the sound saved before, if there is one, playing from the start
     if ([NSFileManager.defaultManager fileExistsAtPath:@(argv[7])]) load_state(0, argv[7]);
     else atomic_store(&slots[0].ready, 1);

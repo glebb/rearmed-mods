@@ -18,7 +18,7 @@ sound to stand: the reason to use one is to sound better than the game. So don't
 |---|---|---|
 | 1. A few sounds | Save clean, crunch and heavy states by hand, list them as templates | Any plug-in, an amp sim with one sound per preset |
 | 2. Knobs follow the game | Level 1, plus `follow` rules from the game's knobs to parameters | A plug-in that exposes parameters |
-| 3. Gear per tone | One state per amp model, generated, plus a gear table | A plug-in with many models and a preset format you can write |
+| 3. Gear per tone | One state per amp model, generated, plus a gear table; or, as for Helix Native, one preset handed to the plug-in's engine | A plug-in with many models and a preset format you can write |
 
 Start at level 1, play it, and go further only if the player asks. Level 1 with two sounds needs none of the steps below:
 `tonehost/install.sh`, then Add a Plug-in in Re-ARMed Mods' settings for Your Own Plug-in, where the player sets a clean and

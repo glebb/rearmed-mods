@@ -46,7 +46,8 @@ enum ToneHostProfiles {
     }
 
     // The same checks as rs-tonehost's config_problem, none of which opens the plug-in, and then that the host's
-    // --check-sound has played these very states: it leaves their stamp in checked.json
+    // --check-sound has played these very states: it leaves their stamp in checked.json. A sound may be a preset for
+    // the plug-in's engine with no state, as Helix Native's are: then it is the presets' stamp
     static func plugin(id: String, profile: [String: Any], states: URL, installed: Lookup) -> ToneHostPlugin {
         let codes = profile["plugin"] as? [String: Any] ?? [:]
         let type = codes["type"] as? String ?? "", subtype = codes["subtype"] as? String ?? ""
@@ -76,9 +77,14 @@ enum ToneHostProfiles {
             return plugin
         }
         let want = [fourCC(type), fourCC(subtype), fourCC(manufacturer)]
-        var missing = 0, foreign = 0
+        var missing = 0, foreign = 0, saved = 0
         for template in templates.values {
-            guard let state = stateFile(template, in: states).flatMap({ NSDictionary(contentsOf: $0) }) else {
+            guard let file = stateFile(template, in: states) else {
+                if profile["engine"] as? String == nil || preset(template, in: states) == nil { missing += 1 }
+                continue
+            }
+            saved += 1
+            guard let state = NSDictionary(contentsOf: file) else {
                 missing += 1
                 continue
             }
@@ -90,8 +96,7 @@ enum ToneHostProfiles {
                 : "\(missing) of its \(templates.count) sounds aren't saved."
         } else if foreign > 0 {
             plugin.problem = "Its sounds were saved from another plug-in."
-        } else if ToneHostConfig.read(states.appendingPathComponent("checked.json"))?["states"] as? String
-                    != stamp(templates, in: states) {
+        } else if !played(templates, saved: saved, in: states) {
             plugin.problem = "Its sounds haven't been played through the plug-in to check them."
         } else if let made = (profile["plugin_version"] as? NSNumber)?.uint32Value, made != component.version {
             plugin.note = "Set up with version \(version(made)) of the plug-in, and \(version(component.version)) is installed. "
@@ -103,6 +108,35 @@ enum ToneHostProfiles {
     private static func stateFile(_ template: Any, in states: URL) -> URL? {
         guard let path = (template as? [String: Any])?["state"] as? String, !path.isEmpty else { return nil }
         return path.hasPrefix("/") ? URL(fileURLWithPath: path) : states.appendingPathComponent(path)
+    }
+
+    private static func played(_ templates: [String: Any], saved: Int, in states: URL) -> Bool {
+        let checked = ToneHostConfig.read(states.appendingPathComponent("checked.json"))
+        if saved > 0 { return checked?["states"] as? String == stamp(templates, in: states) }
+        guard let presets = presetsStamp(templates, in: states) else { return false }
+        return checked?["presets"] as? String == presets
+    }
+
+    // A sound's preset for the plug-in's engine and the places in it, if it has both
+    private static func preset(_ template: Any, in states: URL) -> (data: Data, places: Any)? {
+        guard let t = template as? [String: Any], let path = t["preset"] as? String, !path.isEmpty,
+              let places = t["places"] as? [String: Any],
+              let data = try? Data(contentsOf: path.hasPrefix("/") ? URL(fileURLWithPath: path) : states.appendingPathComponent(path)),
+              !data.isEmpty else { return nil }
+        return (data, places)
+    }
+
+    // rs-tonehost's presets_stamp: every preset and its places as JSON with its keys in order, the templates in the
+    // order of their names
+    static func presetsStamp(_ templates: [String: Any], in states: URL) -> String? {
+        var all = Data()
+        for name in templates.keys.sorted(by: { Array($0.utf16).lexicographicallyPrecedes(Array($1.utf16)) }) {
+            guard let found = preset(templates[name] as Any, in: states),
+                  let places = try? JSONSerialization.data(withJSONObject: found.places, options: [.sortedKeys]) else { return nil }
+            all.append(found.data)
+            all.append(places)
+        }
+        return SHA256.hash(data: all).map { String(format: "%02x", $0) }.joined()
     }
 
     // rs-tonehost's states_stamp: a hash of every state's hash, the templates in the order of their names

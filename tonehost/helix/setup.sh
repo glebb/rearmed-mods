@@ -1,93 +1,51 @@
 #!/bin/bash
-# Sets up rs-tonehost for Helix Native, from nothing or again after a Helix update: builds it, makes one preset per Helix
-# amp, has you import them once, saves their states and puts your Helix library back as it was. Quit the game first.
+# Sets up rs-tonehost for Helix Native, from nothing or again after a Helix update or a change to gear.json: builds it,
+# makes one preset per Helix amp as the plug-in's engine takes it, and plays each through the plug-in, heard by nobody.
+# Nothing is done by hand and Helix's own library isn't touched: Helix Native has to be installed and authorized, no
+# more. Quit the game first.
 #   tonehost/helix/setup.sh [--input DEVICE --channel N] [--output DEVICE]
-# The first time it needs --input and --channel; a later run keeps your settings. RS_NATIVE_HOME: the install, by default
-# ~/Library/Application Support/RS Re-ARMed. RS_HELIX_SETLIST: which setlist the import goes to, counted as MIDI does
-# (6 is USER 5). Then turn on ToneHost in rearmed-mods: the game starts the host from then on.
+# The interface can be chosen in Re-ARMed Mods' Tone Host settings instead, and a later run keeps your settings.
+# RS_NATIVE_HOME: the install, by default ~/Library/Application Support/RS Re-ARMed. Then turn on ToneHost in
+# rearmed-mods: the game starts the host from then on.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 home=${RS_NATIVE_HOME:-"$HOME/Library/Application Support/RS Re-ARMed"}
 out=${RS_BUILD_DIR:-$root/build}/tonehost
 dest=$home/tonehost
-native="$HOME/Library/Application Support/Line 6/Helix Native"
-setlist=${RS_HELIX_SETLIST:-6}
 guard=$home/libnetguard.dylib
 
 pgrep -xq Rocksmith2014 && { echo "Quit the game first." >&2; exit 1; }
-[ -d "$native/#PRESET_LIBRARY" ] || { echo "Helix Native isn't set up here: open it in a host once." >&2; exit 1; }
+[ -d "/Library/Application Support/Line 6/Helix Native/res" ] || { echo "Helix Native isn't installed here." >&2; exit 1; }
 [ -f "$guard" ] || { echo "No network guard at $guard: install RS Re-ARMed first." >&2; exit 1; }
 
 "$here/../build.sh"
 work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
 python3 "$here/make_presets.py" "$work"
-
-# The import overwrites a setlist, so the library is put back afterwards
-backup=$work/library
-mkdir "$backup"
-cp -R "$native/#PRESET_LIBRARY" "$backup/"
-cp "$native/Helix Native.prefs" "$backup/"
-restore() {
-  rm -rf "$native/#PRESET_LIBRARY"
-  cp -R "$backup/#PRESET_LIBRARY" "$native/"
-  cp "$backup/Helix Native.prefs" "$native/Helix Native.prefs"
-  echo "Your Helix library is back as it was."
-  rm -rf "$work"  # also so that nobody can import this setlist by mistake next time
-}
-trap restore EXIT
-
-cat <<EOT
-
-One step for you, in the window that opens:
-  1. Choose the setlist USER $((setlist - 1)) at the top left. It is put back afterwards.
-  2. Click IMPORT next to SETLISTS, press Command-Shift-G and paste this path, then press Return and Open:
-     $work/setlist.hls
-  3. Answer Yes, then close the window.
-
-EOT
-export RS_NETGUARD_LOG=$work/netguard.log
-DYLD_INSERT_LIBRARIES=$guard "$out/rs-tone-editor" aumf 6HPA LSIX
-
-mkdir -p "$work/states" "$dest"
-names=$(python3 -c "
-import json, sys
-t = json.load(open(sys.argv[1]))['templates']
-print(' '.join(v['state'] for k, v in sorted(t.items(), key=lambda kv: kv[1]['slot'])))" "$work/tones.json")
-# shellcheck disable=SC2086
-DYLD_INSERT_LIBRARIES=$guard "$out/capture_states" "$setlist" "$work/states" $names | tail -1
-
-[ "$(md5 -q "$work"/states/* | sort -u | wc -l)" -gt 1 ] || { echo "The presets all came out the same: was the import in the right setlist?" >&2; exit 1; }
-# A state of an older setlist looks the same from outside: the reverb, the last block, has to answer
-first=${names%% *}
-read -r reverb_switch reverb_mix < <(python3 -c "
-import json, sys
-f = json.load(open(sys.argv[1]))['follow']
-print(max(r['param'] for r in f if 'present' in r), [r['param'] for r in f if r.get('prefix') == 'Rack_StudioPlate_' and r['from'] == '_Mix'][0])" "$work/tones.json")
-DYLD_INSERT_LIBRARIES=$guard "$out/check_states" "$work/states/$first" "$reverb_switch" "$reverb_mix" ||
-  { echo "These presets aren't the ones just made: was the right setlist.hls imported? Nothing was installed." >&2; exit 1; }
 
 # The profile whole, or not at all: Re-ARMed Mods offers a plug-in whose folder is there
 id=helix-native
 host="$out/RS Tone Host.app/Contents/MacOS/rs-tonehost"
-mkdir "$work/new"
+mkdir -p "$work/new" "$dest"
 python3 "$here/make_config.py" "$work/tones.json" "$dest/config.json" --out "$work/new" --id "$id" --name "Helix Native" \
   --version "$("$host" --plugin aumf 6HPA LSIX)" "$@"
 stage=$dest/plugins/.$id.new
 rm -rf "$stage"
 mkdir -p "$stage"
-cp -R "$work/states" "$stage/states"
+cp -R "$work/presets" "$stage/presets"
 cp "$work/new/profile.json" "$stage/"
 
-pgrep -f "RS Tone Host.app" > /dev/null && echo quit > "$dest/commands"  # nobody reading: a write would wait for ever
+pgrep -xq rs-tonehost && echo quit > "$dest/commands"  # nobody reading: a write would wait for ever
 rm -rf "$dest/RS Tone Host.app"
 cp -R "$out/RS Tone Host.app" "$dest/"
 cp "$out/start.sh" "$out/stop.sh" "$dest/"
-rm -rf "$dest/plugins/$id"  # and its levels.plist, measured with the states before these
+rm -rf "$dest/plugins/$id"  # and its levels.plist, measured with the presets before these
 mv "$stage" "$dest/plugins/$id"
 cp "$work/new/config.json" "$dest/config.json.new"
 mv "$dest/config.json.new" "$dest/config.json"
 rm -rf "$dest/states" "$dest/levels.plist"  # of a setup from before profiles
-# Every state through the plug-in, heard by nobody: only then do Re-ARMed Mods' settings offer it
-DYLD_INSERT_LIBRARIES=$guard "$dest/RS Tone Host.app/Contents/MacOS/rs-tonehost" --config "$dest/config.json" --check-sound 2>&1 | tail -1
+# Every preset through the plug-in, heard by nobody: only then do Re-ARMed Mods' settings offer it and the host play it
+DYLD_INSERT_LIBRARIES=$guard "$dest/RS Tone Host.app/Contents/MacOS/rs-tonehost" --config "$dest/config.json" --check-sound 2>&1 | tail -2 ||
+  { echo "The presets didn't play. If Helix Native isn't authorized yet, open it once in a host and sign in, then run this again." >&2; exit 1; }
 echo "Done. Turn on ToneHost in rearmed-mods; macOS asks for the microphone the first time the host runs."

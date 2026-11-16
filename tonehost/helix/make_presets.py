@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 """Makes Helix Native's side of rs-tonehost from gear.json and the Helix install's own model files.
 
-    make_presets.py OUTDIR
+    make_presets.py OUTDIR [--setlist]
 
-OUTDIR gets setlist.hls, one preset per Helix amp to import once, and tones.json, what the host's config needs: the
-presets in order and the rules from the game's knobs to parameters. Every value not set here is Line 6's default, read
-from the install, and nothing of Line 6's is kept in the repository. Each preset is the same chain, so the knobs and
+OUTDIR gets presets/, one preset per Helix amp as the plug-in's engine takes it, and tones.json, what the host's config
+needs: the presets, where each knob has its value in one, and the rules from the game's knobs to parameters. With
+--setlist it gets setlist.hls too, the same presets for Helix's own import: verify.sh compares the two through the
+plug-in. Every value not set here is Line 6's default, read from the install, and nothing of Line 6's is kept in the
+repository. Each preset is the same chain, so the knobs and
 switches mean the same everywhere: octave up and down, wah, fuzz, metal, drive, amp and its default cab, compressor, then
 acoustic sim, chorus, flanger, phaser, tremolo, delay and reverb on the second path, as a path has room for eight blocks.
 A Helix preamp in place of an amp has no cab, and knobs it has no use for can go to a block's spare_knobs. README.md has
 what was learned about Helix's files.
 """
-import base64, json, os, sys, time, zlib
+import base64, json, os, struct, sys, time, zlib
 
 RES = "/Library/Application Support/Line 6/Helix Native/res"
+CORE = "/Library/Frameworks/HelixCoreLib.framework/Resources"  # Line 6's headers for the plug-in's engine, as installed
 NATIVE = 2162944  # Helix Native in Helix compatibility mode
 ORDER = ["octave_up", "octave_down", "wah", "fuzz", "metal", "drive", None, "compressor",  # None: the amp
          "acoustic", "chorus", "flanger", "phaser", "tremolo", "delay", "reverb"]
@@ -123,6 +126,102 @@ def preset(name, amp, base, M, gear):
     return (h["data"] if "data" in h else h), knob_default, lent
 
 
+# ---- The engine's own preset ----
+# Helix Native hands its engine, HelixCoreLib, a preset as one plain block of 18,332 bytes, and the host can hand it one
+# too. HelixCorePreset.h, installed with the framework, lays it out, packed: two flows (dsp0, dsp1), each a topology and
+# twenty blocks of 458 bytes, then the tempo. A flow's blocks are path A's input, eight effects and output, then path
+# B's, whose input and output hold the split and the join. A model is a number, its place in symbolTableMasterList.h,
+# and an effect's name there ends in Mono or Stereo. A block's values are in the engine's order (Engine.params):
+# without the ones only the editor has (@...) and, in a mono effect, without the ones marked stereo-only. A delay or
+# reverb has its trails switch after them. README.md has how this was checked against the plug-in.
+BLOCK, VALUES, PER_FLOW, UNSET = 458, 2 + 27 * 8, 20, 0xFFFFFFFF
+FLOW = 4 + PER_FLOW * BLOCK
+SINGLE, AMP, AMP_AND_CAB, TRAILS = 1, 17, 33, 8  # HCMFXType, for the kinds of block these presets have
+INPUT, OUTPUT, BRANCH_IN, BRANCH_OUT, EFFECT, EMPTY = 0, 1, 2, 3, 6, 8  # HCMType
+
+
+class Engine:
+    def __init__(self, M):
+        text = open(os.path.join(CORE, "symbolTableMasterList.h")).read()
+        names = [s.split("//")[0].strip() for s in text[text.index("{") + 1:text.index("}")].split(",")]
+        if any("=" in n for n in names):
+            raise ValueError("the model list numbers its models itself")
+        self.M, self.number, self.order = M, {n: i for i, n in enumerate(n for n in names if n)}, {}
+        self.catalog(json.load(open(os.path.join(RES, "HX_ModelCatalog.json"))))
+
+    def catalog(self, o):
+        if isinstance(o, dict):
+            if isinstance(o.get("id"), str) and isinstance(o.get("params"), list):
+                self.order[o["id"]] = [k for p in o["params"] if isinstance(p, dict) for k in p]
+            o = list(o.values())
+        for v in o if isinstance(o, list) else []:
+            self.catalog(v)
+
+    def name(self, model, stereo=False):
+        base = model.split("_", 1)[1]
+        return next(n for n in ([base + "Stereo", base + "Mono"] if stereo else [base + "Mono", base + "Stereo"]) + [base] if n in self.number)
+
+    def params(self, model, name):
+        """The model's parameters as the engine has them, in its order: the models file's, but where the catalog has some
+        of them in another order, as nine models' are, those in the catalog's. Matchstick Ch2 is the one that was checked."""
+        order = self.order.get(model, [])
+        ps = [p for p in self.M[model]["params"] if not p["symbolicID"].startswith("@") and not (name.endswith("Mono") and p.get("stereo-only"))]
+        listed = iter(sorted((p for p in ps if p["symbolicID"] in order), key=lambda p: order.index(p["symbolicID"])))
+        return [next(listed) if p["symbolicID"] in order else p for p in ps]
+
+    def values(self, src):
+        model = src["@model"]
+        out = []
+        for p in self.params(model, self.name(model, src.get("@stereo", False))):
+            kind, v = p["default"], src.get(p["symbolicID"], p["default"])
+            out.append(struct.pack("<IB3x", 1, bool(v)) if isinstance(kind, bool) else struct.pack("<Ii", 2, int(v)) if isinstance(kind, int) else struct.pack("<If", 3, v))
+        own = len(out)
+        if any(p["symbolicID"] == "@trails" for p in self.M[model]["params"]):
+            out.append(struct.pack("<IB3x", 1, bool(src.get("@trails", False))))
+        return (struct.pack("<BB", len(out), own) + b"".join(out)).ljust(VALUES, b"\0")
+
+    def effect(self, src, cab):
+        name = self.name(src["@model"], src.get("@stereo", False))
+        if cab:
+            head = struct.pack("<BIIIB", True, self.number[name], self.number[self.name(cab["@model"])], AMP_AND_CAB, src["@enabled"])
+        else:
+            trails = any(p["symbolicID"] == "@trails" for p in self.M[src["@model"]]["params"])
+            head = struct.pack("<BIIIB", False, self.number[name], UNSET, AMP if name.startswith(("Amp", "Preamp")) else TRAILS if trails else SINGLE, src["@enabled"])
+        return struct.pack("<II", EFFECT, UNSET) + head + self.values(src) + (self.values(cab) if cab else bytes(VALUES))
+
+    def end(self, kind, src, to):
+        """An input or an output: where it comes from or goes to, and its values if that is anywhere."""
+        return struct.pack("<III", kind, UNSET, src[to]) + (self.values(src) if src[to] else bytes(VALUES))
+
+    def branch(self, src):
+        """A split or a join. These presets have one path: it is there, and not in the signal's way."""
+        return struct.pack("<II", self.number[self.name(src["@model"])], 0) + self.values(src) + struct.pack("<BB", src["@enabled"], False)
+
+    def preset(self, tone):
+        out = b""
+        for dsp in ("dsp0", "dsp1"):
+            d = tone[dsp]
+            blocks = [struct.pack("<IIBIIIB", EMPTY, UNSET, False, UNSET, UNSET, 0, True)] * PER_FLOW
+            blocks[0], blocks[9] = self.end(INPUT, d["inputA"], "@input"), self.end(OUTPUT, d["outputA"], "@output")
+            blocks[10] = self.end(BRANCH_IN, d["inputB"], "@input") + self.branch(d["split"])
+            blocks[19] = self.end(BRANCH_OUT, d["outputB"], "@output") + self.branch(d["join"])
+            for key, src in d.items():
+                if key.startswith("block"):
+                    blocks[src["@path"] * 10 + 1 + src["@position"]] = self.effect(src, d[src["@cab"]] if "@cab" in src else None)
+            out += struct.pack("<I", 0) + b"".join(b.ljust(BLOCK, b"\0") for b in blocks)  # 0: one path
+        return out + struct.pack("<f", tone["global"]["@tempo"])
+
+    def place(self, tone, param):
+        """Where in the preset "dsp0.block6.Drive" has its value, a float, or "dsp0.block6.@enabled" its switch, a byte."""
+        dsp, key, p = param.split(".", 2)
+        src = tone[dsp][key]
+        at = int(dsp[3:]) * FLOW + 4 + (src["@path"] * 10 + 1 + src["@position"]) * BLOCK + 8
+        if p == "@enabled":
+            return at + 13
+        ids = [q["symbolicID"] for q in self.params(src["@model"], self.name(src["@model"], src.get("@stereo", False)))]
+        return at + 14 + 2 + ids.index(p) * 8 + 4
+
+
 def rules(gear):
     """The game's knobs onto parameters, the same for every preset. A value is scale * knob + offset."""
     # The input: 39.5 comes from a fit of a JCM800 with a drive pedal, and is too much for a tone with no pedal
@@ -162,7 +261,7 @@ def rules(gear):
 
 def main():
     out = sys.argv[1]
-    os.makedirs(out, exist_ok=True)
+    os.makedirs(os.path.join(out, "presets"), exist_ok=True)
     here = os.path.dirname(os.path.abspath(__file__))
     gear = json.load(open(os.path.join(here, "gear.json")))
     M = models()
@@ -172,10 +271,19 @@ def main():
     if missing:
         sys.exit("not in this Helix: %s" % missing)
     presets, templates = [], {}
+    try:
+        engine = Engine(M)
+    except (OSError, ValueError) as e:
+        sys.exit("this Helix Native has no headers of its engine to make presets from: %s" % e)
     for i, amp in enumerate(used):
         p, knobs, lent = preset(amp[3:] if amp.startswith("Amp") else amp, amp, base, M, gear)
         presets.append(p)
         templates[amp] = {"slot": i, "state": amp + ".plist", "output_db": 0, "params": knobs}
+        tone = p["tone"]  # as the engine takes it, and where each knob and switch has its value in it
+        open(os.path.join(out, "presets", amp + ".bin"), "wb").write(engine.preset(tone))
+        templates[amp]["preset"] = amp + ".bin"
+        templates[amp]["places"] = {str(k): [engine.place(tone, a["@param"])] + ([] if a["@param"].endswith(".@enabled") else [a["@min"], a["@max"]])
+                                    for k, a in enumerate(tone["automation"]["@assignments"]) if a}
         follow = list(lent)
         if amp in gear["high_gain"]:  # gain enough of their own: less drive and input for the same knob, a tighter gate
             templates[amp]["tight"] = 1.3
@@ -191,10 +299,12 @@ def main():
                                   "modifieddate": int(time.time()), "name": "RS Tone Host", "appversion": presets[0].get("device_version", 0)},
            "encoding": "Base64", "encoded_data": base64.b64encode(zlib.compress(raw)).decode(),
            "compression": {"crc32": zlib.crc32(raw) & 0xffffffff, "decompressed_size": len(raw), "type": "zlib"}, "schema": "L6Setlist"}
-    json.dump(hls, open(os.path.join(out, "setlist.hls"), "w"), indent=2)
+    if "--setlist" in sys.argv[2:]:
+        json.dump(hls, open(os.path.join(out, "setlist.hls"), "w"), indent=2)
     by = {k + "_": v for k, v in gear["amps"].items()}
     json.dump({"templates": templates, "by_prefix": by, "fallback": gear["fallback"], "trim": gear.get("trim", []), "follow": rules(gear),
-               "drive_pedals": sorted(k for b in ("drive", "fuzz", "metal") for k in gear["blocks"][b]["gear"])}, open(os.path.join(out, "tones.json"), "w"), indent=1)
+               "drive_pedals": sorted(k for b in ("drive", "fuzz", "metal") for k in gear["blocks"][b]["gear"]), "engine": "helix"},
+              open(os.path.join(out, "tones.json"), "w"), indent=1)
     print("%d presets, %d game amps, %d rules" % (len(used), len(gear["amps"]), len(rules(gear))))
 
 

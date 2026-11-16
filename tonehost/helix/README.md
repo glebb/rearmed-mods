@@ -2,25 +2,27 @@
 
 What makes Helix Native work with [rs-tonehost](../README.md), and what was learned about its files, none of it documented by
 Line 6. Run [`setup.sh`](setup.sh) with the game closed; run it again after a Helix update or a change to `gear.json`.
+It needs Helix Native installed and authorized, and nothing done by hand.
 
 | File | What it does |
 |---|---|
 | `gear.json` | The game's gear onto Helix models. **Edit this one** |
-| `make_presets.py` | Writes `setlist.hls`, one preset per Helix amp, and `tones.json`, the rules from game knobs to parameters |
-| `base.hlx` | An empty preset, the frame of Helix's file |
-| `capture_states.m` | Selects each imported preset by MIDI and saves its state |
-| `check_states.m` | Tells whether a state has the chain just made: toggles the last block and listens |
+| `make_presets.py` | Writes `presets/`, one preset per Helix amp as the plug-in's engine takes it, and `tones.json`: where each knob is in a preset, and the rules from game knobs to parameters |
+| `base.hlx` | An empty preset, the frame of Helix's file: a preset is described as Helix's own file has it |
+| `engine.c` | The plug-in's engine as the host reaches it |
 | `../config.default.json` | The config of a new install: `make_config.py` and `../install.sh` start from it |
 | `make_config.py` | Writes the profile, `plugins/helix-native/profile.json`, and `config.json` with it chosen, keeping the player's settings |
-| `setup.sh` | All of it, with one import by hand |
+| `setup.sh` | All of it |
+| `verify.sh` | Tells whether the presets are the plug-in's own, with one import by hand. Installs nothing |
+| `capture_states.m` | For `verify.sh`: selects each imported preset by MIDI and saves its state |
+| `check_states.m` | For `verify.sh`: tells whether a state has the chain just made, by toggling the last block and listening |
 
 ## Correcting the gear
 
 An amp that sounds wrong: change its line in `gear.json`, `"Amp_GB38": "AmpBritJ45Nrm"`, to another Helix amp. Helix's amps are
-in `HX_ModelCatalog.json` in `/Library/Application Support/Line 6/Helix Native/res`; drop `HD2_` from the id. Then run `setup.sh`:
-a Helix amp not used so far needs a new preset, so it takes the import again. Moving a game amp to a Helix amp already in use
-needs only `make_presets.py` and `make_config.py`, as the states are kept by Helix amp: `make_config.py` writes to a
-folder, `--out`, and its `profile.json` goes over the one in `plugins/helix-native`. The names of disguised amps are a best
+in `HX_ModelCatalog.json` in `/Library/Application Support/Line 6/Helix Native/res`; drop `HD2_` from the id. Then run
+`setup.sh`, which takes a minute and keeps your settings. For a Helix amp not used here before, run `verify.sh` once
+too: it tells whether the preset built for it is the one Helix itself makes. The names of disguised amps are a best
 guess, and the cab is always Helix's default for the amp, whatever the song has. A Helix preamp, `Preamp...`, has no cab, and
 `amp_set` sets its parameters, as `MicLine` for Studio Tube Pre.
 
@@ -28,7 +30,7 @@ guess, and the cab is always Helix's default for the amp, whatever the song has.
 
 `tone_db` lists the game's amps whose Bass, Mid and Treble are in dB, from -12 to 12, as nine bass amps' are; the others
 go from 1 to 100. On these, 0 dB is the middle of Helix's knob. The game's `gears.psarc` has every knob's unit and range,
-in `manifests/gears`. A change here needs only `make_presets.py` and `make_config.py`, as above.
+in `manifests/gears`.
 
 ## The chain
 
@@ -75,6 +77,38 @@ Left out on purpose: the game's EQs. Not mapped: Lo-Fi Filter, its noise gate, p
 An amp's gain isn't always called Drive: Fullerton and Grammatico have DriveNorm, Matchstick Ch1Drive and Ch2Drive, US Dripman
 Norm Drive, Mandarin Bass and Agua Sledge Gain. An amp's model lacks some knobs too, and those stay as they are.
 
+## Straight to the engine
+
+Helix Native is a layer over an engine, `HelixCoreLib.framework` in `/Library/Frameworks`, and Line 6 installs the engine's
+headers in it: `HelixCore.h` has its functions, `HelixCorePreset.h` a preset, `symbolTableMasterList.h` every model by
+number. When a state loads, the plug-in hands the engine one plain preset of 18,332 bytes with `hc_loadPreset`, and
+nothing else. The host hands it one too: a tone is its amp's preset from `presets/`, with the tone's knobs and switches
+written in at their places, given to the engine of the instance nobody hears. No state is loaded and no knob moved, so
+there is nothing to import and nothing of Helix's library is used. The comment in `make_presets.py` has the layout.
+
+- **The same sound.** `verify.sh` has Helix import the same presets as a setlist and saves a state of each. The host's
+  `--check-sound` then compares, for every preset: with the state loaded, the engine has that very preset; with every
+  knob and switch moved on the plug-in, the engine's preset changes where `places` says; and the preset handed to the
+  engine plays as loud as the state. All 36 passed with Helix Native 3.8.2. Rendered offline, a preset handed to the
+  engine came out sample for sample as the state with the same knobs set, and a slot that never had a state plays as
+  one that had. `setup.sh` can't tell this much: there the engine has to take each preset unchanged, and it has to
+  sound.
+- **Knobs.** A knob of the plug-in is a value of one block, on a line from `@min` to `@max` and on beyond them: the plug-in
+  doesn't stop at 0 or 1, and neither does a preset. Master Input and Output, parameters 32 and 33, are the plug-in's
+  own, outside the engine, and are set as before.
+- **Instances.** The engine numbers its instances as they are made, as the host does its slots. The host makes sure at
+  its start, before any audio: a slot is silent with its instance muted in the engine.
+- **Order of values.** A block's values are in the engine's order. That is the models file's, except that nine models
+  have some values the other way round in `HX_ModelCatalog.json`; Matchstick Ch2, the one of them in use, is as the
+  catalog has it. `verify.sh` would tell a wrong one, and nothing else here would.
+- **What the plug-in doesn't know.** Its editor, its own knobs and the state it would save still have the preset it
+  opened with. So a slot is never handed a preset and then moved by its knobs.
+- **While it loads** a slot isn't rendered, as with a state. A load takes about 40 ms, as a state's does, and for some 60
+  to 80 ms after it the engine plays under its level: the host waits 0.1 s before a tone is heard.
+
+Not done: a chain of a tone's own, which is what this is for. The headers are Line 6's: they are read from the install,
+as the models files are, and aren't kept here.
+
 ## Helix's files
 
 - **Models.** The `.models` files in `res` are JSON: every model's parameters with `min`, `max` and `default`, and `ircablink`,
@@ -96,7 +130,7 @@ Norm Drive, Mandarin Bass and Agua Sledge Gain. An amp's model lacks some knobs 
 - **Preset recall by MIDI** works in the Audio Unit only, not VST3: CC 32 picks the setlist, 6 being USER 5, then Program Change.
   A change takes up to half a second and dips, so never on the instance being heard.
 - **State.** `kAudioUnitProperty_ClassInfo` has `Line6PresetData`, about 90 KB, and the library's `#PRESET` files are scrambled.
-  They stay unread: states are saved and restored whole, and a state loads in about 34 ms. They come from one Helix version,
+  They are encrypted, by Line 6's own scheme, and stay unread: states are saved and restored whole, and a state loads in about 34 ms. They come from one Helix version,
   so run `setup.sh` again after an update.
 - **CPU.** A bypassed block costs the same as an active one: about 2.7% of a core for an amp alone, about 7% for the chain.
 - **Network.** After authorization Helix runs without it. Its editor window tries a server and carries on when refused.
