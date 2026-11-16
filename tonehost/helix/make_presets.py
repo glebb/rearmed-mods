@@ -24,6 +24,7 @@ ORDER = ["octave_up", "octave_down", "wah", "fuzz", "metal", "drive", None, "com
 PATH_ONE = 8  # blocks on the first path; the rest go on the second
 TO_PATH_2A = 2  # @output of the first path
 SWITCH = 16  # Audio Unit parameters: knobs 0-15, switches 16-31
+MORE, MORE_ON = 40, 100  # the parameters of the blocks Helix's own preset doesn't have, and what turns each on
 AMP_KNOBS = {"Bass": 1, "Mid": 2, "Treble": 3, "Presence": 4}
 GAIN_KNOB = 0
 GAIN = ["Drive", "Gain", "DriveNorm", "Ch1Drive", "Ch2Drive", "Norm Drive"]  # what an amp calls its gain, the first it has
@@ -227,11 +228,40 @@ class Engine:
         return at + 14 + 2 + ids.index(p) * 8 + 4
 
 
+def more(gear, M, engine):
+    """The blocks a tone can have besides the chain of Helix's own preset, an EQ for one: for each its bytes, its entry
+    in the profile and the rules for its parameters. A parameter is a number of the host's own, from MORE up, and a rule
+    brings the game's knob to it in the Helix parameter's unit, kept within what that parameter takes."""
+    out, follow, param = [], [], MORE
+    for index, (kind, spec) in enumerate(gear.get("more", {}).items()):
+        m = M[spec["model"]]
+        src = block(m, 0, False, spec.get("set"))
+        name = engine.name(spec["model"])
+        order = [p["symbolicID"] for p in engine.params(spec["model"], name)]
+        ranges = {p["symbolicID"]: (p["min"], p["max"]) for p in m["params"] if "min" in p}
+        places, ids = {str(MORE_ON + index): [21]}, {}
+        follow.append({"param": MORE_ON + index, "present": sorted(spec["gear"])})
+        for key, values in spec["gear"].items():
+            for p, how in values.items():
+                suffix, times, plus = how if isinstance(how, list) else (how, 1, 0)
+                if p not in ids:
+                    ids[p], param = param, param + 1
+                    places[str(ids[p])] = [8 + 14 + 2 + order.index(p) * 8 + 4, ranges[p][0], ranges[p][1]]
+                lo, hi = ranges[p]
+                follow.append({"param": ids[p], "from": suffix, "prefix": key + "_", "scale": round(times / (hi - lo), 9), "offset": round((plus - lo) / (hi - lo), 9), "clamp": True})
+        out.append((kind, engine.effect(src, None), {"name": kind, "file": kind + ".bin", "on": MORE_ON + index, "places": places, "gear": sorted(spec["gear"]),
+                                                     "more": True, "ahead": bool(spec.get("ahead"))}))
+        if kind in gear.get("moving", []):
+            out[-1][2]["moving"] = True
+    return out, follow
+
+
 def rules(gear):
     """The game's knobs onto parameters, the same for every preset. A value is scale * knob + offset."""
     # The input: 39.5 comes from a fit of a JCM800 with a drive pedal, and is too much for a tone with no pedal
     pedals = sorted(gear["blocks"]["drive"]["gear"])
-    f = [{"param": 0, "from": "amp_gain", "scale": 0.93, "offset": 0},
+    least = gear.get("least_gain", {}).get("", 0)  # a Helix amp's gain is its volume too: near nothing it is silent
+    f = [{"param": 0, "from": "amp_gain", "scale": 0.93, "offset": 0, "least": least},
          {"param": 32, "from": "amp_gain", "scale": 39.5, "offset": -14, "with": pedals},
          {"param": 32, "from": "amp_gain", "scale": 28, "offset": -14, "without": pedals}]
     # An amp's tone knobs go from 1 to 100, but on the amps in tone_db Bass, Mid and Treble are in dB, -12 to 12: 0 dB
@@ -311,16 +341,26 @@ def main():
                 open(os.path.join(out, "presets", kind + ".bin"), "wb").write(whole[at:at + BLOCK])
                 blocks.append({"name": kind, "file": kind + ".bin", "on": SWITCH + len([b for b in blocks if "on" in b]), "places": own[kind],
                                "gear": sorted(gear["blocks"][kind]["gear"])})
+                if kind in gear.get("moving", []):  # its level goes up and down: a tone's level is measured without it
+                    blocks[-1]["moving"] = True
             empty = json.loads(json.dumps(tone))
             for dsp in ("dsp0", "dsp1"):
                 empty[dsp] = {k: v for k, v in empty[dsp].items() if not k.startswith(("block", "cab"))}
             open(os.path.join(out, "presets", "frame.bin"), "wb").write(engine.preset(empty))
         follow = list(lent)
+        least = gear.get("least_gain", {})
         if amp in gear["high_gain"]:  # gain enough of their own: less drive and input for the same knob, a tighter gate
             templates[amp]["tight"] = 1.3
-            follow += [{"param": 0, "from": "amp_gain", "scale": 0.6, "offset": 0}, {"param": 32, "from": "amp_gain", "scale": 18, "offset": -14}]
+            follow += [{"param": 0, "from": "amp_gain", "scale": 0.6, "offset": 0, "least": least.get(amp, least.get("", 0))},
+                       {"param": 32, "from": "amp_gain", "scale": 18, "offset": -14}]
+        elif amp in least:  # an amp that is silent further up its gain than the others
+            follow += [{"param": 0, "from": "amp_gain", "scale": 0.93, "offset": 0, "least": least[amp]}]
         if follow:
             templates[amp]["follow"] = follow
+    extra, extra_rules = more(gear, M, engine)
+    for kind, data, entry in extra:  # ahead of the amp, or at the chain's end, where a tone doesn't say its chain
+        open(os.path.join(out, "presets", kind + ".bin"), "wb").write(data)
+        blocks.insert(next(i for i, b in enumerate(blocks) if b.get("amp")), entry) if entry.pop("ahead") else blocks.append(entry)
     filler = json.loads(json.dumps(presets[-1]))
     filler["meta"]["name"] = "New Preset"
     while len(presets) < 128:
@@ -333,7 +373,7 @@ def main():
     if "--setlist" in sys.argv[2:]:
         json.dump(hls, open(os.path.join(out, "setlist.hls"), "w"), indent=2)
     by = {k + "_": v for k, v in gear["amps"].items()}
-    json.dump({"templates": templates, "by_prefix": by, "fallback": gear["fallback"], "trim": gear.get("trim", []), "follow": rules(gear),
+    json.dump({"templates": templates, "by_prefix": by, "fallback": gear["fallback"], "trim": gear.get("trim", []), "follow": rules(gear) + extra_rules,
                "drive_pedals": sorted(k for b in ("drive", "fuzz", "metal") for k in gear["blocks"][b]["gear"]), "engine": "helix",
                "frame": "frame.bin", "blocks": blocks, "spots": [f * FLOW + 4 + (1 + i) * BLOCK for f in (0, 1) for i in range(PATH_ONE)]},
               open(os.path.join(out, "tones.json"), "w"), indent=1)

@@ -149,7 +149,8 @@ and `map` in itself and no `profile` plays as before. Here they are together:
   file with the parameter that turns it on and the `places` of its parameters' values. A template has a `block`, its
   amp, in place of a state. A tone gets the amp and the blocks its rules turn on, each in the next spot: a block the
   tone has no gear for isn't there at all. Where a tone says its chain (`@chain`, below) the blocks go in that order, each
-  where the first of its `gear` is; otherwise in the profile's. Only presets `--check-sound` has passed are played. A template with a state
+  where its `gear` is, once for each of its gear the tone has; otherwise in the profile's. A tone's level is measured
+  without the blocks marked `moving`, a flanger for one, whose sweep makes it louder and quieter. Only presets `--check-sound` has passed are played. A template with a state
   as well goes by its state unless the config has `"direct": true`; then `--check-sound` also holds the blocks against
   what the plug-in has with the state loaded, and if the engine refuses a preset `host.log` says so and tones go by
   their states.
@@ -173,7 +174,8 @@ and `map` in itself and no `profile` plays as before. Here they are together:
 - `trim` in the map, `{"db": 1.5, "with": ["Pedal_X"], "clean": true}`, moves the level of a tone that has that gear, or of a
   clean one: no drive pedal, and the amp's gain under `driven_from_gain`.
 - `follow` with `"present": ["Pedal_X"]` turns a switch parameter on when the tone has that gear; `with` and `without`
-  apply a rule only if the tone has, or lacks, the gear. A template's rules come after the map's.
+  apply a rule only if the tone has, or lacks, the gear. A template's rules come after the map's. `"clamp": true` keeps
+  a rule's value between 0 and 1, and `"least"` keeps it from going under a value.
 - `by_prefix` picks a template by a knob name's start; otherwise a drive pedal or an amp gain from `driven_from_gain`
   up picks `driven`, and anything else `clean`.
 

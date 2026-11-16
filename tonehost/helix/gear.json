@@ -1,5 +1,5 @@
 {
-  "_": "The game's gear onto Helix Native models, by name. A best guess where the game disguises the amp; correct by ear. Amps and cabs: one preset per Helix amp, with Helix's own default cab; a Helix preamp has none. EQ pedals and racks are left out on purpose.",
+  "_": "The game's gear onto Helix Native models, by name. A best guess where the game disguises the amp; correct by ear. Amps and cabs: one block per Helix amp, with Helix's own default cab; a Helix preamp has none. 'blocks' are the chain Helix's own preset has, which verify.sh checks; 'more' are blocks a tone can have besides: a Helix parameter from a game knob's ending, or [ending, times, plus] in the parameter's own unit.",
   "amps": {
     "Amp_CA100": "AmpCaliRectifire", "Amp_CA85": "AmpCaliIVR2", "Amp_CA38": "AmpCaliTexasCh1",
     "Amp_MarshallPlexi": "AmpBritPlexiBrt", "Amp_MarshallDSL100H": "AmpBrit2204", "Amp_MarshallDSL15H": "AmpBrit2204",
@@ -31,12 +31,14 @@
   "fallback": {"clean": "AmpUSDeluxeNrm", "driven": "AmpBrit2204"},
   "trim": [{"db": 1.5, "with": ["Pedal_AcousticEmulator"]}],
   "high_gain": ["AmpCaliRectifire", "AmpDasBenzinMega", "AmpMandarinRocker", "AmpSoloLeadOD"],
+  "least_gain": {"": 0.16, "AmpBrit2203": 0.2, "AmpCaliTexasCh1": 0.2, "AmpEssexA30": 0.2, "AmpJazzRivet120": 0.28, "AmpMandarinRocker": 0.2, "AmpUSDeluxeNrm": 0.25, "PreampVintagePre": 0.45},
+  "moving": ["chorus", "flanger", "phaser", "tremolo", "delay", "lofi"],
   "tone_db": ["Bass_Amp_BT880B", "Bass_Amp_BT975B", "Bass_Amp_CH300B", "Bass_Amp_CH600B", "Bass_Amp_CS75B",
               "Bass_Amp_EdenE300", "Bass_Amp_EdenWT550", "Bass_Amp_EdenWT800", "Bass_Amp_HT400B"],
   "blocks": {
     "octave_up": {"model": "HD2_PitchSimplePitch", "set": {"Interval1": 12}, "knobs": {"Mix": 9}, "gear": {"Pedal_OctaveUp": {}}},
     "octave_down": {"model": "HD2_PitchSimplePitch", "set": {"Interval1": -12, "Mix": 0.5}, "gear": {"Pedal_Octavius": {}, "Bass_Pedal_BassSubOctave": {}}},
-    "wah": {"model": "HD2_FilterAutoFilter", "gear": {"Pedal_USWah": {}, "Pedal_ModernWah": {}, "Pedal_UKWah": {}, "Bass_Pedal_BassWah": {}, "Pedal_BobFilter": {}, "Pedal_AutoFilter": {}, "Bass_Pedal_BassAutoFilter": {}, "Rack_StudioWahFilter": {}}},
+    "wah": {"model": "HD2_FilterAutoFilter", "gear": {"Pedal_USWah": {}, "Pedal_ModernWah": {}, "Pedal_UKWah": {}, "Bass_Pedal_BassWah": {}, "Pedal_BobFilter": {}, "Pedal_AutoFilter": {}, "Bass_Pedal_BassAutoFilter": {}, "Rack_StudioWahFilter": {}, "Rack_SynthFilter": {}}},
     "fuzz": {"model": "HD2_DistTriangleFuzz", "knobs": {"Sustain": 8}, "gear": {
       "Pedal_CaptFuzzle": {"Sustain": "_GainWide"}, "Pedal_BuzzToo": {}, "Pedal_BuzzOne": {}, "Pedal_FuzzWasHe": {}, "Bass_Pedal_BassFuzz": {}}},
     "metal": {"model": "HD2_DistSwedishChainsaw", "knobs": {"Drive": 14}, "gear": {
@@ -48,15 +50,29 @@
       "Rack_StudioCompressor": {}, "Pedal_Compression": {"Threshold": "_Comp"}, "Bass_Pedal_MBComp": {"Threshold": "_Compress"}, "Pedal_Swole": {"Threshold": "_Smash"}, "Pedal_Limiter": {"Threshold": "_Limit"}}},
     "acoustic": {"model": "L6SPB_AcousGtrSim", "set": {"Mode": 2}, "spare_knobs": {"Body": [1, "_Body"], "Top": [3, "_Tone"]}, "gear": {"Pedal_AcousticEmulator": {}}},
     "chorus": {"model": "HD2_Chorus", "knobs": {"Mix": 10}, "gear": {
-      "Rack_StudioChorus": {}, "Pedal_Chorus": {}, "Pedal_DigitalChorus": {}, "Pedal_Chorus20": {}, "Pedal_VintageChorus": {}, "Bass_Pedal_BassChorus": {}}},
+      "Rack_StudioChorus": {}, "Pedal_Chorus": {}, "Pedal_DigitalChorus": {}, "Pedal_Chorus20": {}, "Pedal_VintageChorus": {}, "Bass_Pedal_BassChorus": {}, "Pedal_Enbiggenator": {}, "Bass_Pedal_BassEnbig": {}, "Pedal_SendInTheClones": {}}},
     "flanger": {"model": "HD2_FlangerGrayFlanger", "set": {"Rate": 0.25}, "gear": {
       "Rack_StudioFlanger": {}, "Pedal_ModernFlanger": {}, "Pedal_80sFlanger": {}, "Pedal_ClassicFlanger": {}, "Pedal_VintageFlanger": {}, "Bass_Pedal_BassFlanger": {}}},
-    "phaser": {"model": "HD2_PhaserScriptModPhase", "gear": {"Pedal_Phaser": {}, "Rack_StereoPhaser": {}, "Pedal_ShaverPhaser": {}, "Pedal_OmniMod": {}, "Pedal_BakedRotatoe": {}, "Rack_RotaVibe": {}, "Pedal_PlanePhase": {}, "Bass_Pedal_BassPhase": {}, "Rack_StereoAnalogVibe": {}}},
+    "phaser": {"model": "HD2_PhaserScriptModPhase", "gear": {"Pedal_Phaser": {}, "Rack_StereoPhaser": {}, "Pedal_ShaverPhaser": {}, "Pedal_OmniMod": {}, "Pedal_BakedRotatoe": {}, "Rack_RotaVibe": {}, "Pedal_PlanePhase": {}, "Bass_Pedal_BassPhase": {}, "Rack_StereoAnalogVibe": {}, "Pedal_AutoVibe": {}}},
     "tremolo": {"model": "HD2_TremoloOpticalTrem", "gear": {"Pedal_AmpTrem": {}, "Pedal_Tremolo": {}, "Pedal_MultiTrem": {}, "Rack_StereoTubeTrem": {}, "Pedal_AmpVibe": {}, "Pedal_TremOle": {}, "Pedal_MultiVibe": {}, "Pedal_MarshallSupervibe": {}}},
     "delay": {"model": "HD2_DelaySimpleDelay", "knobs": {"Time": 11, "Feedback": 12, "Mix": 13}, "gear": {
       "Rack_StudioDelay": {"Time": "_TimeL"}, "Pedal_ModDelay": {}, "Pedal_AnalogueDelay": {}, "Pedal_ValveEcho": {}, "Pedal_CosmicEcho": {}, "Pedal_NoFiEcho": {},
-      "Pedal_NPNDelay": {}, "Pedal_OilCanEcho": {}, "Rack_TapeEcho": {}}},
+      "Pedal_NPNDelay": {}, "Pedal_OilCanEcho": {}, "Rack_TapeEcho": {}, "Bass_Pedal_BassFilterDelay": {}, "Bass_Pedal_BassFilterEcho": {}}},
     "reverb": {"model": "HD2_ReverbPlate", "knobs": {"Mix": 15}, "gear": {
       "Pedal_SpringReverb": {}, "Rack_StudioChamber": {}, "Rack_StudioVerb": {}, "Rack_StudioPlate": {}, "Pedal_DigitalVerb": {}, "Pedal_PlateVerb": {}, "Pedal_TubeSpring": {}}}
+  },
+  "more": {
+    "eq5": {"model": "HD2_CaliQ", "ahead": true, "gear": {
+      "Pedal_EQ5": {"80Hz": "_63", "240Hz": "_250", "750Hz": "_750", "2200Hz": "_2200", "6600Hz": "_5700"}}},
+    "eq10": {"model": "HD2_EQGraphic10Band", "ahead": true, "gear": {
+      "Pedal_EQ8": {"62p5Hz": "_50", "125Hz": "_100", "250Hz": "_200", "500Hz": "_400", "1kHz": "_800", "2kHz": "_1600", "4kHz": "_3200", "8kHz": "_6400"},
+      "Bass_Pedal_BassEQ8": {"31p25Hz": "_30", "62p5Hz": "_75", "250Hz": "_185", "500Hz": "_460", "1kHz": "_1100", "2kHz": "_2700", "8kHz": "_6800", "16kHz": "_16000"}}},
+    "lofi": {"model": "HD2_EQLowCutHighCut", "ahead": true, "set": {"LowCut": 400.0, "HighCut": 3000.0}, "gear": {"Pedal_LoFiFilter": {}}},
+    "shelves": {"model": "HD2_EQLowShelfHighShelf", "gear": {
+      "Rack_StudioEQ": {"LowGain": "_Bass", "LowFreq": "_BassFreq", "HighGain": "_Treble", "HighFreq": ["_TrebleFreq", 1000, 0]},
+      "Rack_StudioGraphicEQ": {"LowGain": "_Bass", "LowFreq": "_BassFreq", "HighGain": "_Treble", "HighFreq": ["_TrebleFreq", 1000, 0]}}},
+    "mids": {"model": "HD2_EQParametric", "gear": {
+      "Rack_StudioEQ": {"MidGain": "_LoMid", "MidFreq": "_LoMidFreq", "MidQ": ["_LoMidQ", 1.3, 0.7], "HighGain": "_HiMid", "HighFreq": ["_HiMidFreq", 1000, 0], "HighQ": ["_HiMidQ", 1.3, 0.7]},
+      "Rack_StudioGraphicEQ": {"LowGain": "_LoMid", "LowFreq": "_LoMidFreq", "MidGain": "_Mid", "MidFreq": ["_MidFreq", 1000, 0], "HighGain": "_HiMid", "HighFreq": ["_HiMidFreq", 1000, 0]}}}
   }
 }

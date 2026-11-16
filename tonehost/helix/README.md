@@ -75,9 +75,36 @@ with no cab, and the emulator switches on Acoustic Sim, in mode 2 as Line 6's ow
 no tone knobs, so its preset gives knobs 1 and 3 to the sim's Body and Top, from the emulator's Body and Tone: a spare knob,
 `spare_knobs` in `gear.json`, with the rule in that template alone. With a guitar amp, as about one acoustic tone in eight
 has, the sim keeps Helix's default Body and Top and sits after the cab. None of it has been compared with the game, mode and
-shimmer included, and the DI Tube Pre's own EQ is left out, as the game's EQs are.
+shimmer included, and the DI Tube Pre's own EQ is left out.
 
-Left out on purpose: the game's EQs. Not mapped: Lo-Fi Filter, its noise gate, pitch shifters.
+## More blocks
+
+Helix's own preset has room for the chain above and no more, but a tone's preset is put together by the host, so a tone
+can have blocks beside it: `more` in `gear.json`. A parameter there comes from a game knob in the Helix parameter's own
+unit, dB to dB and Hz to Hz, kept within what that parameter takes. In the songs of one library, 1,199 tones, four in
+ten of all pedals and racks were EQs.
+
+| Block | Model | The game's gear |
+|---|---|---|
+| eq5 | Cali Q Graphic | 5-Band Graphic EQ: 63, 250, 750, 2.2k and 5.7k onto its 80, 240, 750, 2.2k and 6.6k |
+| eq10 | 10 Band Graphic | 8-Band Graphic EQ and 8-Band Bass EQ: each band on the nearest of ten, a third of an octave off at most |
+| lofi | Low and High Cut, 400 Hz to 3 kHz | Lo-Fi Filter, its knobs not followed |
+| shelves | Low/High Shelf | Studio Parametric EQ and Studio ParaGraphic EQ: Bass and Treble with their frequencies |
+| mids | Parametric | The same two: Low-Mid and High-Mid with their frequencies, a wide Q as 0.7 and a narrow one as 2 |
+
+Sent a quiet sine at twenty-one frequencies, every band of these moved the level where it should and by what it
+should. Whether a game's Bass is a shelf, and what its wide and narrow are, isn't known: both are guesses. `verify.sh`
+doesn't cover these blocks, as Helix's own preset has none of them.
+
+`least_gain` keeps an amp's gain from going under a value, for all amps and for some more. A Helix amp's gain is its
+volume too, and the game's clean amps and bass amps have theirs near nothing: 56 of those tones came out under -60 dB,
+and the host then turned them up by as much as 90 dB.
+
+`moving` lists the blocks a tone's level is measured without: with a slow flanger a tone plays ten dB louder and
+quieter as it sweeps, and a level taken over a pluck or two was anything in between.
+
+Not mapped: the game's noise gate, which sets the host's own, pitch shifters, Bit Cruncher, Ring Mod, the Eden D.I.
+and the Amp EQ pedal: 16 uses in those 1,199 tones.
 
 An amp's gain isn't always called Drive: Fullerton and Grammatico have DriveNorm, Matchstick Ch1Drive and Ch2Drive, US Dripman
 Norm Drive, Mandarin Bass and Agua Sledge Gain. An amp's model lacks some knobs too, and those stay as they are.

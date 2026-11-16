@@ -408,8 +408,8 @@ static NSString *pick(NSDictionary *gear) {
 
 // A tone's parameters and their values, in the order they are set, a later one over an earlier: the template's own, then
 // what the rules make of the game's knobs
-static NSArray<NSArray<NSNumber *> *> *tone_params(NSDictionary *t, NSDictionary *gear) {
-  NSMutableArray<NSArray<NSNumber *> *> *out = [NSMutableArray array];
+static NSArray<NSArray *> *tone_params(NSDictionary *t, NSDictionary *gear) {
+  NSMutableArray<NSArray *> *out = [NSMutableArray array];
   NSDictionary *fixed = t[@"params"];
   for (NSString *id in fixed) [out addObject:@[@(id.intValue), @([fixed[id] floatValue])]];
   // {"param": P, "from": "_Gain", "scale": 0.01, "offset": 0}: a knob of the game onto a parameter. The "map" has the
@@ -431,13 +431,24 @@ static NSArray<NSArray<NSNumber *> *> *tone_params(NSDictionary *t, NSDictionary
       BOOL is_gain = [f[@"from"] isEqual:@"amp_gain"];
       float v = is_gain ? gain : number_of(gear, f[@"from"], f[@"prefix"], f[@"contains"]);
       if (v == -FLT_MAX) continue;
-      [out addObject:@[@([f[@"param"] intValue]), @(v * [f[@"scale"] floatValue] + [f[@"offset"] floatValue])]];
+      float to = v * [f[@"scale"] floatValue] + [f[@"offset"] floatValue];
+      if ([f[@"clamp"] boolValue]) to = fminf(fmaxf(to, 0.f), 1.f);  // a parameter that takes no more than its range
+      if (f[@"least"]) to = fmaxf(to, [f[@"least"] floatValue]);     // or one that mustn't go under something
+      [out addObject:is_gain || ![f[@"prefix"] isKindOfClass:NSString.class] ? @[@([f[@"param"] intValue]), @(to)] : @[@([f[@"param"] intValue]), @(to), f[@"prefix"]]];
     }
   return out;
 }
 
 static void apply(int n, NSDictionary *t, NSDictionary *gear) {
-  for (NSArray<NSNumber *> *p in tone_params(t, gear)) AudioUnitSetParameter(slots[n].unit, p[0].unsignedIntValue, kAudioUnitScope_Global, 0, p[1].floatValue, 0);
+  for (NSArray *p in tone_params(t, gear)) AudioUnitSetParameter(slots[n].unit, [p[0] unsignedIntValue], kAudioUnitScope_Global, 0, [p[1] floatValue], 0);
+}
+
+// Where no two plucks agreed, as with an octave pedal that follows the note in its own time: what the last four came to
+static float unsettled_level(const double *power, int plucks) {
+  double sum = 0;
+  int from = plucks > 4 ? plucks - 4 : 0;
+  for (int i = from; i < plucks; i++) sum += power[i];
+  return 10 * log10f((float)(sum / (plucks - from > 0 ? plucks - from : 1)) + 1e-12f);
 }
 
 // Plays the reference pluck through a slot nobody hears and returns the level it comes out at
@@ -447,18 +458,21 @@ static float measure(int n) {
   slot_t *s = &slots[n];
   atomic_store(&s->probing, 1);
   float level = -120.f, before = 0.f;
-  for (int i = 0; i < 6; i++) {
+  double power[6] = {0};
+  int i = 0, agreed = 0;
+  for (; i < 6 && !agreed; i++) {
     atomic_store(&s->probe_count, 0);
     s->probe_sum = 0;
     usleep(250000);  // one pluck
     double sum = s->probe_sum;
     uint32_t count = atomic_load(&s->probe_count);
     before = level;
-    level = count ? 10 * log10f((float)(sum / count) + 1e-12f) : -120.f;
-    if (i && fabsf(level - before) < 0.5f) break;
+    power[i] = count ? sum / count : 0;
+    level = 10 * log10f((float)power[i] + 1e-12f);
+    agreed = i && fabsf(level - before) < 0.5f;
   }
   atomic_store(&s->probing, 0);
-  return level;
+  return agreed ? level : unsettled_level(power, i);
 }
 
 // The same pluck rendered here, and its level: for a slot that no audio thread renders
@@ -474,12 +488,15 @@ static float pluck_level(slot_t *s) {
 // As measure does: one pluck after another, until two agree
 static float settled_level(slot_t *s) {
   float level = -120.f, before;
-  for (int i = 0; i < 6; i++) {
+  double power[6] = {0};
+  int i = 0, agreed = 0;
+  for (; i < 6 && !agreed; i++) {
     before = level;
     level = pluck_level(s);
-    if (i && fabsf(level - before) < 0.5f) break;
+    power[i] = pow(10, level / 10);
+    agreed = i && fabsf(level - before) < 0.5f;
   }
-  return level;
+  return agreed ? level : unsettled_level(power, i);
 }
 
 // What makes a tone's level, and a slot ready for it: its template, its knobs and the song's correction
@@ -556,58 +573,77 @@ static NSArray *place_from(NSArray *place, NSUInteger skip, NSUInteger start) {
   return out;
 }
 
-// A tone's preset for a template and its parameters' values, or nil if the profile can't make one. `places`, where
-// asked for, gets where each parameter of the blocks in it has its value. A value with no place in any block of the
-// profile is set on the unit, where there is one
-static NSMutableData *composed(NSDictionary *c, NSDictionary *t, NSArray<NSArray<NSNumber *> *> *values, NSString *chain, AudioUnit unit, NSMutableDictionary *places) {
+// A tone's preset for a template and its parameters' values, or nil if the profile can't make one. A value is a
+// parameter and its number, and where a rule read it from one gear's knob, that gear's prefix: with a chain, a block
+// is there once for each of its gear the tone has, a compressor pedal and a compressor rack each their own, and such a
+// value goes to its own gear's block. `places`, where asked for, gets where each parameter of the blocks in it has
+// its value. A value with no place in any block of the profile is set on the unit, where there is one
+static NSMutableData *composed(NSDictionary *c, NSDictionary *t, NSArray<NSArray *> *values, NSString *chain, AudioUnit unit, NSMutableDictionary *places) {
+  BOOL still = [chain isKindOfClass:NSString.class] && [chain hasPrefix:@"still:"];  // without the "moving" blocks: see ready_level
+  if (still) chain = [chain substringFromIndex:6];
   NSMutableData *preset = [NSMutableData dataWithContentsOfFile:engine_file(c[@"frame"])];
   NSArray *spots = c[@"spots"], *profiles = c[@"blocks"];
   if (!preset.length || ![spots isKindOfClass:NSArray.class] || ![profiles isKindOfClass:NSArray.class]) return nil;
-  // The blocks in the tone's own order where it says one, then the rest in the profile's
-  NSMutableArray<NSDictionary *> *blocks = [NSMutableArray array];
+  for (NSDictionary *b in profiles)
+    if (![b isKindOfClass:NSDictionary.class]) return nil;
+  // The blocks in the tone's own order where it says one, each with the gear it is there for, then the rest in the
+  // profile's, for no gear in particular
+  NSMutableArray<NSArray *> *blocks = [NSMutableArray array];
+  NSMutableSet *there = [NSMutableSet set];
   for (NSString *gear in [chain isKindOfClass:NSString.class] ? [chain componentsSeparatedByString:@","] : @[])
     for (NSDictionary *b in profiles) {
-      if (![b isKindOfClass:NSDictionary.class] || [blocks containsObject:b]) continue;
-      BOOL is = [b[@"amp"] boolValue] ? [gear rangeOfString:@"Amp_"].location != NSNotFound : [b[@"gear"] isKindOfClass:NSArray.class] && [b[@"gear"] containsObject:gear];
-      if (is) { [blocks addObject:b]; break; }
+      BOOL amp = [b[@"amp"] boolValue];
+      if (amp ? [gear rangeOfString:@"Amp_"].location == NSNotFound || [there containsObject:b] : ![b[@"gear"] isKindOfClass:NSArray.class] || ![b[@"gear"] containsObject:gear]) continue;
+      [blocks addObject:@[b, gear]];
+      [there addObject:b];
     }
   for (NSDictionary *b in profiles)
-    if (![blocks containsObject:b]) [blocks addObject:b];
+    if (![there containsObject:b]) [blocks addObject:@[b, @""]];
   NSMutableDictionary<NSString *, NSNumber *> *last = [NSMutableDictionary dictionary], *start = [NSMutableDictionary dictionary];
-  NSMutableDictionary<NSString *, NSArray *> *where = [NSMutableDictionary dictionary];
   NSMutableSet<NSString *> *known = [NSMutableSet set];  // every parameter with a place in some block, in this tone or not
-  for (NSArray<NSNumber *> *v in values) last[v[0].stringValue] = v[1];
+  NSMutableArray<NSArray *> *where = [NSMutableArray array];  // a block in the tone: its gear's prefix, or "", and its parameters' places
+  for (NSArray *v in values) last[[v[0] stringValue]] = v[1];
   NSUInteger spot = 0;
-  for (NSDictionary *b in blocks) {
-    if (![b isKindOfClass:NSDictionary.class]) return nil;
+  for (NSArray *entry in blocks) {
+    NSDictionary *b = entry[0];
     BOOL amp = [b[@"amp"] boolValue];
     NSDictionary *own = !amp && [b[@"places"] isKindOfClass:NSDictionary.class] ? b[@"places"] : @{};
     [known addObjectsFromArray:own.allKeys];
-    if (!amp && [last[[b[@"on"] description]] floatValue] < 0.5f) continue;
+    if (!amp && ([last[[b[@"on"] description]] floatValue] < 0.5f || (still && [b[@"moving"] boolValue]))) continue;
     NSData *block = [NSData dataWithContentsOfFile:engine_file(amp ? t[@"block"] : b[@"file"])];
     if (!block.length || spot >= spots.count) return nil;
     NSUInteger at = [spots[spot++] unsignedIntegerValue];
     if (at > preset.length || block.length > preset.length - at) return nil;
     [preset replaceBytesInRange:NSMakeRange(at, block.length) withBytes:block.bytes];
-    start[amp ? @"amp" : [b[@"name"] description]] = @(at);
-    for (NSString *id in own) where[id] = place_from(own[id], 0, at);
+    NSString *name = amp ? @"amp" : [b[@"name"] description];
+    if (!start[name]) start[name] = @(at);  // the first of its kind is the one an amp lends a knob to
+    NSMutableDictionary *its = [NSMutableDictionary dictionary];
+    for (NSString *id in own) its[id] = place_from(own[id], 0, at);
+    [where addObject:@[[entry[1] length] ? [entry[1] stringByAppendingString:@"_"] : @"", its]];
   }
   NSDictionary *mine = [t[@"places"] isKindOfClass:NSDictionary.class] ? t[@"places"] : @{};
+  NSMutableDictionary *amps = [NSMutableDictionary dictionary];
   for (NSString *id in mine) {  // the amp's knobs: in the amp, or in the block it lends one to, if the tone has that
     NSArray *place = [mine[id] isKindOfClass:NSArray.class] && [mine[id] count] ? mine[id] : nil;
     NSNumber *at = place ? start[[place[0] description]] : nil;
     [known addObject:id];
-    where[id] = at ? place_from(place, 1, at.unsignedIntegerValue) : nil;
+    if (at) amps[id] = place_from(place, 1, at.unsignedIntegerValue);
+    for (NSArray *w in where) [w[1] removeObjectForKey:id];  // a knob the amp has is not a block's own
   }
-  for (NSArray<NSNumber *> *v in values) {
-    NSString *id = v[0].stringValue;
-    double at[3] = {0};
-    if (where[id]) {
-      if (place_value(preset.mutableBytes, preset.length, at, place_of(where[id], at), v[1].floatValue)) return nil;
-    } else if (unit && ![known containsObject:id])
-      AudioUnitSetParameter(unit, v[0].unsignedIntValue, kAudioUnitScope_Global, 0, v[1].floatValue, 0);
+  [where addObject:@[@"", amps]];
+  for (NSArray *v in values) {
+    NSString *id = [v[0] stringValue], *from = v.count > 2 ? v[2] : @"";
+    BOOL placed = NO;
+    for (NSArray *w in where) {
+      NSArray *place = w[1][id];
+      if (!place || ([w[0] length] && from.length && ![w[0] isEqual:from])) continue;  // another gear's block of this kind
+      double at[3] = {0};
+      if (place_value(preset.mutableBytes, preset.length, at, place_of(place, at), [v[1] floatValue])) return nil;
+      placed = YES;
+    }
+    if (!placed && unit && ![known containsObject:id]) AudioUnitSetParameter(unit, [v[0] unsignedIntValue], kAudioUnitScope_Global, 0, [v[1] floatValue], 0);
   }
-  [places setDictionary:where];
+  for (NSArray *w in where) [places addEntriesFromDictionary:w[1]];
   return preset;
 }
 
@@ -633,12 +669,13 @@ static BOOL engine_is(int n, int instance) {
   return muted < -90.f && pluck_level(s) > -90.f;
 }
 
-// The tone's preset in the slot's engine. NO if that can't be: the tone then goes by its state
-static BOOL load_direct(int n, NSString *name, NSDictionary *t, NSDictionary *gear) {
+// The tone's preset in the slot's engine. NO if that can't be: the tone then goes by its state. `still`: the tone
+// without its "moving" blocks, for measuring its level
+static BOOL load_direct(int n, NSString *name, NSDictionary *t, NSDictionary *gear, BOOL still) {
   slot_t *s = &slots[n];
   if (!g_loaded[n] && has_state(t)) load_state(n, state_path(t).UTF8String);  // once, where there is one
   g_loaded[n] = name;
-  NSData *preset = composed(g_config, t, tone_params(t, gear), gear[@"@chain"], s->unit, nil);
+  NSData *preset = composed(g_config, t, tone_params(t, gear), still ? [@"still:" stringByAppendingString:gear[@"@chain"] ?: @""] : gear[@"@chain"], s->unit, nil);
   if (!preset) { say("no preset could be made for %s", name.UTF8String); return NO; }
   if ([preset isEqualToData:g_in_engine[n]]) return YES;
   atomic_store(&s->ready, 0);
@@ -653,7 +690,7 @@ static BOOL load_direct(int n, NSString *name, NSDictionary *t, NSDictionary *ge
 // The state and the knobs, in a slot that renders by now. NO if it had the tone already: then there is nothing to wait for
 static BOOL make_ready(int n, NSString *name, NSDictionary *gear, NSString *key) {
   NSDictionary *t = g_templates[name];
-  if (g_direct && !load_direct(n, name, t, gear)) {
+  if (g_direct && !load_direct(n, name, t, gear, NO)) {
     if (has_state(t)) {
       say("tones go by their saved states from here");
       g_direct = NO;
@@ -688,8 +725,21 @@ static float ready_level(int n, NSString *name, NSDictionary *gear, NSString *ke
     if (!levels) levels = [NSMutableDictionary dictionary];
   }
   NSNumber *known = levels[key];
-  BOOL changed = make_ready(n, name, gear, key);
   *measured = !known;
+  if (!known && g_direct && load_direct(n, name, g_templates[name], gear, YES)) {
+    // A tone plays louder and quieter as a flanger, a chorus or a delay in it moves, by ten dB with a slow flanger, and
+    // a level measured over a pluck or two is then anything in between. So its level is the one it has without them:
+    // measured that way first, and then the tone itself is made ready
+    g_held[n] = nil;
+    float level = measure(n);
+    if (level > -100) {
+      levels[key] = @(level);
+      [@{@"config": g_config_stamp, @"levels": levels} writeToFile:file atomically:YES];
+    }
+    if (make_ready(n, name, gear, key)) usleep(100000);
+    return level;
+  }
+  BOOL changed = make_ready(n, name, gear, key);
   if (known) {
     // The knobs' ramps. A preset handed to the engine has its values from the start, but for some 60 to 80 ms after any
     // load the engine plays under its level
@@ -1139,8 +1189,8 @@ static NSMutableArray *own_params(NSDictionary *c, NSDictionary *t, BOOL every_b
   NSMutableArray *out = [NSMutableArray array];
   NSDictionary *own = t[@"params"];
   for (NSString *id in own) [out addObject:@[@(id.intValue), @([own[id] floatValue])]];
-  for (NSDictionary *b in every_block ? c[@"blocks"] : @[])
-    if ([b isKindOfClass:NSDictionary.class] && b[@"on"]) [out addObject:@[@([b[@"on"] intValue]), @1.f]];
+  for (NSDictionary *b in every_block ? c[@"blocks"] : @[])  // of the plug-in's own preset: the "more" ones are beside it
+    if ([b isKindOfClass:NSDictionary.class] && b[@"on"] && ![b[@"more"] boolValue]) [out addObject:@[@([b[@"on"] intValue]), @1.f]];
   return out;
 }
 
@@ -1200,8 +1250,16 @@ static NSString *sound_problem(NSDictionary *c, NSString **presets) {
       if (*presets) problem = (*presets).length ? *presets : @"the profile names no engine for its presets";
       else if (first && !engine_is(0, 0)) problem = @"the plug-in's instance isn't the engine's first";
       else if (!every || !ours) problem = [NSString stringWithFormat:@"no preset could be made for %@", name];
-      else if (helix_engine_load(0, every.bytes, every.length) || helix_engine_load(0, ours.bytes, ours.length)) problem = [NSString stringWithFormat:@"the engine refused %@'s preset", name];
-      else if (helix_engine_read(0, theirs.mutableBytes, theirs.length) || ![ours isEqualToData:theirs]) problem = [NSString stringWithFormat:@"the engine changed %@'s preset", name];
+      else if (helix_engine_load(0, every.bytes, every.length)) problem = [NSString stringWithFormat:@"the engine refused %@'s preset", name];
+      for (NSDictionary *b in first && !problem ? c[@"blocks"] : @[]) {  // and each block besides those, with this amp
+        if (![b isKindOfClass:NSDictionary.class] || ![b[@"more"] boolValue]) continue;
+        NSMutableArray *with = own_params(c, t, NO);
+        [with addObject:@[@([b[@"on"] intValue]), @1.f]];
+        NSData *one = composed(c, t, with, nil, NULL, nil);
+        if (!one || helix_engine_load(0, one.bytes, one.length)) problem = [NSString stringWithFormat:@"the engine refused the block %@", b[@"name"]];
+      }
+      if (!problem && helix_engine_load(0, ours.bytes, ours.length)) problem = [NSString stringWithFormat:@"the engine refused %@'s preset", name];
+      if (!problem && (helix_engine_read(0, theirs.mutableBytes, theirs.length) || ![ours isEqualToData:theirs])) problem = [NSString stringWithFormat:@"the engine changed %@'s preset", name];
       if (problem) break;
       float level = settled_level(s);
       say("%s: %.1f dB", name.UTF8String, level);
