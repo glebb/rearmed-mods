@@ -163,8 +163,9 @@ and `map` in itself and no `profile` plays as before. Here they are together:
   moves it from there.
   The pluck repeats until two agree, as a plug-in ramps a knob that was moved, and the level is kept in `levels.plist`
   until the config's templates or rules change: a tone measured once changes within 0.1 s where its slot still has it, else in 0.3 s and a load, or in 0.1 s and a load where it is a preset handed to the engine, which has no knobs to ramp. Without `target_db` the template's `output_db` applies.
-- The system's volume controls the guitar, wherever the sound goes, and so does the game's guitar fader, which the mod
-  passes on. `"ignore_system_volume": true` turns the first off.
+- The system's volume controls the guitar, wherever the sound goes: the host follows it where it plays straight to an
+  interface, and where it plays through the system's own output that device turns the guitar down as it does everything
+  else. So does the game's guitar fader, which the mod passes on. `"ignore_system_volume": true` turns the first off.
 - `trim` in the map, `{"db": 1.5, "with": ["Pedal_X"], "clean": true}`, moves the level of a tone that has that gear, or of a
   clean one: no drive pedal, and the amp's gain under `driven_from_gain`.
 - `follow` with `"present": ["Pedal_X"]` turns a switch parameter on when the tone has that gear; `with` and `without`

@@ -320,9 +320,11 @@ static void follow_output(void) {
     });
 }
 
-// The volume of the system's output, as a gain: a device with no volume of its own counts as full
+// The volume of the system's output, as a gain: a device with no volume of its own counts as full. Where the host plays
+// through that very device, the device turns the guitar down itself, and here as well would be twice
 static float system_gain(void) {
   AudioObjectID dev = default_output();
+  if (dev == g_out_dev) return 1.f;
   for (UInt32 element = 0; element < 3; element++) {
     AudioObjectPropertyAddress a = {kAudioDevicePropertyVolumeDecibels, kAudioObjectPropertyScopeOutput, element};
     Float32 db = 0, scalar = 1;
