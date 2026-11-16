@@ -96,9 +96,10 @@ Sent a quiet sine at twenty-one frequencies, every band of these moved the level
 should. Whether a game's Bass is a shelf, and what its wide and narrow are, isn't known: both are guesses. `verify.sh`
 doesn't cover these blocks, as Helix's own preset has none of them.
 
-`least_gain` keeps an amp's gain from going under a value, for all amps and for some more. A Helix amp's gain is its
-volume too, and the game's clean amps and bass amps have theirs near nothing: 56 of those tones came out under -60 dB,
-and the host then turned them up by as much as 90 dB.
+`least_gain` keeps an amp's gain from going under a value, for the amps that go silent near the bottom of it: a Helix
+amp's gain is its volume too, and the game's clean amps and bass amps have theirs near nothing. 56 of those tones came
+out under -60 dB, and the host then turned them up by as much as 90 dB. An amp that still plays down there, as Brit
+2204 does, has no such value and keeps its gain as the game has it.
 
 `moving` lists the blocks a tone's level is measured without: with a slow flanger a tone plays ten dB louder and
 quieter as it sweeps, and a level taken over a pluck or two was anything in between.
