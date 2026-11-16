@@ -3,11 +3,12 @@
 
     make_presets.py OUTDIR [--setlist]
 
-OUTDIR gets presets/, one preset per Helix amp as the plug-in's engine takes it, and tones.json, what the host's config
-needs: the presets, where each knob has its value in one, and the rules from the game's knobs to parameters. With
---setlist it gets setlist.hls too, the same presets for Helix's own import: verify.sh compares the two through the
-plug-in. Every value not set here is Line 6's default, read from the install, and nothing of Line 6's is kept in the
-repository. Each preset is the same chain, so the knobs and
+OUTDIR gets presets/, the pieces of a preset as the plug-in's engine takes one: a frame with nothing in it, a block
+for each Helix amp with its cab, and a block for each effect. The host puts a tone's preset together from them. It gets
+tones.json too, what the host's config needs: the blocks in the chain's order, where each knob has its value in one,
+and the rules from the game's knobs to parameters. With --setlist it gets setlist.hls, a whole preset per amp for
+Helix's own import: verify.sh compares the two through the plug-in. Every value not set here is Line 6's default, read from the install, and nothing of Line 6's is kept in the
+repository. The chain is the same for every amp, so the knobs and
 switches mean the same everywhere: octave up and down, wah, fuzz, metal, drive, amp and its default cab, compressor, then
 acoustic sim, chorus, flanger, phaser, tremolo, delay and reverb on the second path, as a path has room for eight blocks.
 A Helix preamp in place of an amp has no cab, and knobs it has no use for can go to a block's spare_knobs. README.md has
@@ -211,11 +212,15 @@ class Engine:
             out += struct.pack("<I", 0) + b"".join(b.ljust(BLOCK, b"\0") for b in blocks)  # 0: one path
         return out + struct.pack("<f", tone["global"]["@tempo"])
 
+    def start(self, tone, dsp, key):
+        """Where in the preset a block starts."""
+        return int(dsp[3:]) * FLOW + 4 + (tone[dsp][key]["@path"] * 10 + 1 + tone[dsp][key]["@position"]) * BLOCK
+
     def place(self, tone, param):
         """Where in the preset "dsp0.block6.Drive" has its value, a float, or "dsp0.block6.@enabled" its switch, a byte."""
         dsp, key, p = param.split(".", 2)
         src = tone[dsp][key]
-        at = int(dsp[3:]) * FLOW + 4 + (src["@path"] * 10 + 1 + src["@position"]) * BLOCK + 8
+        at = self.start(tone, dsp, key) + 8
         if p == "@enabled":
             return at + 13
         ids = [q["symbolicID"] for q in self.params(src["@model"], self.name(src["@model"], src.get("@stereo", False)))]
@@ -270,7 +275,7 @@ def main():
     missing = [a for a in used if "HD2_" + a not in M]
     if missing:
         sys.exit("not in this Helix: %s" % missing)
-    presets, templates = [], {}
+    presets, templates, blocks = [], {}, []
     try:
         engine = Engine(M)
     except (OSError, ValueError) as e:
@@ -279,11 +284,36 @@ def main():
         p, knobs, lent = preset(amp[3:] if amp.startswith("Amp") else amp, amp, base, M, gear)
         presets.append(p)
         templates[amp] = {"slot": i, "state": amp + ".plist", "output_db": 0, "params": knobs}
-        tone = p["tone"]  # as the engine takes it, and where each knob and switch has its value in it
-        open(os.path.join(out, "presets", amp + ".bin"), "wb").write(engine.preset(tone))
-        templates[amp]["preset"] = amp + ".bin"
-        templates[amp]["places"] = {str(k): [engine.place(tone, a["@param"])] + ([] if a["@param"].endswith(".@enabled") else [a["@min"], a["@max"]])
-                                    for k, a in enumerate(tone["automation"]["@assignments"]) if a}
+        # The preset as the engine takes it, in pieces: the amp's block here, the effects' blocks and the frame once. A
+        # place is counted from its block's start. The amp's own knobs, 0 to 4, are the template's, with the block they
+        # are in: the amp, or the effect it lends a knob to
+        tone = p["tone"]
+        whole, places, own = engine.preset(tone), {}, {}
+        for k, a in enumerate(tone["automation"]["@assignments"]):
+            if not a:
+                continue
+            dsp, key, param = a["@param"].split(".", 2)
+            kind = ORDER[(PATH_ONE if dsp == "dsp1" else 0) + tone[dsp][key]["@position"]] or "amp"
+            place = [engine.place(tone, a["@param"]) - engine.start(tone, dsp, key)] + ([] if param == "@enabled" else [a["@min"], a["@max"]])
+            if k <= max(AMP_KNOBS.values()):
+                places[str(k)] = [kind] + place
+            else:
+                own.setdefault(kind, {})[str(k)] = place
+        at = engine.start(tone, "dsp0", "block%d" % ORDER.index(None))
+        open(os.path.join(out, "presets", amp + ".bin"), "wb").write(whole[at:at + BLOCK])
+        templates[amp].update(block=amp + ".bin", places=places)
+        if not blocks:
+            for index, kind in enumerate(ORDER):
+                if not kind:
+                    blocks.append({"amp": True})
+                    continue
+                at = engine.start(tone, "dsp1" if index >= PATH_ONE else "dsp0", "block%d" % (index % PATH_ONE))
+                open(os.path.join(out, "presets", kind + ".bin"), "wb").write(whole[at:at + BLOCK])
+                blocks.append({"name": kind, "file": kind + ".bin", "on": SWITCH + len([b for b in blocks if "on" in b]), "places": own[kind]})
+            empty = json.loads(json.dumps(tone))
+            for dsp in ("dsp0", "dsp1"):
+                empty[dsp] = {k: v for k, v in empty[dsp].items() if not k.startswith(("block", "cab"))}
+            open(os.path.join(out, "presets", "frame.bin"), "wb").write(engine.preset(empty))
         follow = list(lent)
         if amp in gear["high_gain"]:  # gain enough of their own: less drive and input for the same knob, a tighter gate
             templates[amp]["tight"] = 1.3
@@ -303,7 +333,8 @@ def main():
         json.dump(hls, open(os.path.join(out, "setlist.hls"), "w"), indent=2)
     by = {k + "_": v for k, v in gear["amps"].items()}
     json.dump({"templates": templates, "by_prefix": by, "fallback": gear["fallback"], "trim": gear.get("trim", []), "follow": rules(gear),
-               "drive_pedals": sorted(k for b in ("drive", "fuzz", "metal") for k in gear["blocks"][b]["gear"]), "engine": "helix"},
+               "drive_pedals": sorted(k for b in ("drive", "fuzz", "metal") for k in gear["blocks"][b]["gear"]), "engine": "helix",
+               "frame": "frame.bin", "blocks": blocks, "spots": [f * FLOW + 4 + (1 + i) * BLOCK for f in (0, 1) for i in range(PATH_ONE)]},
               open(os.path.join(out, "tones.json"), "w"), indent=1)
     print("%d presets, %d game amps, %d rules" % (len(used), len(gear["amps"]), len(rules(gear))))
 

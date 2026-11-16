@@ -7,7 +7,7 @@ It needs Helix Native installed and authorized, and nothing done by hand.
 | File | What it does |
 |---|---|
 | `gear.json` | The game's gear onto Helix models. **Edit this one** |
-| `make_presets.py` | Writes `presets/`, one preset per Helix amp as the plug-in's engine takes it, and `tones.json`: where each knob is in a preset, and the rules from game knobs to parameters |
+| `make_presets.py` | Writes `presets/`, the pieces of a preset as the plug-in's engine takes one: a frame, a block per Helix amp and a block per effect. And `tones.json`: the chain's order, where each knob is in a block, and the rules from game knobs to parameters |
 | `base.hlx` | An empty preset, the frame of Helix's file: a preset is described as Helix's own file has it |
 | `engine.c` | The plug-in's engine as the host reaches it |
 | `../config.default.json` | The config of a new install: `make_config.py` and `../install.sh` start from it |
@@ -34,7 +34,9 @@ in `manifests/gears`.
 
 ## The chain
 
-Every preset is the same chain, so knobs and switches mean the same everywhere. The numbers are Audio Unit parameters.
+The blocks a tone can have, in the chain's order. A tone gets its amp and the blocks it has gear for, each in the next
+place: with no pedals that is the amp alone. The numbers name a knob or a switch in the rules; with every block there
+they are Helix's own Audio Unit parameters, which is how `verify.sh` checks them.
 
 | Path | Block | Model | Switch | Knobs |
 |---|---|---|---|---|
@@ -82,14 +84,15 @@ Norm Drive, Mandarin Bass and Agua Sledge Gain. An amp's model lacks some knobs 
 Helix Native is a layer over an engine, `HelixCoreLib.framework` in `/Library/Frameworks`, and Line 6 installs the engine's
 headers in it: `HelixCore.h` has its functions, `HelixCorePreset.h` a preset, `symbolTableMasterList.h` every model by
 number. When a state loads, the plug-in hands the engine one plain preset of 18,332 bytes with `hc_loadPreset`, and
-nothing else. The host hands it one too: a tone is its amp's preset from `presets/`, with the tone's knobs and switches
-written in at their places, given to the engine of the instance nobody hears. No state is loaded and no knob moved, so
+nothing else. The host hands it one too: it puts a tone's preset together from the pieces in `presets/`, the frame, the
+amp's block and a block for each effect the tone has, with the tone's knobs written in at their places, and gives it to
+the engine of the instance nobody hears. No state is loaded and no knob moved, so
 there is nothing to import and nothing of Helix's library is used. The comment in `make_presets.py` has the layout.
 
-- **The same sound.** `verify.sh` has Helix import the same presets as a setlist and saves a state of each. The host's
-  `--check-sound` then compares, for every preset: with the state loaded, the engine has that very preset; with every
-  knob and switch moved on the plug-in, the engine's preset changes where `places` says; and the preset handed to the
-  engine plays as loud as the state. All 36 passed with Helix Native 3.8.2. Rendered offline, a preset handed to the
+- **The same sound.** `verify.sh` has Helix import a whole preset per amp as a setlist and saves a state of each. The
+  host's `--check-sound` then compares, for every amp: with the state loaded, every block switched on and every knob
+  moved on the plug-in, the engine has the very preset the host puts together from the blocks; and the amp alone,
+  handed to the engine, plays as loud as the state with its effects off. All 36 passed with Helix Native 3.8.2. Rendered offline, a preset handed to the
   engine came out sample for sample as the state with the same knobs set, and a slot that never had a state plays as
   one that had. `setup.sh` can't tell this much: there the engine has to take each preset unchanged, and it has to
   sound.
@@ -133,6 +136,7 @@ as the models files are, and aren't kept here.
   They are encrypted, by Line 6's own scheme, and stay unread: states are saved and restored whole, and a state loads in about 34 ms. They come from one Helix version,
   so run `setup.sh` again after an update.
 - **CPU.** A bypassed block costs the same as an active one: about 2.7% of a core for an amp alone, about 7% for the chain.
+  So a tone's preset has only the blocks the tone has: about 3% on eleven tones, where the whole chain took 7.5%.
 - **Network.** After authorization Helix runs without it. Its editor window tries a server and carries on when refused.
 
 Line 6's files are read from the user's install and aren't kept here. This page is notes on formats, with no data of theirs.

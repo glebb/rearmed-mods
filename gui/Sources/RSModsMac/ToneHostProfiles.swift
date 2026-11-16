@@ -46,7 +46,7 @@ enum ToneHostProfiles {
     }
 
     // The same checks as rs-tonehost's config_problem, none of which opens the plug-in, and then that the host's
-    // --check-sound has played these very states: it leaves their stamp in checked.json. A sound may be a preset for
+    // --check-sound has played these very states: it leaves their stamp in checked.json. A sound may be a block for
     // the plug-in's engine with no state, as Helix Native's are: then it is the presets' stamp
     static func plugin(id: String, profile: [String: Any], states: URL, installed: Lookup) -> ToneHostPlugin {
         let codes = profile["plugin"] as? [String: Any] ?? [:]
@@ -80,7 +80,7 @@ enum ToneHostProfiles {
         var missing = 0, foreign = 0, saved = 0
         for template in templates.values {
             guard let file = stateFile(template, in: states) else {
-                if profile["engine"] as? String == nil || preset(template, in: states) == nil { missing += 1 }
+                if profile["engine"] as? String == nil || !hasBlock(template, in: states) { missing += 1 }
                 continue
             }
             saved += 1
@@ -113,28 +113,27 @@ enum ToneHostProfiles {
     private static func played(_ templates: [String: Any], saved: Int, in states: URL) -> Bool {
         let checked = ToneHostConfig.read(states.appendingPathComponent("checked.json"))
         if saved > 0 { return checked?["states"] as? String == stamp(templates, in: states) }
-        guard let presets = presetsStamp(templates, in: states) else { return false }
+        guard let presets = presetsStamp(in: states) else { return false }
         return checked?["presets"] as? String == presets
     }
 
-    // A sound's preset for the plug-in's engine and the places in it, if it has both
-    private static func preset(_ template: Any, in states: URL) -> (data: Data, places: Any)? {
-        guard let t = template as? [String: Any], let path = t["preset"] as? String, !path.isEmpty,
-              let places = t["places"] as? [String: Any],
-              let data = try? Data(contentsOf: path.hasPrefix("/") ? URL(fileURLWithPath: path) : states.appendingPathComponent(path)),
-              !data.isEmpty else { return nil }
-        return (data, places)
+    // A sound's block for the plug-in's engine, the amp of a preset the host puts together
+    private static func hasBlock(_ template: Any, in states: URL) -> Bool {
+        guard let path = (template as? [String: Any])?["block"] as? String, !path.isEmpty else { return false }
+        let file = path.hasPrefix("/") ? URL(fileURLWithPath: path) : states.appendingPathComponent(path)
+        return ((try? Data(contentsOf: file))?.isEmpty == false)
     }
 
-    // rs-tonehost's presets_stamp: every preset and its places as JSON with its keys in order, the templates in the
-    // order of their names
-    static func presetsStamp(_ templates: [String: Any], in states: URL) -> String? {
-        var all = Data()
-        for name in templates.keys.sorted(by: { Array($0.utf16).lexicographicallyPrecedes(Array($1.utf16)) }) {
-            guard let found = preset(templates[name] as Any, in: states),
-                  let places = try? JSONSerialization.data(withJSONObject: found.places, options: [.sortedKeys]) else { return nil }
-            all.append(found.data)
-            all.append(places)
+    // rs-tonehost's presets_stamp: the profile, and every file of its presets folder with its name, in the order of
+    // the names
+    static func presetsStamp(in home: URL) -> String? {
+        let folder = home.appendingPathComponent("presets", isDirectory: true)
+        var all = (try? Data(contentsOf: home.appendingPathComponent("profile.json"))) ?? Data()
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { !$0.hasPrefix(".") }
+        guard !all.isEmpty, !names.isEmpty else { return nil }
+        for name in names.sorted(by: { Array($0.utf16).lexicographicallyPrecedes(Array($1.utf16)) }) {
+            all.append(Data(name.utf8))
+            all.append((try? Data(contentsOf: folder.appendingPathComponent(name))) ?? Data())
         }
         return SHA256.hash(data: all).map { String(format: "%02x", $0) }.joined()
     }

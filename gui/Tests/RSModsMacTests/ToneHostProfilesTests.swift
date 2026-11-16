@@ -67,33 +67,33 @@ final class ToneHostProfilesTests: XCTestCase {
         XCTAssertEqual(ToneHostProfiles.stamp(["b": ["state": "b.plist"], "a": ["state": "a.plist"]], in: folder), "11914c19a28a98c57d12f3cce6c32b7944784f4b4781a706c24eb1dc284e2856")
     }
 
-    // What rs-tonehost's presets_stamp gives for the same two presets and places
+    // What rs-tonehost's presets_stamp gives for the same profile and presets folder
     func testThePresetsStampIsTheHosts() throws {
-        try Data("one".utf8).write(to: folder.appendingPathComponent("a.bin"))
-        try Data("two".utf8).write(to: folder.appendingPathComponent("b.bin"))
-        let file = folder.appendingPathComponent("templates.json")
-        try Data(#"{"b": {"preset": "b.bin", "places": {"7": [4, -60.0, 0.0], "16": [13]}}, "a": {"preset": "a.bin", "places": {"0": [2, 0, 1], "11": [9, 0.0, 2.0]}}}"#.utf8).write(to: file)
-        let templates = try XCTUnwrap(ToneHostConfig.read(file))
-        XCTAssertEqual(ToneHostProfiles.presetsStamp(templates, in: folder), "e5f5c4fba2207ce383b8ed471c3b020862142de419db3af39e22c25aaf8b5278")
-        XCTAssertNil(ToneHostProfiles.presetsStamp(["a": ["preset": "a.bin"]], in: folder))
+        XCTAssertNil(ToneHostProfiles.presetsStamp(in: folder))
+        let presets = folder.appendingPathComponent("presets", isDirectory: true)
+        try FileManager.default.createDirectory(at: presets, withIntermediateDirectories: true)
+        try Data(#"{"name": "X"}"#.utf8).write(to: folder.appendingPathComponent("profile.json"))
+        XCTAssertNil(ToneHostProfiles.presetsStamp(in: folder))
+        try Data("two".utf8).write(to: presets.appendingPathComponent("b.bin"))
+        try Data("one".utf8).write(to: presets.appendingPathComponent("a.bin"))
+        try Data("junk".utf8).write(to: presets.appendingPathComponent(".DS_Store"))
+        XCTAssertEqual(ToneHostProfiles.presetsStamp(in: folder), "9fd5be4e68a6e8f3fa9ff44d4cedbc86973809d35bb2a899ea7d3c565185ac59")
     }
 
-    // Helix Native's sounds are presets for its engine, with no saved state
-    func testAProfileOfPresetsAloneCanBeChosenOnceTheyPlayed() throws {
+    // Helix Native's sounds are blocks for its engine, with no saved state
+    func testAProfileOfBlocksAloneCanBeChosenOnceTheyPlayed() throws {
         let home = folder.appendingPathComponent("plugins/helix-native", isDirectory: true)
         try FileManager.default.createDirectory(at: home.appendingPathComponent("presets"), withIntermediateDirectories: true)
         var p = profile()
         p["engine"] = "helix"
-        p["templates"] = ["clean": ["preset": "presets/clean.bin", "places": ["0": [2, 0, 1]]],
-                          "driven": ["preset": "presets/driven.bin", "places": ["0": [2, 0, 1], "16": [9]]]]
+        p["templates"] = ["clean": ["block": "presets/clean.bin"], "driven": ["block": "presets/driven.bin"]]
         XCTAssertTrue(ToneHostConfig.write(p, to: home.appendingPathComponent("profile.json")))
         func found() -> [ToneHostPlugin] { ToneHostProfiles.all(in: folder, config: [:], installed: helix) }
         XCTAssertEqual(found().first?.problem, "Its sounds aren't saved.")
         try Data("one".utf8).write(to: home.appendingPathComponent("presets/clean.bin"))
         try Data("two".utf8).write(to: home.appendingPathComponent("presets/driven.bin"))
         XCTAssertEqual(found().first?.problem, "Its sounds haven't been played through the plug-in to check them.")
-        let saved = try XCTUnwrap(ToneHostConfig.read(home.appendingPathComponent("profile.json"))?["templates"] as? [String: Any])
-        let stamp = try XCTUnwrap(ToneHostProfiles.presetsStamp(saved, in: home))
+        let stamp = try XCTUnwrap(ToneHostProfiles.presetsStamp(in: home))
         XCTAssertTrue(ToneHostConfig.write(["states": "x", "presets": stamp], to: home.appendingPathComponent("checked.json")))
         XCTAssertEqual(found(), [ToneHostPlugin(id: "helix-native", name: "Helix Native")])
         try Data("three".utf8).write(to: home.appendingPathComponent("presets/driven.bin"))

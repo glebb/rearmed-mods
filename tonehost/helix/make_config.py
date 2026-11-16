@@ -47,11 +47,13 @@ def main():
         for k in ("tight", "follow", "places"):
             if k in v:
                 e[k] = v[k]
-        e["preset"] = "presets/" + v["preset"]  # as the plug-in's engine takes it
+        e["block"] = "presets/" + v["block"]  # the amp and its cab as the plug-in's engine takes them
         p["templates"][name] = e
     p["map"] = {"gain_knobs": ["_Gain", "_Loudness1", "_Loudness2"], "drive_pedals": t["drive_pedals"], "clean": t["fallback"]["clean"],
                 "driven": t["fallback"]["driven"], "driven_from_gain": 0.3, "by_prefix": t["by_prefix"], "follow": t["follow"], "trim": t.get("trim", [])}
-    p["engine"] = t["engine"]
+    # What the host puts a tone's preset together from: the frame, the spots in it and the blocks in the chain's order
+    p.update(engine=t["engine"], frame="presets/" + t["frame"], spots=t["spots"],
+             blocks=[dict(b, file="presets/" + b["file"]) if "file" in b else b for b in t["blocks"]])
     json.dump(p, open(os.path.join(o.out, "profile.json"), "w"), indent=1)
     json.dump(c, open(os.path.join(o.out, "config.json"), "w"), indent=1)
     on = "guitar on %s channel %d" % (c["input"]["device"], c["input"]["channel"] + 1) if c["input"]["device"] else "the interface is still to choose, in Re-ARMed Mods' Tone Host settings or with --input and --channel"

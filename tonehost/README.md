@@ -75,7 +75,7 @@ tonehost/
   config.json                 "profile": "helix-native"
   plugins/helix-native/
     profile.json              name, plugin, plugin_version, templates, map
-    presets/*.bin             Helix Native's sounds; another plug-in has states/*.plist
+    presets/*.bin             Helix Native's: a frame and blocks; another plug-in has states/*.plist
 ```
 
 The host lays the profile over the config, so anything below can be in either, and a config with `plugin`, `templates`
@@ -143,12 +143,15 @@ and `map` in itself and no `profile` plays as before. Here they are together:
   template's `tight` scales that. The game's Noise Gate pedal, where a tone has one, sets a lowest threshold.
 - `state` is an Audio Unit's `ClassInfo` saved as a property list, relative to the profile's folder, or to the config's
   where the config has the plug-in itself.
-- A template can have a `preset` in place of a state, where the profile names the plug-in's `engine`: the preset as that
-  engine takes it, with `places`, where each parameter has its value in it. Helix Native's profile is made of these
-  ([`helix/README.md`](helix/README.md)). A tone is then the preset with the tone's values written in, handed to the
-  engine: no state loads and no knob moves. Only presets `--check-sound` has passed are played. A template with both
-  goes by its state unless the config has `"direct": true`; then `--check-sound` also holds each preset against what the
-  plug-in has with the state loaded, and if the engine refuses a preset `host.log` says so and tones go by their states.
+- Where the profile names the plug-in's `engine`, as Helix Native's does ([`helix/README.md`](helix/README.md)), the host
+  puts a tone's preset together and hands it to the engine: no state loads and no knob moves. The profile has a `frame`,
+  a preset with nothing in it, the `spots` in it where a block can go, and its `blocks` in the chain's order, each a
+  file with the parameter that turns it on and the `places` of its parameters' values. A template has a `block`, its
+  amp, in place of a state. A tone gets the amp and the blocks its rules turn on, each in the next spot: a block the
+  tone has no gear for isn't there at all. Only presets `--check-sound` has passed are played. A template with a state
+  as well goes by its state unless the config has `"direct": true`; then `--check-sound` also holds the blocks against
+  what the plug-in has with the state loaded, and if the engine refuses a preset `host.log` says so and tones go by
+  their states.
 - `params` are Audio Unit parameter ids and values, set when the template starts. `follow` puts a game knob on a
   parameter: `amp_gain` is the amp's gain knob from 0 to 1, anything else a knob whose name ends in `from`.
 - The game says a tone only as it changes, and a state's load and its knobs' ramps take half a second after that. So
@@ -162,7 +165,7 @@ and `map` in itself and no `profile` plays as before. Here they are together:
   goes through the instance nobody hears, and its gain is set from the level that comes out. `trim_db` in a template
   moves it from there.
   The pluck repeats until two agree, as a plug-in ramps a knob that was moved, and the level is kept in `levels.plist`
-  until the config's templates or rules change: a tone measured once changes within 0.1 s where its slot still has it, else in 0.3 s and a load, or in 0.1 s and a load where it is a preset handed to the engine, which has no knobs to ramp. Without `target_db` the template's `output_db` applies.
+  until the config's templates or rules change: a tone measured once changes within 0.1 s where its slot still has it, else in 0.3 s and a load, or in 0.1 s and a load where its preset is handed to the engine, which has no knobs to ramp. Without `target_db` the template's `output_db` applies.
 - The system's volume controls the guitar, wherever the sound goes: the host follows it where it plays straight to an
   interface, and where it plays through the system's own output that device turns the guitar down as it does everything
   else. So does the game's guitar fader, which the mod passes on. `"ignore_system_volume": true` turns the first off.
@@ -188,5 +191,5 @@ change takes the tone in play through the instance nobody hears, as any tone cha
 
 Offline, against the game with a test signal: on one song a template with the tone's amp, compressor and drive pedal
 came within 0.29 dB RMS of the distorted tone's level and 1.41 dB of the clean one's, the clean amp being a stand-in.
-Each Helix instance costs about 2.7% of a core and two take about 1.4 GB; the one standing by renders only around a switch. A bypassed amp saves nothing. Not done:
+A Helix instance costs about 3% of a core with a tone's own blocks, where the whole chain with most of it switched off cost 7.5%, and two take about 1.4 GB; the one standing by renders only around a switch. Not done:
 measuring each amp's drive against the game, latency measured end to end, two players.
