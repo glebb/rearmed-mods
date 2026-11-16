@@ -19,7 +19,12 @@ The game's effects still run: this mutes them, it doesn't remove them.
 
 ## Build and run
 
-For Helix Native, with the game closed:
+From the app: Re-ARMed Mods carries the host, and with Helix Native on the Mac its Your Own Plug-in settings have **Set Up
+Helix Native**. One click installs the host, makes a sound for every amp of the game from the Helix on this Mac, and
+plays each through the plug-in, heard by nobody. It takes some seconds; run it again after a Helix update. The makers
+are Python, so macOS's command line tools have to be there, which macOS offers to install. Then choose the interface.
+
+From the source, for Helix Native, with the game closed:
 
 ```bash
 tonehost/helix/setup.sh --input "HX Stomp" --channel 5 --output "HX Stomp"

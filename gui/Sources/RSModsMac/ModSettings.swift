@@ -223,6 +223,8 @@ private struct ToneHostSettings: View {
     @State private var plugin = ""
     @State private var failed = false
     @State private var adding: Adding?
+    @State private var settingUp = false
+    @State private var setUpSaid: String?
 
     private struct Adding: Identifiable {
         let changing: String?
@@ -270,6 +272,23 @@ private struct ToneHostSettings: View {
                 }
             }
         }
+        if let carried = ToneHostInstaller.carried, ToneHostInstaller.helixInstalled || !store.toneHostInstalled {
+            // One click: the host installed or brought up to this app's, and Helix Native's sounds made and checked
+            HStack {
+                if ToneHostInstaller.helixInstalled {
+                    Button(plugins.contains { $0.id == ToneHostInstaller.helixID } ? "Set Up Helix Native Again" : "Set Up Helix Native") {
+                        setUp { ToneHostInstaller.setUpHelix(from: carried, in: store.toneHostFolder) }
+                    }
+                } else {
+                    Button("Install Tone Host") { setUp { ToneHostInstaller.installHost(from: carried, to: store.toneHostFolder) } }
+                }
+                if settingUp { ProgressView().controlSize(.small) }
+            }
+            .disabled(settingUp)
+            if let setUpSaid {
+                Text(setUpSaid).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
         if store.toneHostInstalled, setup == nil {
             Picker("Interface", selection: Binding(get: { "" }, set: { if !$0.isEmpty { choose($0) } })) {
                 Text("Choose…").tag("")
@@ -307,8 +326,10 @@ private struct ToneHostSettings: View {
             }
         }
         Text(store.toneHostInstalled
-             ? "The game starts it, and it plays the guitar through the plug-in chosen here, following the game's tones. Add a Plug-in takes any Audio Unit with two sounds you set yourself; Helix Native follows every amp of the game with tonehost/helix/setup.sh in rearmed-mods' source. The game's own guitar is silent while it runs; the guitar fader and the volume keys still work. The sound comes soonest with the guitar and the sound on one interface. With this interface unplugged the host takes another you've chosen here before that is connected. A change restarts a running host: the game's own tones play until it's back, within half a minute."
-             : "Until it is, the game keeps its own tones. Install it with tonehost/install.sh in rearmed-mods' source.")
+             ? "The game starts it, and it plays the guitar through the plug-in chosen here, following the game's tones. Add a Plug-in takes any Audio Unit with two sounds you set yourself; Helix Native follows every amp of the game: Set Up Helix Native makes its sounds from the Helix on this Mac, with nothing to do by hand, and is to be run again after a Helix update. The game's own guitar is silent while it runs; the guitar fader and the volume keys still work. The sound comes soonest with the guitar and the sound on one interface. With this interface unplugged the host takes another you've chosen here before that is connected. A change restarts a running host: the game's own tones play until it's back, within half a minute."
+             : ToneHostInstaller.carried == nil
+                 ? "Until it is, the game keeps its own tones. Install it with tonehost/install.sh in rearmed-mods' source."
+                 : "Until it is, the game keeps its own tones. With Helix Native on this Mac, Set Up Helix Native installs it and makes a sound for every amp of the game; for another plug-in, install it and add the plug-in.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -316,6 +337,22 @@ private struct ToneHostSettings: View {
                 interfaces = AudioDevices.interfaces()
                 load()
             }
+    }
+
+    // A setup runs beside the window; what it says stays under its button
+    private func setUp(_ work: @escaping () -> String?) {
+        settingUp = true
+        setUpSaid = nil
+        let folder = store.toneHostFolder
+        Task.detached {
+            let problem = work()
+            await MainActor.run {
+                settingUp = false
+                setUpSaid = problem ?? "Done. Helix Native's sounds are made and played; choose the interface the guitar is on."
+                load()
+                ToneHostConfig.restartHost(commands: folder.appendingPathComponent("commands"))
+            }
+        }
     }
 
     private func load() {

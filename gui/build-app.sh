@@ -37,6 +37,13 @@ if [ -e "$model" ]; then
 else
   echo "warning: no Song Stems model at $model (RS_STEMS_MODEL): the app is built without rs-stems" >&2
 fi
+# Tone Host: the host, and what makes Helix Native's presets, for the app to set up from (ToneHostInstaller.swift)
+../tonehost/build.sh
+th="$APP/Contents/Resources/tonehost"
+mkdir -p "$th/helix"
+cp -R "../build/tonehost/RS Tone Host.app" "$th/"
+cp ../build/tonehost/start.sh ../build/tonehost/stop.sh ../tonehost/config.default.json "$th/"
+cp ../tonehost/helix/make_presets.py ../tonehost/helix/make_config.py ../tonehost/helix/gear.json ../tonehost/helix/base.hlx "$th/helix/"
 cp icon/AppIcon.icns "$APP/Contents/Resources/"  # icon/make_icon.py draws it
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

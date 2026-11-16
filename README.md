@@ -413,8 +413,9 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * `rs-tonehost`, an add-on in [`tonehost`](tonehost/README.md), plays the guitar through an Audio Unit, such as Helix
     Native, and follows the game's tones. The game starts the host (again when it has ended: it ends by itself
     while ToneHost is off), and the game's guitar is silent while it runs; the guitar fader and the volume keys still
-    work. Without the host the game keeps its tones. It is built from source and
-    isn't in the app: install it from that folder.
+    work. Without the host the game keeps its tones. The app carries the host: with Helix Native on the Mac, Set Up
+    Helix Native in this mod's settings installs it and makes a sound for every amp of the game, with nothing to do by
+    hand; for another plug-in, Install Tone Host and then Add a Plug-in.
   * Once it is set up, the app's settings for this mod choose the plug-in, the interface the guitar is on, its channel
     and gain, and where the sound goes. A plug-in can be chosen once its setup has finished: it is installed, every
     sound it needs is saved, and each has played through the plug-in in a check nobody hears.
