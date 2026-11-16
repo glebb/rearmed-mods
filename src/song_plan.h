@@ -11,7 +11,7 @@ enum { SONG_PLAN_SLOTS = 5, SONG_PLAN_GEAR = 3072 };  // Tone_Base, Tone_A to To
 
 typedef struct {
   int max_difficulty;                              // MaxPhraseDifficulty: the song's levels are one more; -1 without
-  char gear[SONG_PLAN_SLOTS][SONG_PLAN_GEAR];      // " Knob=value ..." as Tone Host sends a tone; "" an empty slot
+  char gear[SONG_PLAN_SLOTS][SONG_PLAN_GEAR];      // " Knob=value ... @chain=Gear,Gear" as Tone Host sends a tone; "" an empty slot
 } song_plan;
 
 // The knobs Tone Host passes on, of all the game sets by name
@@ -23,7 +23,8 @@ static inline int song_plan_is_gear(const char *n) {
 }
 
 // An arrangement's manifest: 1 and its slots, or 0 when it has no tone for Tone_Base. A slot's tone is the entry of
-// "Tones" with that Key: every KnobValues of its GearList, and its Volume as Meter_Tone_Balance_Return.
+// "Tones" with that Key: every KnobValues of its GearList, its Volume as Meter_Tone_Balance_Return, and as @chain the
+// gear of its GearList in the order the signal goes through it, which the game never says as it sets a tone.
 int song_plan_parse(const char *json, song_plan *out);
 
 #endif

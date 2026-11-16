@@ -21,8 +21,7 @@ $cc "$here/tests/test_profiles.c" "$here/src/rsmods_profiles.c" -lz -o "$out/tes
 $cc "$here/tests/test_song_lists.c" "$here/src/rsmods_profiles.c" -lz -o "$out/test_song_lists"
 $cc "$here/tests/test_song_list_titles.c" -o "$out/test_song_list_titles"
 $cc -DGUEST32 "$here/tests/test_song_list_titles.c" -o "$out/test_song_list_titles32"
-$cc -O1 "$here/tests/test_7z.c" "$here/src/rsmods_7z.c" -lz -o "$out/test_song_plan"
-"$out/test_7z"
+$cc -O1 "$here/tests/test_7z.c" "$here/src/rsmods_7z.c" -lz -o "$out/test_7z"
 $cc "$here/tests/test_cache.c" "$here/src/rsmods_cache.c" -o "$out/test_cache"
 $cc "$here/tests/test_song_info.c" "$here/src/song_info.c" "$here/src/rsmods_files.c" "$here/src/rsmods_tuning.c" -lz -o "$out/test_song_info"
 $cc "$here/tests/test_discord.c" "$here/src/discord_ipc.c" -o "$out/test_discord"
@@ -45,6 +44,7 @@ $cc "$here/tests/test_song_plan.c" "$here/src/song_plan.c" -o "$out/test_song_pl
 "$out/test_cache"
 "$out/test_song_info"
 "$out/test_discord"
+"$out/test_song_plan"
 "$here/tests/test_tonehost_migrate.sh"
 
 cd "$here/gui"

@@ -148,7 +148,8 @@ and `map` in itself and no `profile` plays as before. Here they are together:
   a preset with nothing in it, the `spots` in it where a block can go, and its `blocks` in the chain's order, each a
   file with the parameter that turns it on and the `places` of its parameters' values. A template has a `block`, its
   amp, in place of a state. A tone gets the amp and the blocks its rules turn on, each in the next spot: a block the
-  tone has no gear for isn't there at all. Only presets `--check-sound` has passed are played. A template with a state
+  tone has no gear for isn't there at all. Where a tone says its chain (`@chain`, below) the blocks go in that order, each
+  where the first of its `gear` is; otherwise in the profile's. Only presets `--check-sound` has passed are played. A template with a state
   as well goes by its state unless the config has `"direct": true`; then `--check-sound` also holds the blocks against
   what the plug-in has with the state loaded, and if the engine refuses a preset `host.log` says so and tones go by
   their states.
@@ -180,8 +181,12 @@ and `map` in itself and no `profile` plays as before. Here they are together:
 one preset per Helix amp as the plug-in's engine takes it, and the rules, from Line 6's model files in the install.
 
 Commands on the FIFO: `gear KEY=VALUE ...`, `mixer VALUE`, `time SONG SECONDS` and a song's plan (`plan SONG`,
-`plantone SLOT KEY=VALUE ...`, `planat TIME:SLOT ...`, `planend`) from the mod, `offset VALUE` from
+`plantone SLOT KEY=VALUE ... @chain=GEAR,GEAR`, `planat TIME:SLOT ...`, `planend`) from the mod, `offset VALUE` from
 [RS Companion](https://github.com/glebb/rs-mac-companion), `use TEMPLATE`, `mute` and `quit` by hand.
+
+A song's manifest has each tone's gear by slot, and the mod sends that as `@chain`: pedals, amp, the pedals of its loop,
+cabinet, racks. The game doesn't say it as it sets a tone, so a `gear` line has none: the host gives such a tone the
+chain of the plan's tone with the same knobs.
 
 `offset` is how much too hot a song's tones are against its record, in thirds of the gain knob: an AI's answer, 0 if there
 is none. It comes as a song loads, and lowers `amp_gain` for a tone at a third or more, so clean parts stay as they are. A

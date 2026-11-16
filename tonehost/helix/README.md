@@ -63,8 +63,11 @@ Parameters 32 and 33 are Master Input and Output Level, in dB; 32 is how hard a 
 on a few tones, not a measurement of each amp. With a drive pedal it rises faster; with fuzz or metal it doesn't, as those
 distort plenty themselves. That hasn't been compared with the game.
 
-A pedal stands ahead of the amp even where the game has it after the amp, as a `PostPedal`. A knob set together with its switch
-takes effect: rendered both ways, it makes no difference.
+The order above is for a tone whose chain isn't known: one the game says with no song's plan behind it, as in the menus.
+A song's tones come with their chain, the game's gear in the signal's order, and their blocks go in that order: a
+compressor ahead of the amp where the game has it there, a chorus after it. Each block goes where the first of its gear
+is. The amp's block has its cab in it, so what the game puts in the amp's loop, between amp and cab, comes after the
+cab here.
 
 An acoustic tone in the game is its Acoustic Emulator pedal, nearly always into the Tube Pre DI and a full-range PA cab. That
 became Helix's bass amp and its 1x15, with nothing for the emulator: a dull electric. Now the DI preamps are Studio Tube Pre

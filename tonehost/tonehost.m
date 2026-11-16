@@ -522,7 +522,9 @@ static NSString *state_path(NSDictionary *t) {
 // parameter that turns it on ("on") and the places of its parameters' values in it (preset_places.h), counted from the
 // block's start. {"amp": true} among them stands for the template's own "block". A tone's preset is the frame with
 // the amp's block and every block the tone's rules turn on, each in the next spot, and the tone's values in their
-// places: a block the tone has no gear for isn't there at all. A template's "places" are its amp's knobs, each with
+// places: a block the tone has no gear for isn't there at all. Where the tone says its chain ("@chain", the game's gear
+// in the signal's order, which the mod has for a song's tones), the blocks go in that order, each where the first
+// of its "gear" is, and the amp where the chain's amp is. A template's "places" are its amp's knobs, each with
 // the block it is in before it: "amp", or another block's name where the amp lends that block a knob. The preset is
 // handed to the engine: no state is loaded for it and no knob moved, so nothing ramps. The parameters that have no
 // place in any block are set on the plug-in as ever. Such templates need no states, and a profile whose templates
@@ -557,10 +559,20 @@ static NSArray *place_from(NSArray *place, NSUInteger skip, NSUInteger start) {
 // A tone's preset for a template and its parameters' values, or nil if the profile can't make one. `places`, where
 // asked for, gets where each parameter of the blocks in it has its value. A value with no place in any block of the
 // profile is set on the unit, where there is one
-static NSMutableData *composed(NSDictionary *c, NSDictionary *t, NSArray<NSArray<NSNumber *> *> *values, AudioUnit unit, NSMutableDictionary *places) {
+static NSMutableData *composed(NSDictionary *c, NSDictionary *t, NSArray<NSArray<NSNumber *> *> *values, NSString *chain, AudioUnit unit, NSMutableDictionary *places) {
   NSMutableData *preset = [NSMutableData dataWithContentsOfFile:engine_file(c[@"frame"])];
-  NSArray *spots = c[@"spots"], *blocks = c[@"blocks"];
-  if (!preset.length || ![spots isKindOfClass:NSArray.class] || ![blocks isKindOfClass:NSArray.class]) return nil;
+  NSArray *spots = c[@"spots"], *profiles = c[@"blocks"];
+  if (!preset.length || ![spots isKindOfClass:NSArray.class] || ![profiles isKindOfClass:NSArray.class]) return nil;
+  // The blocks in the tone's own order where it says one, then the rest in the profile's
+  NSMutableArray<NSDictionary *> *blocks = [NSMutableArray array];
+  for (NSString *gear in [chain isKindOfClass:NSString.class] ? [chain componentsSeparatedByString:@","] : @[])
+    for (NSDictionary *b in profiles) {
+      if (![b isKindOfClass:NSDictionary.class] || [blocks containsObject:b]) continue;
+      BOOL is = [b[@"amp"] boolValue] ? [gear rangeOfString:@"Amp_"].location != NSNotFound : [b[@"gear"] isKindOfClass:NSArray.class] && [b[@"gear"] containsObject:gear];
+      if (is) { [blocks addObject:b]; break; }
+    }
+  for (NSDictionary *b in profiles)
+    if (![blocks containsObject:b]) [blocks addObject:b];
   NSMutableDictionary<NSString *, NSNumber *> *last = [NSMutableDictionary dictionary], *start = [NSMutableDictionary dictionary];
   NSMutableDictionary<NSString *, NSArray *> *where = [NSMutableDictionary dictionary];
   NSMutableSet<NSString *> *known = [NSMutableSet set];  // every parameter with a place in some block, in this tone or not
@@ -626,7 +638,7 @@ static BOOL load_direct(int n, NSString *name, NSDictionary *t, NSDictionary *ge
   slot_t *s = &slots[n];
   if (!g_loaded[n] && has_state(t)) load_state(n, state_path(t).UTF8String);  // once, where there is one
   g_loaded[n] = name;
-  NSData *preset = composed(g_config, t, tone_params(t, gear), s->unit, nil);
+  NSData *preset = composed(g_config, t, tone_params(t, gear), gear[@"@chain"], s->unit, nil);
   if (!preset) { say("no preset could be made for %s", name.UTF8String); return NO; }
   if ([preset isEqualToData:g_in_engine[n]]) return YES;
   atomic_store(&s->ready, 0);
@@ -874,15 +886,29 @@ static NSDictionary *gear_of(const char *text) {
   return gear;
 }
 
+// A tone as the game says it has its knobs and not its chain. The song's plan has both: the plan's tone with these very
+// knobs, where there is one
+static NSDictionary *with_chain(NSDictionary *gear) {
+  if (gear[@"@chain"]) return gear;
+  for (NSDictionary *planned in g_plan_tones.allValues) {
+    if (!planned[@"@chain"] || planned.count != gear.count + 1) continue;
+    NSMutableDictionary *knobs = [planned mutableCopy];
+    knobs[@"@chain"] = nil;
+    if ([knobs isEqualToDictionary:gear]) return planned;
+  }
+  return gear;
+}
+
 static void command(char *line) {
   static NSDictionary *last_gear;
   static BOOL timed;  // the line before this one said where the song is: a tone after it is a change in the song
   BOOL was_timed = timed;
   timed = NO;
   if (!strncmp(line, "gear ", 5)) {
-    NSDictionary *gear = gear_of(line + 5);
+    NSDictionary *gear = with_chain(gear_of(line + 5));
     NSString *name = pick(gear);
-    say("tone: gain %.2f, balance %s, %lu knobs -> %s", amp_gain(gear), [gear[@"Meter_Tone_Balance_Return"] UTF8String], (unsigned long)gear.count, name.UTF8String);
+    say("tone: gain %.2f, balance %s, %lu knobs -> %s%s%s", amp_gain(gear), [gear[@"Meter_Tone_Balance_Return"] UTF8String],
+        (unsigned long)(gear.count - (gear[@"@chain"] ? 1 : 0)), name.UTF8String, gear[@"@chain"] ? ", chain " : "", [gear[@"@chain"] ?: @"" UTF8String]);
     last_gear = gear;
     if (was_timed) learn(name, gear);
     use_template(name, gear);
@@ -909,6 +935,9 @@ static void command(char *line) {
     g_plan_whole = g_plan_tones[@0] != nil;
     g_plan_played = -1;
     say("the plan of %s: %lu tones, %lu changes", g_plan_song.UTF8String, (unsigned long)g_plan_tones.count, (unsigned long)g_plan_at.count);
+    // A tone that came before its song's plan is playing without its chain: the same tone again, as the plan has it
+    NSDictionary *planned = g_playing_gear ? with_chain(g_playing_gear) : nil;
+    if (g_direct && planned && planned != g_playing_gear) use_template(pick(planned), planned);
   } else if (!strncmp(line, "offset ", 7)) {  // from RS Companion, as a song loads or its AI answer comes
     float v = strtof(line + 7, NULL);
     if (v == g_gain_offset) return;
@@ -963,7 +992,7 @@ static NSString *config_problem(NSDictionary *c) {
   for (NSString *name in [templates.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
     NSDictionary *t = templates[name];
     if (!has_state(t)) {  // then a preset for the plug-in's engine
-      if (!builds_presets(c) || ![t isKindOfClass:NSDictionary.class] || !composed(c, t, @[], NULL, nil))
+      if (!builds_presets(c) || ![t isKindOfClass:NSDictionary.class] || !composed(c, t, @[], nil, NULL, nil))
         return [NSString stringWithFormat:@"%@ has neither a state nor a block for a preset", name];
       continue;
     }
@@ -1122,17 +1151,17 @@ static NSString *preset_problem(NSDictionary *c, NSString *name, NSDictionary *t
   // Every block on and every knob moved, on the plug-in and in a preset of ours: the two have to agree
   NSMutableDictionary *places = [NSMutableDictionary dictionary];
   NSMutableArray *moved = [NSMutableArray array];
-  if (!composed(c, t, own_params(c, t, YES), NULL, places)) return [NSString stringWithFormat:@"no preset could be made for %@", name];
+  if (!composed(c, t, own_params(c, t, YES), nil, NULL, places)) return [NSString stringWithFormat:@"no preset could be made for %@", name];
   for (NSString *id in places) {
     float v = [places[id] count] == 1 ? 1.f : 0.25f;
     AudioUnitSetParameter(s->unit, (AudioUnitParameterID)id.intValue, kAudioUnitScope_Global, 0, v, 0);
     [moved addObject:@[@(id.intValue), @(v)]];
   }
-  NSMutableData *ours = composed(c, t, moved, NULL, places), *theirs = [NSMutableData dataWithLength:ours.length];
+  NSMutableData *ours = composed(c, t, moved, nil, NULL, places), *theirs = [NSMutableData dataWithLength:ours.length];
   if (helix_engine_read(0, theirs.mutableBytes, theirs.length) || !same_preset(ours, theirs, places))
     return [NSString stringWithFormat:@"%@'s blocks aren't the ones the plug-in has", name];
   // And with the amp alone, as a tone with no pedals has it, it plays as the state did with its effects off
-  NSData *plain = composed(c, t, own_params(c, t, NO), NULL, nil);
+  NSData *plain = composed(c, t, own_params(c, t, NO), nil, NULL, nil);
   if (!plain || helix_engine_load(0, plain.bytes, plain.length)) return [NSString stringWithFormat:@"the engine refused %@'s preset", name];
   float direct = settled_level(s);
   if (fabsf(direct - level) > 0.3f) return [NSString stringWithFormat:@"%@'s preset plays at %.1f dB, its state at %.1f", name, direct, level];
@@ -1166,7 +1195,7 @@ static NSString *sound_problem(NSDictionary *c, NSString **presets) {
       // to sound. Nothing says here that a block's values are in the engine's order: helix/verify.sh does, against
       // the plug-in's own presets
       NSDictionary *t = templates[name];
-      NSMutableData *every = composed(c, t, own_params(c, t, YES), NULL, nil), *ours = composed(c, t, own_params(c, t, NO), s->unit, nil);
+      NSMutableData *every = composed(c, t, own_params(c, t, YES), nil, NULL, nil), *ours = composed(c, t, own_params(c, t, NO), nil, s->unit, nil);
       NSMutableData *theirs = [NSMutableData dataWithLength:ours.length];
       if (*presets) problem = (*presets).length ? *presets : @"the profile names no engine for its presets";
       else if (first && !engine_is(0, 0)) problem = @"the plug-in's instance isn't the engine's first";

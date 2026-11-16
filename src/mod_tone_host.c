@@ -176,7 +176,7 @@ static void tick(void) {
 // ---- A song's tones ahead of the game ----
 // The game says a tone only as it changes, too late for a plug-in whose state takes half a second to load. But a loaded
 // song has its changes (sng_song_tones: a time and a slot each), and the arrangement's manifest has each slot's tone, so
-// the host gets both as the song loads: "plan SONG", a "plantone SLOT KNOB=VALUE ..." for each slot the song uses (0
+// the host gets both as the song loads: "plan SONG", a "plantone SLOT KNOB=VALUE ... @chain=GEAR,..." for each slot the song uses (0
 // Tone_Base, 1 to 4 Tone_A to Tone_D), "planat TIME:SLOT ..." and "planend". Which manifest: the song's arrangements
 // whose levels are as many as the loaded song's and which have a tone in every slot its changes name. Where they differ in a slot the song uses, no plan: the host then
 // learns the song's changes as they come.

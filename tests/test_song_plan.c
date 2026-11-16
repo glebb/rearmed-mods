@@ -1,5 +1,6 @@
 // A manifest's tone slots as Tone Host sends a tone (src/song_plan.c): each slot's tone by its key, every knob of its
-// gear, its volume as the balance, numbers as the game's floats print, an empty slot, and text that is no manifest.
+// gear, its volume as the balance, its gear in the signal's order whatever order the manifest has it in, numbers as the
+// game's floats print, an empty slot, and text that is no manifest.
 #include <string.h>
 
 #include "../src/song_plan.h"
@@ -23,10 +24,10 @@ int main(void) {
   static song_plan p;
   CHECK(song_plan_parse(manifest, &p));
   CHECK(p.max_difficulty == 22);
-  CHECK(!strcmp(p.gear[0], " Rack_Test_Freq=0.900005 Rack_Test_Q=0 Amp_Test_Gain=1 Amp_Test_Bass=22 Meter_Tone_Balance_Return=-24.75"));
+  CHECK(!strcmp(p.gear[0], " Rack_Test_Freq=0.900005 Rack_Test_Q=0 Amp_Test_Gain=1 Amp_Test_Bass=22 Meter_Tone_Balance_Return=-24.75 @chain=Amp_Test,Cab_Test,Rack_Test"));
   CHECK(!strcmp(p.gear[1], p.gear[0]));
   // a slot's name in another case, a knob that is no gear's left out, a volume written as a number
-  CHECK(!strcmp(p.gear[2], " Pedal_Test_63=-3 Amp_Test_Gain=79 Meter_Tone_Balance_Return=-19.4793"));
+  CHECK(!strcmp(p.gear[2], " Pedal_Test_63=-3 Amp_Test_Gain=79 Meter_Tone_Balance_Return=-19.4793 @chain=Pedal_Test,Amp_Test"));
   CHECK(!*p.gear[3] && !*p.gear[4]);
   CHECK(!song_plan_parse("{\"Entries\": {}}", &p) && p.max_difficulty == -1);
   CHECK(!song_plan_parse("{\"Tones\": [{\"Key\": \"a\", \"Volume\": \"1\"", &p));  // cut short

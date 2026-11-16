@@ -309,7 +309,8 @@ def main():
                     continue
                 at = engine.start(tone, "dsp1" if index >= PATH_ONE else "dsp0", "block%d" % (index % PATH_ONE))
                 open(os.path.join(out, "presets", kind + ".bin"), "wb").write(whole[at:at + BLOCK])
-                blocks.append({"name": kind, "file": kind + ".bin", "on": SWITCH + len([b for b in blocks if "on" in b]), "places": own[kind]})
+                blocks.append({"name": kind, "file": kind + ".bin", "on": SWITCH + len([b for b in blocks if "on" in b]), "places": own[kind],
+                               "gear": sorted(gear["blocks"][kind]["gear"])})
             empty = json.loads(json.dumps(tone))
             for dsp in ("dsp0", "dsp1"):
                 empty[dsp] = {k: v for k, v in empty[dsp].items() if not k.startswith(("block", "cab"))}
