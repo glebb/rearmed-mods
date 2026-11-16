@@ -13,7 +13,7 @@ pgrep -xq Rocksmith2014 && { echo "Quit the game first." >&2; exit 1; }
 
 "$here/build.sh"
 mkdir -p "$dest"
-pgrep -f "RS Tone Host.app" > /dev/null && echo quit > "$dest/commands"  # nobody reading: a write would wait for ever
+pgrep -xq rs-tonehost && echo quit > "$dest/commands"  # nobody reading: a write would wait for ever
 rm -rf "$dest/RS Tone Host.app"
 cp -R "$out/RS Tone Host.app" "$dest/"
 cp "$out/start.sh" "$out/stop.sh" "$dest/"

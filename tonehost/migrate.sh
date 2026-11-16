@@ -15,7 +15,7 @@ guard=$home/libnetguard.dylib
 [ -f "$dest/config.json" ] || { echo "No rs-tonehost in $dest." >&2; exit 1; }
 
 "$here/build.sh"
-pgrep -f "RS Tone Host.app" > /dev/null && echo quit > "$dest/commands"  # nobody reading: a write would wait for ever
+pgrep -xq rs-tonehost && echo quit > "$dest/commands"  # nobody reading: a write would wait for ever
 host="$out/RS Tone Host.app/Contents/MacOS/rs-tonehost"
 # A setup migrated before the sound check has its profile already, and lacks only the check
 grep -q '"profile"' "$dest/config.json" || python3 "$here/migrate.py" "$dest" --id "$1" --name "$2" --host "$host"
