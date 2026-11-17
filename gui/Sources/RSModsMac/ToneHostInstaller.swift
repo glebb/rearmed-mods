@@ -29,6 +29,7 @@ enum ToneHostInstaller {
                 let to = folder.appendingPathComponent(name)
                 try? fm.removeItem(at: to)
                 try fm.copyItem(at: carried.appendingPathComponent(name), to: to)
+                ModsLibrary.unquarantine(to)  // start.sh opens the host as an app, which macOS refuses with a download's flag on it
             }
             let file = folder.appendingPathComponent("config.json")
             if !fm.fileExists(atPath: file.path) {

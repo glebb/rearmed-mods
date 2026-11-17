@@ -40,6 +40,20 @@ final class ToneHostInstallerTests: XCTestCase {
         XCTAssertEqual(ToneHostConfig.read(file)?["buffer"] as? Int, 64)
     }
 
+    // A downloaded app's files have the quarantine flag, and a copy keeps it: macOS wouldn't open the host
+    func testTheInstalledHostHasNoQuarantineFlag() throws {
+        let carried = try carried(start: "one"), folder = temp.appendingPathComponent("install/tonehost", isDirectory: true)
+        let flag = "com.apple.quarantine", inside = ["RS Tone Host.app", "RS Tone Host.app/Contents/MacOS/rs-tonehost", "start.sh", "stop.sh"]
+        for name in inside {
+            let value = Array("0083;673a0000;Safari;".utf8)
+            XCTAssertEqual(setxattr(carried.appendingPathComponent(name).path, flag, value, value.count, 0, XATTR_NOFOLLOW), 0, name)
+        }
+        XCTAssertNil(ToneHostInstaller.installHost(from: carried, to: folder))
+        for name in inside {
+            XCTAssertEqual(getxattr(folder.appendingPathComponent(name).path, flag, nil, 0, 0, XATTR_NOFOLLOW), -1, name)
+        }
+    }
+
     func testSaysWhatIsMissing() throws {
         let nothing = temp.appendingPathComponent("nothing", isDirectory: true)
         XCTAssertNotNil(ToneHostInstaller.installHost(from: nothing, to: temp.appendingPathComponent("install/tonehost")))
