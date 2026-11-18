@@ -15,7 +15,7 @@ native="$HOME/Library/Application Support/Line 6/Helix Native"
 setlist=${RS_HELIX_SETLIST:-6}
 guard=$home/libnetguard.dylib
 
-pgrep -xq Rocksmith2014 && { echo "Quit the game first." >&2; exit 1; }
+{ pgrep -xq Rocksmith2014 || pgrep -xq rs2014_lp; } && { echo "Quit the game first." >&2; exit 1; }  # either edition
 [ -d "$native/#PRESET_LIBRARY" ] || { echo "Helix Native isn't set up here: open it in a host once." >&2; exit 1; }
 [ -f "$guard" ] || { echo "No network guard at $guard: install RS Re-ARMed first." >&2; exit 1; }
 

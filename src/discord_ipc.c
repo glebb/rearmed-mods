@@ -147,7 +147,7 @@ static int read_message(int fd, char **json, int ms) {
   if (!read_all(fd, h, 8, ms)) return -1;
   uint32_t op = h[0] | (uint32_t)h[1] << 8 | (uint32_t)h[2] << 16 | (uint32_t)h[3] << 24;
   uint32_t len = h[4] | (uint32_t)h[5] << 8 | (uint32_t)h[6] << 16 | (uint32_t)h[7] << 24;
-  if (len > MESSAGE_MAX) return -1;
+  if (len > MESSAGE_MAX || op > INT32_MAX) return -1;  // nonsense: nothing is read, so nothing is the caller's to free
   char *body = malloc((size_t)len + 1);
   if (!body || !read_all(fd, (uint8_t *)body, len, 2000)) {
     free(body);

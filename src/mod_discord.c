@@ -99,7 +99,9 @@ static void *worker(void *arg) {
   unsigned nonce = 0;
   double tried = -RECONNECT_AFTER, sends[SENDS] = {0};
   for (int i = 0; i < SENDS; i++) sends[i] = -SENDS_WINDOW;
-  char named[128] = "";  // the song `names` are of
+  char named[128] = "";   // the song `names` are of
+  char sought[128] = "";  // the song looked for last, found or not, and when
+  double sought_at = 0;
   song_info names;
   discord_activity sent;
   for (;;) {
@@ -138,12 +140,19 @@ static void *worker(void *arg) {
       fd = -1;
       continue;
     }
-    if (p.in_song && *p.song && strcmp(p.song, named)) {
-      have_names = song_names(p.song, &names);
-      // a song that isn't found is looked for again when the archives may be listed anew
-      if (have_names || rsm_now() - g_indexed_at < REINDEX_AFTER) snprintf(named, sizeof named, "%s", p.song);
-      rsm_log("discord: %s is %s%s%s", p.song, have_names ? names.title : "not found", have_names ? " by " : "",
-              have_names ? names.artist : "");
+    // a song that isn't found is looked for again when the archives may be listed anew, and not before: `names` and
+    // `named` stay the last found song's
+    if (p.in_song && *p.song && strcmp(p.song, named) &&
+        (strcmp(p.song, sought) || rsm_now() - sought_at >= REINDEX_AFTER)) {
+      int found = song_names(p.song, &names);
+      snprintf(sought, sizeof sought, "%s", p.song);
+      sought_at = rsm_now();
+      if (found) {
+        have_names = 1;
+        snprintf(named, sizeof named, "%s", p.song);
+      }
+      rsm_log("discord: %s is %s%s%s", p.song, found ? names.title : "not found", found ? " by " : "",
+              found ? names.artist : "");
     }
     discord_activity a;
     activity_of(&p, have_names && !strcmp(p.song, named) ? &names : NULL, &a);

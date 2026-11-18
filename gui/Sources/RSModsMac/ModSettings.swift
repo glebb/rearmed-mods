@@ -278,10 +278,16 @@ private struct ToneHostSettings: View {
             HStack {
                 if ToneHostInstaller.helixInstalled {
                     Button(plugins.contains { $0.id == ToneHostInstaller.helixID } ? "Set Up Helix Native Again" : "Set Up Helix Native") {
-                        setUp { ToneHostInstaller.setUpHelix(from: carried, in: store.toneHostFolder) }
+                        setUp(done: "Done. Helix Native's sounds are made and played; choose the interface the guitar is on.") {
+                            ToneHostInstaller.setUpHelix(from: carried, in: store.toneHostFolder)
+                        }
                     }
                 } else {
-                    Button("Install Tone Host") { setUp { ToneHostInstaller.installHost(from: carried, to: store.toneHostFolder) } }
+                    Button("Install Tone Host") {
+                        setUp(done: "Done. Choose the interface the guitar is on, and add a plug-in.") {
+                            ToneHostInstaller.installHost(from: carried, to: store.toneHostFolder)
+                        }
+                    }
                 }
                 if settingUp { ProgressView().controlSize(.small) }
             }
@@ -341,7 +347,7 @@ private struct ToneHostSettings: View {
     }
 
     // A setup runs beside the window; what it says stays under its button
-    private func setUp(_ work: @escaping () -> String?) {
+    private func setUp(done: String, _ work: @escaping () -> String?) {
         settingUp = true
         setUpSaid = nil
         let folder = store.toneHostFolder
@@ -349,7 +355,7 @@ private struct ToneHostSettings: View {
             let problem = work()
             await MainActor.run {
                 settingUp = false
-                setUpSaid = problem ?? "Done. Helix Native's sounds are made and played; choose the interface the guitar is on."
+                setUpSaid = problem ?? done
                 load()
                 ToneHostConfig.restartHost(commands: folder.appendingPathComponent("commands"))
             }

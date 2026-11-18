@@ -8,7 +8,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 home=${RS_NATIVE_HOME:-"$HOME/Library/Application Support/RS Re-ARMed"}
 out=${RS_BUILD_DIR:-$here/../build}/tonehost
 dest=$home/tonehost
-pgrep -xq Rocksmith2014 && { echo "Quit the game first." >&2; exit 1; }
+{ pgrep -xq Rocksmith2014 || pgrep -xq rs2014_lp; } && { echo "Quit the game first." >&2; exit 1; }  # either edition
 [ -f "$home/libnetguard.dylib" ] || { echo "No network guard at $home/libnetguard.dylib: install RS Re-ARMed first." >&2; exit 1; }
 
 "$here/build.sh"

@@ -76,6 +76,21 @@ int main(void) {
   sp_free(s);
   CHECK(!memcmp(a + N - RATE / 4, in + N - RATE / 4, RATE / 4 * sizeof *a));
 
+  // From down to up just after a note started: the pause a start leaves behind under a downward shift doesn't keep
+  // the upward one from shifting
+  s = sp_new(RATE, NULL);
+  sp_set_semitones(s, -1);
+  memcpy(a, in, N * sizeof *in);
+  int left = 2400 + RATE / 100;  // 10 ms into the note
+  sp_process(s, a, a, left);
+  sp_set_semitones(s, 0);
+  sp_process(s, a + left, a + left, RATE / 100);
+  sp_set_semitones(s, 2);
+  sp_process(s, a + left + RATE / 100, a + left + RATE / 100, N - left - RATE / 100);
+  sp_free(s);
+  CHECK(share_at(a, 220 * pow(2, 2 / 12.0)) > 0.5);
+  CHECK(share_at(a, 220) < 0.01);
+
   // Silence, noise and a click: nothing but numbers comes out, and silence stays silent
   for (int kind = 0; kind < 3; kind++) {
     unsigned r = 1;

@@ -468,7 +468,8 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * Needs the Discord app running on this Mac, with **Share your detected activities with others** on in its
     Activity Privacy settings. Discord started after the game is found within 15 seconds. Discord takes five changes in
     twenty seconds: when the songs change faster, the last one shows a little later.
-  * The title and the artist are read from the song's archive. A song whose archive isn't found shows by its key.
+  * The title and the artist are read from the song's archive. A song whose archive isn't found, or whose names
+    can't be read from it, shows by its key, and is looked for again every 30 seconds while it plays.
   * `DiscordRichPresence`, `[Mod Settings] DiscordApplicationID` (empty: the mods' own Discord application, "RS
     Re-ARMed"; another application's ID shows that one's name and its art asset `logo`)
 
@@ -650,8 +651,12 @@ either game's pointers, LZMA and a 7z archive made by liblzma (`tests/make_7z_ve
 again, archives laid out in the test for a folder without a file and counts the reader refuses, the tuning,
 localization and tone edits, a tone key the file has many times, Song Stems' index of the song archives with one that
 only a file provider serves, through RS Re-ARMed's own `rc_file.c`, and without the file layer, a song's names from
-a manifest and from an archive, Discord's activity and a conversation with a socket that answers as Discord does) and the app's
-(`gui/Tests`: settings, a section that is a list, install and update for both editions, the app's profile backups). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,
+a manifest and from an archive, Discord's activity and a conversation with a socket that answers as Discord does,
+Drop Pedal's shifter: that it shifts by what it is asked, down, up and from one to the other just after a note
+started, a manifest's tones for Tone Host's plan of a song, where a value goes in a preset for a plug-in's engine,
+and the move of a Tone Host config into a profile) and the app's
+(`gui/Tests`: settings, a section that is a list, install and update for both editions, the app's profile backups,
+Tone Host's interface, profiles and install). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,
 the same key names, and no two actions on one default key. A mod's work in the game is checked by playing it.
 `stems/test.sh` has `rs-stems`' own tests, which need game data and the model ([`stems/README.md`](stems/README.md)).
 

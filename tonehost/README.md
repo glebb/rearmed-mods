@@ -163,7 +163,8 @@ and `map` in itself and no `profile` plays as before. Here they are together:
   parameter: `amp_gain` is the amp's gain knob from 0 to 1, anything else a knob whose name ends in `from`.
 - The game says a tone only as it changes, and a state's load and its knobs' ramps take half a second after that. So
   the mod sends a song's plan as the song loads: the changes the loaded song has (a time and a slot each) and each
-  slot's tone from the arrangement's manifest, then where the song is, every other frame. The host has the next tone
+  slot's tone from the arrangement's manifest, a line a frame (one the FIFO has no room for goes again with a later
+  frame), then where the song is, every other frame. The host has the next tone
   ready in the slot nobody hears, its level measured, and plays it `early_ms` (100) before its place. With no plan (the
   song's arrangements differ in their tones and have as many levels, or the game is one the mod can't read a song of)
   the host keeps where each tone came, in `changes.plist`, and is ahead from the song's second play.

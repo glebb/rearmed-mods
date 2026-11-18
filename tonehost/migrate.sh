@@ -9,7 +9,7 @@ home=${RS_NATIVE_HOME:-"$HOME/Library/Application Support/RS Re-ARMed"}
 out=${RS_BUILD_DIR:-$here/../build}/tonehost
 dest=$home/tonehost
 [ $# -eq 2 ] || { echo "usage: $0 ID NAME" >&2; exit 2; }
-pgrep -xq Rocksmith2014 && { echo "Quit the game first." >&2; exit 1; }
+{ pgrep -xq Rocksmith2014 || pgrep -xq rs2014_lp; } && { echo "Quit the game first." >&2; exit 1; }  # either edition
 guard=$home/libnetguard.dylib
 [ -f "$guard" ] || { echo "No network guard at $guard: install RS Re-ARMed first." >&2; exit 1; }
 [ -f "$dest/config.json" ] || { echo "No rs-tonehost in $dest." >&2; exit 1; }

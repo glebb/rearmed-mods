@@ -15,7 +15,7 @@ out=${RS_BUILD_DIR:-$root/build}/tonehost
 dest=$home/tonehost
 guard=$home/libnetguard.dylib
 
-pgrep -xq Rocksmith2014 && { echo "Quit the game first." >&2; exit 1; }
+{ pgrep -xq Rocksmith2014 || pgrep -xq rs2014_lp; } && { echo "Quit the game first." >&2; exit 1; }  # either edition
 [ -d "/Library/Application Support/Line 6/Helix Native/res" ] || { echo "Helix Native isn't installed here." >&2; exit 1; }
 [ -f "$guard" ] || { echo "No network guard at $guard: install RS Re-ARMed first." >&2; exit 1; }
 

@@ -37,7 +37,8 @@
 // ordinary jump, the longest repeat that fits, which costs no more than any seam if it was nothing.
 // For REST samples after a start the high end's average follows its peak up, so the rest of the same start is not
 // taken for another, and no other jump is made: the lag is short then anyway, and the look back still holds what was
-// before the start.
+// before the start. Starts are looked for under a downward shift alone, where the pause counts down: it ends when the
+// shift becomes another.
 #include "splice_shift.h"
 
 #include <math.h>
@@ -630,6 +631,9 @@ void sp_process(sp *s, const float *in, float *out, int frames) {
   if (st != s->set) {
     s->set = st;
     s->ratio = pow(2, st / 12);
+    // A start's pause counts down where starts are looked for, under a downward shift alone: one left over from there
+    // would keep any other shift from ever jumping
+    if (!(s->ratio < 1)) s->rest = 0, s->soon = 0;
   }
   int down = s->ratio < 1;
   double drift = 1 - s->ratio;

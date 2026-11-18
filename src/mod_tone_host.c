@@ -26,6 +26,7 @@
 #include "stems_index.h"
 
 #define FADER "Mixer_Player1"
+#define REINDEX_AFTER 30.0  // seconds: a song not found looks again for new archives at most this often
 
 static char g_line[8192], g_last[8192], g_path[900];
 static size_t g_len, g_last_len;
@@ -62,12 +63,13 @@ static void start_host(void) {
 
 static int is_gear(const char *n) { return song_plan_is_gear(n); }
 
-static void send_text(const char *text, size_t n) {
-  if (g_fd < 0) return;
-  if (write(g_fd, text, n) < 0 && errno != EAGAIN) {
-    close(g_fd);
-    g_fd = -1;
-  }
+// 0 when the host's FIFO is full and the text didn't go: for what is worth sending again
+static int send_text(const char *text, size_t n) {
+  if (g_fd < 0 || write(g_fd, text, n) >= 0) return 1;
+  if (errno == EAGAIN) return 0;
+  close(g_fd);
+  g_fd = -1;
+  return 1;
 }
 
 static void send_fader(void) {
@@ -236,9 +238,10 @@ static void make_plan(const char *song, const uint8_t key[32], char *out, size_t
   *out = 0;
   // The song's archive, and for a Rocksmith 1 DLC song, whose archive has its audio alone, the import pack's
   char path[2048] = "";
-  if (stems_index_listed() < 0) stems_index_build(key);
+  static double listed_at;  // the planner's own listing; another mod's counts as long ago
+  if (stems_index_listed() < 0) stems_index_build(key), listed_at = rsm_now();
   if (!stems_index_path(song, path, sizeof path)) {
-    stems_index_build(key);  // a song added since
+    if (rsm_now() - listed_at >= REINDEX_AFTER) stems_index_build(key), listed_at = rsm_now();  // a song added since
     if (!stems_index_path(song, path, sizeof path)) *path = 0;
   }
   const char *const archives[] = {path, "dlc/rs1compatibilitydlc_m.psarc", "dlc/rs1compatibilitydlc_p.psarc"};
@@ -316,14 +319,11 @@ static void *planner(void *arg) {
   return NULL;
 }
 
-// A line of the plan each frame: the FIFO takes a line whole
+// A line of the plan each frame: the FIFO takes a line whole, and one it has no room for goes with a later frame
 static void send_plan(void) {
   pthread_mutex_lock(&g_plan_lock);
   const char *line = g_plan + g_plan_sent, *end = strchr(line, '\n');
-  if (*line && end) {
-    send_text(line, (size_t)(end - line) + 1);
-    g_plan_sent += (size_t)(end - line) + 1;
-  }
+  if (*line && end && send_text(line, (size_t)(end - line) + 1)) g_plan_sent += (size_t)(end - line) + 1;
   pthread_mutex_unlock(&g_plan_lock);
 }
 
