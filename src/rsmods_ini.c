@@ -114,6 +114,10 @@ static const char DEFAULT_INI[] =
     "; SongStemsGuitarLevel and SongStemsBassLevel (0 the song without it, 100 the song as it is), the song stems key's\n"
     "; line in the volume mod. rs-stems separates each song on the Neural Engine and keeps SongStemsCacheMB of them.\n"
     "SongStems = off\n"
+    "; The guitar DropPedalSemitones lower (or higher) before the game hears it: -1 plays a song in E flat on a guitar\n"
+    "; in E, without retuning. Notes, tuner and tones follow, and Tone Host's sound. The drop pedal down and up keys\n"
+    "; change it by a semitone. In Learn & Play it needs the RS Re-ARMed after 1.17.1.\n"
+    "DropPedal = off\n"
     "; Discord shows that you play RS Re-ARMed, and the song, its artist and the game mode while you play one. Needs\n"
     "; the Discord app running on this Mac, with its activity sharing on.\n"
     "DiscordRichPresence = off\n"
@@ -143,6 +147,7 @@ static const char DEFAULT_INI[] =
     "SongStemsGuitarLevel = 0\n"
     "SongStemsBassLevel = 0\n"
     "SongStemsCacheMB = 500\n"
+    "DropPedalSemitones = -1\n"
     "CheckForNewSongsInterval = 5000\n"
     "OverrideInputVolume = 17\n"
     "CameraZoom = 100\n"
@@ -279,6 +284,8 @@ static const char DEFAULT_INI[] =
     "CameraTiltKey = M\n"
     "CameraResetKey = J\n"
     "SunlightKey = G\n"
+    "DropPedalDownKey = VK_OEM_COMMA\n"
+    "DropPedalUpKey = VK_OEM_PERIOD\n"
     "RainbowNotesKey = N\n"
     "RainbowStringsKey = V\n"
     "ToggleExtendedRangeKey = E\n"
@@ -370,6 +377,10 @@ static const struct {
     {"Toggle Switches", "CameraDirector", "off"},
     {"Toggle Switches", "ToneHost", "off"},
     {"Toggle Switches", "SongStems", "off"},
+    {"Toggle Switches", "DropPedal", "off"},
+    {"Mod Settings", "DropPedalSemitones", "-1"},
+    {"Keybinds", "DropPedalDownKey", "VK_OEM_COMMA"},
+    {"Keybinds", "DropPedalUpKey", "VK_OEM_PERIOD"},
     {"Toggle Switches", "DiscordRichPresence", "off"},
     {"Toggle Switches", "Sunlight", "off"},
     {"Mod Settings", "SunlightMode", "1"},

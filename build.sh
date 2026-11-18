@@ -18,9 +18,10 @@ out=$here/build
 mkdir -p "$out/obj"
 version=$(cat "$here/VERSION")
 
-CC="clang -arch arm64 -O2 -g -mmacosx-version-min=11.0 -Wall -Wno-unused-function -ffp-contract=off -fno-strict-aliasing -I$here/src -I$here/include/rs-rearmed -DREARMED_MODS_VERSION=\"$version\""
+CC="clang -arch arm64 -O2 -g -mmacosx-version-min=11.0 -Wall -Wno-unused-function -ffp-contract=off -fno-strict-aliasing -I$here/src -I$here/pitch -I$here/include/rs-rearmed -DREARMED_MODS_VERSION=\"$version\""
 objs=""
-for c in "$here"/src/*.c; do
+# src/, and Drop Pedal's shifter from pitch/ (which has its bench too)
+for c in "$here"/src/*.c "$here/pitch/splice_shift.c"; do
   o="$out/obj/$(basename "$c" .c).o"
   $CC -c "$c" -o "$o"
   objs="$objs $o"

@@ -155,10 +155,13 @@ extern const rsm_mod rsm_mod_riff_repeater, rsm_mod_looping, rsm_mod_song_previe
     rsm_mod_fretboard, rsm_mod_camera, rsm_mod_colors, rsm_mod_tone_host, rsm_mod_sunlight, rsm_mod_nsp_timer,
     rsm_mod_secondary_monitor, rsm_mod_profile_backups, rsm_mod_extended_range, rsm_mod_game_note,
     rsm_mod_current_note, rsm_mod_guitar_speak, rsm_mod_buggy_tones, rsm_mod_accuracy, rsm_mod_song_list_titles,
-    rsm_mod_song_lists, rsm_mod_song_stems, rsm_mod_discord;
+    rsm_mod_song_lists, rsm_mod_song_stems, rsm_mod_discord, rsm_mod_drop_pedal;
 
 // The guitar fader while ToneHost holds the game's own at 0: 1 and the value; otherwise 0 (mod_tone_host.c)
 int rsm_guitar_fader(float *value);
+
+// The semitones Drop Pedal shifts the guitar by now; 0 while it is off, or where it can't run (mod_drop_pedal.c)
+int rsm_drop_pedal_semitones(void);
 
 // In a song with Sunlight on: the venue goes, as with the loft off (mod_sunlight.c)
 int rsm_sunlight_hides_venue(void);

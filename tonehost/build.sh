@@ -6,7 +6,8 @@ root=$(cd "$here/.." && pwd)
 out=${RS_BUILD_DIR:-$root/build}/tonehost
 app="$out/RS Tone Host.app"
 mkdir -p "$app/Contents/MacOS"
-clang -arch arm64 -O2 -Wall -fobjc-arc -mmacosx-version-min=11.0 "$here/tonehost.m" "$here/helix/engine.c" -framework Cocoa \
+clang -arch arm64 -O2 -Wall -fobjc-arc -mmacosx-version-min=11.0 -I"$root/pitch" "$here/tonehost.m" "$here/helix/engine.c" \
+  "$root/pitch/splice_shift.c" -framework Cocoa \
   -framework AudioToolbox -framework AudioUnit -framework CoreAudio -framework CoreAudioKit -o "$app/Contents/MacOS/rs-tonehost"
 cp "$here/Info.plist" "$app/Contents/Info.plist"
 codesign --force -s - "$app"

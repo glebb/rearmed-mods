@@ -42,6 +42,8 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   Tones and Custom Song List Titles, for its hook points on the tone change and a song list's name.
 - Seven-String Guitar and Plain Packages need RS Re-ARMed's edits and mid points: in Learn & Play from 1.12.0, on the
   Mac from 1.13.0; with an older one they stay off.
+- Drop Pedal needs RS Re-ARMed's hook point on the guitar input: the Mac edition has it, Learn & Play from the RS
+  Re-ARMed after 1.17.1. With an older one it stays off in Learn & Play.
 - Song Stems needs RS Re-ARMed 1.12.0, for its hook point on the audio the game decodes, and macOS 15 or later for
   its helper; without them it stays off and the songs play as they are. A song whose archive another mod serves
   (RS Re-ARMed's file providers, 1.14.0) is found from that version on; before it, only archives that are files.
@@ -440,6 +442,25 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     `[Audio Keybindings] SongStemVolumeKey` (4)
   * Needs RS Re-ARMed 1.12.0 (the hook point `ak_src_submit` and the codebook names).
 
+* **Drop Pedal** (not in RSMods)
+  * Shifts your guitar a few semitones down (or up) before the game hears it, so a song in another tuning is played
+    without retuning: `-1` plays a song in E flat on a guitar in E, `-2` one in D. The game is given the shifted
+    guitar as its input, so note detection, the tuner and the tones follow. It moves the whole guitar: a drop tuning
+    still needs its one string retuned.
+  * The shifter (`pitch/splice_shift.c`, with its bench and what it found in [`pitch`](pitch/README.md)) starts a
+    note half a millisecond to a millisecond late; while notes ring on it runs up to 30 ms behind and catches up at
+    the next note.
+  * The down and up keys change the shift by a semitone while you play, and the shift shows for a moment when it
+    changes. With Your Own Plug-in (Tone Host) on, the host shifts the guitar for the plug-in by the same amount,
+    since it reads the guitar itself; it needs the host of this version.
+  * Different from RocksmithAudioBridge's Drop Pedal, which this is after: no separate setting for Player 2, no
+    setting for the tuning the guitar is in, and no Speaker Mode.
+  * `DropPedal`, `[Mod Settings] DropPedalSemitones` (-1; -12 to 12), `[Keybinds] DropPedalDownKey` (,),
+    `DropPedalUpKey` (.)
+  * Needs the hook point `si_io`: the Mac edition has it, Learn & Play from the RS Re-ARMed after 1.17.1 (with an
+    older one the mod stays off there). Not yet played with a guitar: in a Learn & Play run a test tone written into
+    the input came out of the game's note detection two semitones lower with the shift at -2.
+
 * **Discord Rich Presence** (not in RSMods)
   * Discord shows "Playing RS Re-ARMed" on your profile, and while you play a song its title, its artist and the game
     mode (Learn a Song, Non-Stop Play, Score Attack), with the time since the song began. In the menus it says so.
@@ -593,6 +614,8 @@ src/stems_index.c, .h    Song Stems' way from a song to its archive and its .wem
 src/song_info.c, .h      a song's title and artist from its archive's manifest (no game: tested as is)
 src/song_plan.c, .h      a manifest's tone slots as Tone Host sends a tone (no game: tested as is)
 src/discord_ipc.c, .h    Discord Rich Presence's activity and its connection to Discord (no game: tested as is)
+pitch/                   Drop Pedal's pitch shifter (splice_shift.c, built into the library; no game: tested as is),
+                         the bench that measures it against RocksmithAudioBridge's, and an earlier design
 data/rs7string/          rs7string's chord diagram recipes and headstock programs (MIT), compiled into the library
 tests/, test.sh          the library's tests, and the script that runs them and the app's
 include/rs-rearmed/      RS Re-ARMed's runtime headers (MIT)
@@ -662,6 +685,10 @@ the test for it (`tests/test_7z.c` has archives the reader refuses).
   design, and the chord diagram recipes and headstock programs in `data/rs7string`.
 - [Demucs](https://github.com/facebookresearch/demucs) by Alexandre Défossez, Meta AI (MIT): Song Stems' separation, its
   model `htdemucs_6s` and the network `stems/convert` rewrites for the Neural Engine.
+- [RocksmithAudioBridge](https://github.com/Cheesewizard/RocksmithAudioBridge) by Cheesewizard (MIT): the idea of
+  Drop Pedal, and the shifter this one was measured against. None of its code is in this repository.
+- [Guitar-TECHS](https://zenodo.org/records/14963133) (CC BY 4.0): the recorded guitar Drop Pedal's shifter was
+  measured on. Not in this repository.
 
 ## License
 
