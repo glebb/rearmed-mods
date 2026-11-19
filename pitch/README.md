@@ -18,8 +18,9 @@ pitch/bench/run.sh
 
 It plays made-up guitar (single notes, power chords, strummed open chords, two low notes close together, palm mutes, a
 run, a bend, a vibrato) through each shifter and measures the result against the same guitar made at the lower pitch.
-`bench/bench.c` says what each column is. Arguments: `-s -1,-2` the shifts, `-v` every case, `-w DIR` writes what each
-shifter made as `.wav`, clean and through a distortion, for listening.
+`bench/bench.c` says what each column is. Arguments: `-s -1,-2` the shifts, `-v` every case, `-l 0.05` the peak the
+made-up guitar comes in at (0.5 without it), `-w DIR` writes what each shifter made as `.wav`, clean and through a
+distortion, for listening.
 
 Recorded guitar goes through the same shifters with `-r`. There is no ideal to compare a recording with, so the bench
 times how late each note's start comes out and writes the results for listening:
@@ -127,6 +128,37 @@ and 15% (at one, two and five semitones) where they were 14, 19 and 20%. Single 
 (0.01 dB, the baseline's figure), chords are unchanged, and what lands off the overtones is 2 to 3 dB more on palm
 mutes and bends at one semitone and within 1 dB elsewhere. Listened to on 2026-11-18, on the palm mute and bends
 recordings: without it sounds better. It stays off.
+
+### A quiet guitar (2026-11-19)
+
+All of the above had the made-up guitar peak at half of full scale. The two levels that keep noise from counting as
+a note's start (a range under one is never rising, a high end under the other never a pick) were fixed, and set for
+that. A guitar that came in quieter had its notes without a pick fall under them, at two semitones down:
+
+| The guitar's peak | A hammer-on or pull-off comes out late by | One hammered on inside a ringing chord | A picked note over a chord |
+|---|---|---|---|
+| 0.5 | 1.5 to 2.6 ms | 8.8 ms | 0.6 ms |
+| 0.05 (26 dB under full scale) | 5 to 27 ms | 49 ms | 0.4 ms |
+| 0.01 (40 dB under) | 19 to 22 ms | 49 ms | 30 ms |
+
+Now the two levels follow the guitar: its own peak, which is let fall over ten seconds of playing and kept through a
+pause, and they are as much lower as that peak is under 0.5 (never higher than they were, and no lower than a
+hundredth). With that every row is the first one, the bench gives the same figures at `-l 0.5`, `0.05` and `0.01`,
+and those at 0.5 are what they were.
+
+Noise, which the levels are there for, was looked at on the made-up guitar at two semitones down, with programs that
+are not in the bench:
+
+- Hiss that peaks 60, 50 and 40 dB under the guitar's peak, and hum 40 and 30 dB under it, while the guitar plays:
+  as many starts acted on as before, at 0.5 and at 0.05.
+- Noise alone for four seconds after playing (hiss that peaks from 90 to 50 dB under full scale, hum at 50): no
+  start, and the next note is as far behind as ever (0.8 ms in the middle, 1.3 at most).
+- Noise alone before any guitar has been heard, where the levels are at their lowest: nothing up to hiss that peaks
+  70 dB under full scale, a start every 12 seconds at 60 and 1.4 a second at 50. The first note after such a start
+  can be 5 ms behind where 1.4 is the most otherwise, since no start is looked for in the 40 ms after one. From that
+  note on the levels are the guitar's.
+
+Not looked at on recorded guitar: the recordings were not at hand that day.
 
 A correction to the bench: a start in the shifted sound is timed at the level the recording passes there, not at a
 share of what follows. A pick touching the string 40 ms before a loud note had made both shifters look 41 to 47 ms

@@ -54,6 +54,10 @@ A note start is detected in two ways:
   sixth of an octave), and a range that is suddenly louder than it has been for the last 45 to 90 ms means a new note.
   This catches hammer-ons, pull-offs and soft notes that have no clear pick.
 
+Both need a level under which nothing counts, or noise would start notes. That level follows how loud the guitar
+itself comes in: its peak, let fall slowly while it plays and kept through a pause. A quiet guitar's hammer-ons are
+then found as a loud one's are.
+
 For 40 ms after a start no other jump is made: the lag is short then anyway. All of this belongs to a downward shift.
 Shifting up, the lag shrinks by itself and starts are not looked for, so a pause left over from a downward shift
 ends when the shift changes.

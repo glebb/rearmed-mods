@@ -1,6 +1,7 @@
 // The pitch shifter of Drop Pedal (pitch/splice_shift.c), without the game: that it shifts by what it is asked, leaves
-// the guitar alone at 0 semitones, gives the same samples however the input is cut into buffers, and stays finite on
-// silence, noise and a click. How good it sounds is the bench's matter (pitch/bench).
+// the guitar alone at 0 semitones, gives the same samples however the input is cut into buffers, takes its lag back at
+// a hammered-on note however quiet the guitar comes in, and stays finite on silence, noise and a click. How good it
+// sounds is the bench's matter (pitch/bench).
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,18 @@ static void tone(float *x, double hz, int from) {
   memset(x, 0, N * sizeof *x);
   for (int t = from; t < N; t++)
     for (int k = 1; k <= 5; k++) x[t] += (float)(0.2 / k * sin(2 * M_PI * hz * k * (t - from) / RATE + k));
+}
+
+// A note, and at sample `on` one hammered on from it: no pick, the old note dies away in a few ms as the new one comes
+// up. `level` 1 peaks at about a third.
+static void hammered(float *x, double level, int on) {
+  memset(x, 0, N * sizeof *x);
+  for (int t = 2400; t < N; t++)
+    for (int k = 1; k <= 5; k++) {
+      double old = t < on ? 1 : exp(-(t - on) / (0.012 * RATE));
+      double new = t < on ? 0 : t - on < 192 ? 0.5 - 0.5 * cos(M_PI * (t - on) / 192.0) : 1;
+      x[t] += (float)(level * 0.2 / k * (old * sin(2 * M_PI * 220 * k * (t - 2400) / RATE + k) + 0.8 * new * sin(2 * M_PI * 261.63 * k * (t - on) / RATE + k)));
+    }
 }
 
 static void run(const float *in, float *out, double semitones, int block) {
@@ -90,6 +103,25 @@ int main(void) {
   sp_free(s);
   CHECK(share_at(a, 220 * pow(2, 2 / 12.0)) > 0.5);
   CHECK(share_at(a, 220) < 0.01);
+
+  // A hammered-on note has no pick: it is found by its own range rising, over a level that noise stays under. That
+  // level follows the guitar's: a guitar that comes in loud and one that comes in 30 dB quieter both have the lag,
+  // long by then, taken back at the note
+  for (int quiet = 0; quiet < 2; quiet++) {
+    int on = RATE * 3 / 10;
+    hammered(in, quiet ? 1.4 / 32 : 1.4, on);
+    s = sp_new(RATE, NULL);
+    sp_set_semitones(s, -2);
+    double before = 0, after = 0;
+    for (int at = 0; at < N; at += 64) {
+      sp_process(s, in + at, a + at, 64);
+      if (at == on - 128) before = sp_delay(s);
+      if (at == on + 448) after = sp_delay(s);  // 10 ms into the note
+    }
+    sp_free(s);
+    CHECK(before > 0.015 * RATE);
+    CHECK(after < 0.003 * RATE);
+  }
 
   // Silence, noise and a click: nothing but numbers comes out, and silence stays silent
   for (int kind = 0; kind < 3; kind++) {

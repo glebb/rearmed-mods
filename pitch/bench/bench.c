@@ -1,8 +1,9 @@
 // The pitch shifters' bench: plays made-up guitar through each shifter and measures what comes out against the same
 // guitar made at the lower pitch, which no shifter could beat. No game, no device, no recordings.
 //
-//   bench [-v] [-s SEMITONES[,SEMITONES...]] [-w DIR] [-i]
+//   bench [-v] [-s SEMITONES[,SEMITONES...]] [-l PEAK] [-w DIR] [-i]
 //     -v  every case, not only the groups     -s  the shifts (default -1,-2)
+//     -l  the peak the made-up guitar comes in at (default 0.5; 0.05 is a quiet input, 0.01 a very quiet one)
 //     -w  writes what each shifter made, all cases in a row, to DIR as .wav, clean and through a distortion
 //     -i  only the new shifter's bands at 0 semitones: how flat and how late they are by themselves
 //     -r  recorded guitar in place of the made-up one: every argument after it is a .wav (48 kHz mono, prepare.sh);
@@ -360,6 +361,7 @@ static double g_held, g_most;  // the last run's delay by the shifter's own acco
 static float g_trace[1 << 16];  // and block by block, in frames
 
 static int g_verbose;       // -v
+static double g_level = 0.5;  // -l
 static const char *g_only;  // BENCH_ONLY: the one shifter to run; the others' rows are then of the input unshifted
 
 static void shift(int which, double st, const float *in, float *out, int frames) {
@@ -1139,13 +1141,14 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[i], "-i")) only_identity = 1;
     else if (!strcmp(argv[i], "-s") && i + 1 < argc) shift_list = argv[++i];
     else if (!strcmp(argv[i], "-w") && i + 1 < argc) dir = argv[++i];
+    else if (!strcmp(argv[i], "-l") && i + 1 < argc && atof(argv[i + 1]) > 0) g_level = atof(argv[++i]);
     else if (!strcmp(argv[i], "-f") && i + 1 < argc) g_from = atof(argv[++i]);
     else if (!strcmp(argv[i], "-t") && i + 1 < argc) g_length = atof(argv[++i]);
     else if (!strcmp(argv[i], "-r") && i + 1 < argc) {
       first_file = ++i;  // the rest are recordings
       break;
     }
-    else return fprintf(stderr, "usage: bench [-v] [-i] [-s -1,-2] [-w dir] [-f from] [-t seconds] [-r recording.wav ...]\n"), 2;
+    else return fprintf(stderr, "usage: bench [-v] [-i] [-s -1,-2] [-l peak] [-w dir] [-f from] [-t seconds] [-r recording.wav ...]\n"), 2;
   }
   for (const char *p = shift_list; *p && nshift < 8;) {
     char *end;
@@ -1223,17 +1226,17 @@ int main(int argc, char **argv) {
       double peak = 0;
       render(c, 1, 1, in, frames);
       for (int i = 0; i < frames; i++) peak = fmax(peak, fabs(in[i]));
-      for (int i = 0; i < frames; i++) in[i] *= (float)(0.5 / peak);
+      for (int i = 0; i < frames; i++) in[i] *= (float)(g_level / peak);
       if (verbose) printf("  %s: %s\n", c->group, c->name);
       for (int w = 0; w < WHO; w++) {
         if (w < SHIFTERS)
           shift(w, st, in, got, frames);
         else {
           render(c, ratio, 2, got, frames);
-          for (int i = 0; i < frames; i++) got[i] *= (float)(0.5 / peak);
+          for (int i = 0; i < frames; i++) got[i] *= (float)(g_level / peak);
         }
         render(c, ratio, 1, want, frames);  // after the other render: g_part is this one's
-        for (int i = 0; i < frames; i++) want[i] *= (float)(0.5 / peak);
+        for (int i = 0; i < frames; i++) want[i] *= (float)(g_level / peak);
         measures m = measure(c, got, want, frames);
         if (w < SHIFTERS) m.v[HELD] = g_held, m.v[MOST] = g_most;
         if (verbose) row(w < SHIFTERS ? g_shifter[w].name : "ideal", &m);
@@ -1251,6 +1254,7 @@ int main(int argc, char **argv) {
       float *driven = malloc((size_t)tour_at * sizeof *driven);
       for (int w = 0; w <= WHO; w++) {
         const char *name = w < SHIFTERS ? g_shifter[w].name : w == SHIFTERS ? "ideal" : "input";
+        for (int i = 0; i < tour_at; i++) tour[w][i] *= (float)(0.5 / g_level);  // written as loud whatever -l is
         put_wav(dir, name, (int)st, "clean", tour[w], tour_at);
         drive(tour[w], driven, tour_at, 0.5);
         put_wav(dir, name, (int)st, "driven", driven, tour_at);

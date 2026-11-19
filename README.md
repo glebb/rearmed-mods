@@ -653,7 +653,7 @@ localization and tone edits, a tone key the file has many times, Song Stems' ind
 only a file provider serves, through RS Re-ARMed's own `rc_file.c`, and without the file layer, a song's names from
 a manifest and from an archive, Discord's activity and a conversation with a socket that answers as Discord does,
 Drop Pedal's shifter: that it shifts by what it is asked, down, up and from one to the other just after a note
-started, a manifest's tones for Tone Host's plan of a song, where a value goes in a preset for a plug-in's engine,
+started, and takes its lag back at a hammered-on note from a quiet guitar as from a loud one, a manifest's tones for Tone Host's plan of a song, where a value goes in a preset for a plug-in's engine,
 and the move of a Tone Host config into a profile) and the app's
 (`gui/Tests`: settings, a section that is a list, install and update for both editions, the app's profile backups,
 Tone Host's interface, profiles and install). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,

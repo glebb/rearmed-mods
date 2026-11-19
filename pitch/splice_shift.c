@@ -39,6 +39,11 @@
 // taken for another, and no other jump is made: the lag is short then anyway, and the look back still holds what was
 // before the start. Starts are looked for under a downward shift alone, where the pause counts down: it ends when the
 // shift becomes another.
+// Noise is kept from counting as a start by two levels: a range under RANGE_LEAST is never rising, a high end under
+// PICK_LEAST never a pick. Those are for a guitar that peaks at LOUD or over. One that comes in quieter has them
+// lowered by as much as it is quieter (down to QUIETEST of them), or its hammer-ons and pull-offs would never reach
+// them and come out as late as the lag. How loud the guitar is: its own peak, let fall over FALL seconds of playing
+// and not at all while it is silent, since a pause says nothing of how loud the guitar is.
 #include "splice_shift.h"
 
 #include <math.h>
@@ -65,6 +70,12 @@
 #define NARROW 30
 #define RANGES (BROAD + NARROW)
 #define SOME 1.15           // a range rises when it is this many times its loudest of the stretch before
+#define RANGE_LEAST 2e-3    // and over this,
+#define PICK_LEAST 3e-4     // and the high end is a pick over this: both for a guitar that peaks at
+#define LOUD 0.5            // this or over, and as much lower as a quieter guitar's peak is, down to
+#define QUIETEST 0.01       // this share of them
+#define FALL 10.0           // seconds of playing over which the guitar's peak is let fall,
+#define HEARD 0.01          // playing being what is over this share of it
 #define PAST 90             // ms of loudest-per-millisecond kept per range
 #define PAST_BROAD 45       // of them, what a broad range looks back over
 #define NEAR 4              // the newest ms that don't count, being the start's own rise; more for a narrow range
@@ -120,6 +131,7 @@ struct sp {
   double in1, in2;          // the last two input samples
   double before;            // the last input sample
   double fast, base;        // the high end's peak level, and its average over the last while
+  double loud, loud_k;      // the guitar's own peak, and what it falls by a sample while the guitar plays
   double fast_k, base_k;    // what the peak falls by a sample, and the average's share of the newest
   double most, far, good, louder, soft, nearly;
   double moved;             // radians a sample: an overtone this far from where the model has it is on the move
@@ -190,12 +202,13 @@ sp *sp_new(double rate, const sp_params *params) {
   s->ms_len = (int)(rate / 1000);
   s->hold_k = exp(-1 / (0.003 * rate));
   s->fast_k = exp(-1 / (0.03 * rate)), s->base_k = 1 - exp(-1 / (0.05 * rate));
+  s->loud_k = exp(-1 / (FALL * rate));
   for (int k = 0; k < RANGES; k++) {
     // A resonator of a sixth of an octave takes about 8.65 / (pi f) seconds to come up, and that much more of the
     // newest is its own rise. No more than a fifth of the look back, or slow beating would pass.
     double slow = k < BROAD ? 0 : 8650 / (M_PI * 150 * pow(2, (k - BROAD) / 6.0));
     s->near[k] = NEAR + (int)fmin(slow, PAST / 5 - NEAR);
-    s->over[k] = 2e-3;
+    s->over[k] = RANGE_LEAST * QUIETEST;
   }
   for (int k = 0; k < BROAD - 1; k++) s->split_k[k] = 1 - exp(-2 * M_PI * (double[]){2500, 1000, 400, 160}[k] / rate);
   for (int k = 0; k < NARROW; k++) {
@@ -588,6 +601,13 @@ static void seam(sp *s, double to, int fade, int len) {
 
 // 2 when this sample starts a note, 1 when it may (a small rise)
 static int starts(sp *s, double x) {
+  // How loud the guitar is, and so how much of the two levels noise is kept under applies
+  double size = fabs(x);
+  if (size > s->loud)
+    s->loud = size;
+  else if (size > HEARD * s->loud)
+    s->loud *= s->loud_k;
+  double level = fmin(1, fmax(QUIETEST, s->loud / LOUD));
   s->fast = fmax(fabs(x - s->before), s->fast * s->fast_k);
   s->before = x;
   // The ranges: what each low-pass lets through less what the next one does; the first is the top, the last the bottom
@@ -614,12 +634,12 @@ static int starts(sp *s, double x) {
       s->past[k][s->past_at] = (float)s->ms_peak[k];
       s->ms_peak[k] = s->quiet[k] = 0;
       for (int j = s->near[k] - 1; j < (k < BROAD ? PAST_BROAD : PAST); j++) s->quiet[k] = fmax(s->quiet[k], s->past[k][(s->past_at + PAST - j) % PAST]);
-      s->over[k] = SOME * s->quiet[k] + 2e-3;
+      s->over[k] = SOME * s->quiet[k] + RANGE_LEAST * level;
     }
     s->past_at = (s->past_at + 1) % PAST;
     s->ms = 0;
   }
-  int start = !s->rest && (s->fast > RISE * s->base + 3e-4 || fresh);
+  int start = !s->rest && (s->fast > RISE * s->base + PICK_LEAST * level || fresh);
   s->base += s->base_k * (s->fast - s->base);
   if (s->rest && s->rest-- && s->base < s->fast) s->base = s->fast;
   if (start) s->rest = REST;
