@@ -35,6 +35,7 @@
 #include "preset_places.h"
 #include "splice_shift.h"
 #include "tone_gain.h"
+#include "tone_level.h"
 
 #define SLOTS 4  // at most: "slots" in the config says how many, 2 if it doesn't
 #define MAX_FRAMES 1024
@@ -45,9 +46,10 @@ typedef struct {
   AudioUnit unit;
   _Atomic int ready;     // the audio thread renders it
   _Atomic float gain;    // linear
-  _Atomic int probing;   // hears the reference pluck in place of the guitar
+  _Atomic int probing;   // hears the reference guitar in place of the player's
   _Atomic uint32_t probe_count;
-  double probe_sum;      // audio thread: output power while probing
+  double probe_sum;      // audio thread: output power while probing, weighted as the ear hears it
+  double probe_weigh[4];
   uint32_t probe_pos;
   double sample_time;
   float left[MAX_FRAMES], right[MAX_FRAMES];
@@ -71,7 +73,8 @@ static uint32_t g_target_fill = 128;
 static _Atomic int g_quit;
 static _Atomic float g_system_gain = 1.f, g_mixer_gain = 1.f;  // the system's volume, and the game's guitar mixer
 static float g_master = 1.f;        // audio thread: both, smoothed
-static float g_probe_peak = 0.25f;
+static float g_probe_peak = 0.25f;  // how hard the reference guitar plays: "probe_peak_db"
+static float g_phrase[LEVEL_LOOP];  // the reference guitar (tone_level.h), made in main
 static _Atomic uint64_t g_last_heard;  // when the mod last wrote, in seconds; 0: not yet
 static _Atomic int g_standby = -1;  // the slot being made ready; it renders though nobody hears it
 
@@ -169,13 +172,9 @@ static OSStatus input_proc(AudioObjectID dev, const AudioTimeStamp *now, const A
   return noErr;
 }
 
-// What a tone's loudness is measured with: a low plucked string every 250 ms, heard by nobody
+// What a tone's loudness is measured with: the reference guitar, a phrase of half a second going round, heard by nobody
 static void probe_signal(slot_t *s, float *x, UInt32 n) {
-  for (UInt32 i = 0; i < n; i++) {
-    uint32_t p = s->probe_pos++ % 12000;
-    double t = p / RATE, w = 2 * M_PI * 110.0 * t;
-    x[i] = (float)(g_probe_peak * exp(-t * 9.0) * (sin(w) + 0.5 * sin(2 * w) + 0.3 * sin(3 * w) + 0.2 * sin(5 * w)) / 1.6);
-  }
+  for (UInt32 i = 0; i < n; i++) x[i] = g_probe_peak * g_phrase[s->probe_pos++ % LEVEL_LOOP];
 }
 
 static OSStatus plugin_input(void *ref, AudioUnitRenderActionFlags *flags, const AudioTimeStamp *t, UInt32 bus, UInt32 n, AudioBufferList *io) {
@@ -197,7 +196,11 @@ static void render_slot(slot_t *s, UInt32 n) {
   AudioUnitRenderActionFlags flags = 0;
   AudioUnitRender(s->unit, &flags, &ts, 0, n, (AudioBufferList *)&list);
   if (atomic_load_explicit(&s->probing, memory_order_relaxed)) {
-    for (UInt32 i = 0; i < n; i++) s->probe_sum += (double)s->left[i] * s->left[i];
+    for (UInt32 i = 0; i < n; i++) {
+      double v = level_weigh(s->probe_weigh, s->left[i]);
+      if (!isfinite(v)) { memset(s->probe_weigh, 0, sizeof s->probe_weigh); v = 0; }  // or the filter would keep it for good
+      s->probe_sum += v * v;
+    }
     atomic_fetch_add_explicit(&s->probe_count, n, memory_order_relaxed);
   }
 }
@@ -447,17 +450,18 @@ static void apply(int n, NSDictionary *t, NSDictionary *gear) {
   for (NSArray *p in tone_params(t, gear)) AudioUnitSetParameter(slots[n].unit, [p[0] unsignedIntValue], kAudioUnitScope_Global, 0, [p[1] floatValue], 0);
 }
 
-// Where no two plucks agreed, as with an octave pedal that follows the note in its own time: what the last four came to
-static float unsettled_level(const double *power, int plucks) {
+// Where no two rounds agreed, as with an octave pedal that follows the note in its own time: what the last four came to
+static float unsettled_level(const double *power, int rounds) {
   double sum = 0;
-  int from = plucks > 4 ? plucks - 4 : 0;
-  for (int i = from; i < plucks; i++) sum += power[i];
-  return 10 * log10f((float)(sum / (plucks - from > 0 ? plucks - from : 1)) + 1e-12f);
+  int from = rounds > 4 ? rounds - 4 : 0;
+  for (int i = from; i < rounds; i++) sum += power[i];
+  return level_db(sum, rounds - from > 0 ? rounds - from : 1);
 }
 
-// Plays the reference pluck through a slot nobody hears and returns the level it comes out at
+// Plays the reference guitar through a slot nobody hears and returns how loud it comes out: the loudness of recorded
+// guitar through the tone, within a dB or two (README.md has the measurement).
 // A plug-in ramps a knob that was moved, Helix over about 0.3 s, and a clean tone's level follows the ramp where a
-// distorted one's doesn't: so one pluck after another, until two agree
+// distorted one's doesn't: so one round of the phrase after another, until two agree
 static float measure(int n) {
   slot_t *s = &slots[n];
   atomic_store(&s->probing, 1);
@@ -467,37 +471,37 @@ static float measure(int n) {
   for (; i < 6 && !agreed; i++) {
     atomic_store(&s->probe_count, 0);
     s->probe_sum = 0;
-    usleep(250000);  // one pluck
+    usleep((useconds_t)(LEVEL_LOOP / RATE * 1e6));  // one round
     double sum = s->probe_sum;
     uint32_t count = atomic_load(&s->probe_count);
     before = level;
     power[i] = count ? sum / count : 0;
-    level = 10 * log10f((float)power[i] + 1e-12f);
+    level = level_db(power[i], 1);
     agreed = i && fabsf(level - before) < 0.5f;
   }
   atomic_store(&s->probing, 0);
   return agreed ? level : unsettled_level(power, i);
 }
 
-// The same pluck rendered here, and its level: for a slot that no audio thread renders
-static float pluck_level(slot_t *s) {
+// The same guitar rendered here, one round of it, and its level: for a slot that no audio thread renders
+static float round_level(slot_t *s) {
   atomic_store(&s->probing, 1);
   atomic_store(&s->probe_count, 0);
   s->probe_sum = 0;
-  for (int n = 0; n < 12000; n += 250) render_slot(s, 250);
+  for (int n = 0; n < LEVEL_LOOP; n += 250) render_slot(s, 250);
   atomic_store(&s->probing, 0);
-  return 10 * log10f((float)(s->probe_sum / 12000) + 1e-12f);
+  return level_db(s->probe_sum, LEVEL_LOOP);
 }
 
-// As measure does: one pluck after another, until two agree
+// As measure does: one round after another, until two agree
 static float settled_level(slot_t *s) {
   float level = -120.f, before;
   double power[6] = {0};
   int i = 0, agreed = 0;
   for (; i < 6 && !agreed; i++) {
     before = level;
-    level = pluck_level(s);
-    power[i] = pow(10, level / 10);
+    level = round_level(s);
+    power[i] = s->probe_sum / LEVEL_LOOP;
     agreed = i && fabsf(level - before) < 0.5f;
   }
   return agreed ? level : unsettled_level(power, i);
@@ -666,11 +670,11 @@ static BOOL same_preset(NSMutableData *ours, NSData *theirs, NSDictionary *place
 static BOOL engine_is(int n, int instance) {
   slot_t *s = &slots[n];
   if (helix_engine_mute(instance, 1)) return NO;
-  pluck_level(s);
-  float muted = pluck_level(s);
+  round_level(s);
+  float muted = round_level(s);
   helix_engine_mute(instance, 0);
-  pluck_level(s);
-  return muted < -90.f && pluck_level(s) > -90.f;
+  round_level(s);
+  return muted < -90.f && round_level(s) > -90.f;
 }
 
 // The tone's preset in the slot's engine. NO if that can't be: the tone then goes by its state. `still`: the tone
@@ -717,7 +721,7 @@ static BOOL make_ready(int n, NSString *name, NSDictionary *gear, NSString *key)
 }
 
 // A slot, rendering by now, made ready for a tone, and the level the tone comes out at. A level is measured once and
-// kept in levels.plist, for as long as the config's templates and rules stay as they are: the plucks take half a second
+// kept in levels.plist, for as long as the config's templates and rules stay as they are: measuring takes a second
 // or more. All that takes time about a tone is here, so that it can be done before the tone is due.
 static float ready_level(int n, NSString *name, NSDictionary *gear, NSString *key, BOOL *measured) {
   static NSMutableDictionary<NSString *, NSNumber *> *levels;
@@ -732,7 +736,7 @@ static float ready_level(int n, NSString *name, NSDictionary *gear, NSString *ke
   *measured = !known;
   if (!known && g_direct && load_direct(n, name, g_templates[name], gear, YES)) {
     // A tone plays louder and quieter as a flanger, a chorus or a delay in it moves, by ten dB with a slow flanger, and
-    // a level measured over a pluck or two is then anything in between. So its level is the one it has without them:
+    // a level measured over a round or two is then anything in between. So its level is the one it has without them:
     // measured that way first, and then the tone itself is made ready
     g_held[n] = nil;
     float level = measure(n);
@@ -1227,7 +1231,7 @@ static NSString *preset_problem(NSDictionary *c, NSString *name, NSDictionary *t
 }
 
 // What keeps the plug-in from playing a config that config_problem passes, or nil: it opens the plug-in, with no device
-// and nothing heard, and sends the reference pluck through every template's state. A plug-in that isn't authorized, or a
+// and nothing heard, and sends the reference guitar through every template's state. A plug-in that isn't authorized, or a
 // state it refuses, is silent here. `presets` gets what keeps the templates' presets from going straight to the
 // plug-in's engine, or nil if they can: "" where the profile has none
 static NSString *sound_problem(NSDictionary *c, NSString **presets) {
@@ -1313,6 +1317,7 @@ int main(int argc, char **argv) { @autoreleasepool {
   }
   NSDictionary *c = json_file(@(argv[2]));
   if (!c) { say("can't read the config"); return 2; }
+  level_phrase(g_phrase);
   g_dir = [@(argv[2]) stringByDeletingLastPathComponent];
   g_plugin_dir = g_dir;
   // The chosen plug-in's profile goes over the config: its codes, templates and map, and its states are beside it
@@ -1372,9 +1377,10 @@ int main(int argc, char **argv) { @autoreleasepool {
   g_templates = c[@"templates"];
   g_map = c[@"map"];
   g_config = c;
-  // Not the whole file: a new target_db leaves what was measured as it was
+  // Not the whole file: a new target_db leaves what was measured as it was. And what it was measured with: levels
+  // from the low pluck that came before the phrase are no longer levels
   NSData *measured = [NSJSONSerialization dataWithJSONObject:@[c[@"templates"] ?: @{}, [c[@"map"] ?: @{} objectForKey:@"follow"] ?: @[],
-                                                               [c[@"map"] ?: @{} objectForKey:@"gain_knobs"] ?: @[], c[@"probe_peak_db"] ?: @0]
+                                                               [c[@"map"] ?: @{} objectForKey:@"gain_knobs"] ?: @[], c[@"probe_peak_db"] ?: @0, @"phrase"]
                                                      options:NSJSONWritingSortedKeys error:NULL];
   unsigned char hash[CC_SHA256_DIGEST_LENGTH];
   CC_SHA256(measured.bytes, (CC_LONG)measured.length, hash);

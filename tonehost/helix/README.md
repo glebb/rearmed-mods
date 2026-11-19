@@ -102,7 +102,7 @@ out under -60 dB, and the host then turned them up by as much as 90 dB. An amp t
 2204 does, has no such value and keeps its gain as the game has it.
 
 `moving` lists the blocks a tone's level is measured without: with a slow flanger a tone plays ten dB louder and
-quieter as it sweeps, and a level taken over a pluck or two was anything in between.
+quieter as it sweeps, and a level taken over a second of it was anything in between.
 
 Not mapped: the game's noise gate, which sets the host's own, pitch shifters, Bit Cruncher, Ring Mod, the Eden D.I.
 and the Amp EQ pedal: 16 uses in those 1,199 tones.

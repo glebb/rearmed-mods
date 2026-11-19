@@ -42,6 +42,9 @@ a driven sound with the guitar playing. Its profile, `plugins/ID/profile.json`, 
    and the gear manifests. A rule's value is `scale * knob + offset`. Game knobs are mostly 0-100, some in dB or ms.
 5. **Levels.** Set `target_db` and leave `output_db` to the measurement: each tone is measured through the instance nobody
    hears. Tones with and without a compressor differed by up to 9 dB before that. Use `trim_db` for a template that sits wrong.
+   The measurement is a made-up guitar phrase played as hard as `probe_peak_db` says: clean tones louder than distorted
+   ones for a player means they play harder than that, so raise it by what their `peak in` lines in `host.log` are over
+   the README's figures; quieter, lower it.
 6. **Gain into the plug-in.** Input level sets how distorted it gets, and input raises noise. Give high-gain amps less, and
    drive-pedal tones more, with `with` and `without` rules and a template's own `follow`. The gate tightens with `tight`.
 7. **Play it.** Only the player can judge the sound. Ask which song and tone is off and how: too dirty, too clean, wrong

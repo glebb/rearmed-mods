@@ -121,7 +121,7 @@ and `map` in itself and no `profile` plays as before. Here they are together:
 - **When a plug-in is set up.** The host starts only if the plug-in is installed, `clean`, `driven` and every `by_prefix`
   name a template, and every template's state is there and was saved from this plug-in, or its preset where it has
   that and no state; otherwise `host.log` says what is missing and the game keeps its tones. `rs-tonehost --config FILE --check` says the same and opens nothing.
-  `--check-sound` goes on from there: it opens the plug-in, with no device and nothing heard, sends the reference pluck
+  `--check-sound` goes on from there: it opens the plug-in, with no device and nothing heard, sends the reference guitar
   through every template's state with its `params`, and fails on a state the plug-in refuses or one that is silent, as
   a plug-in that isn't authorized is. A template with a preset and no state has its preset handed to the engine, which
   has to take it unchanged, and that has to sound. When all play it writes `checked.json` beside the states, with a hash
@@ -169,10 +169,16 @@ and `map` in itself and no `profile` plays as before. Here they are together:
   song's arrangements differ in their tones and have as many levels, or the game is one the mod can't read a song of)
   the host keeps where each tone came, in `changes.plist`, and is ahead from the song's second play.
   `slots`, 2 to 4, is how many instances there are, and an instance takes memory.
-- `target_db` makes every tone equally loud: before a tone is heard, a reference pluck (`probe_peak_db`, at the input)
-  goes through the instance nobody hears, and its gain is set from the level that comes out. `trim_db` in a template
-  moves it from there.
-  The pluck repeats until two agree, as a plug-in ramps a knob that was moved, and the level is kept in `levels.plist`
+- `target_db` makes every tone equally loud with a guitar: before a tone is heard, a reference guitar goes through the
+  instance nobody hears, and the tone's gain is set from how loud it comes out, in LUFS: the meter of ITU-R BS.1770,
+  which counts a low for less than a high, as the ear does. The reference guitar is made up, half a second that goes
+  round: a power chord, a softer chord and a soft note dying away, shaped after recorded dry guitar in where its sound
+  is and in how much of the time it is loud. `trim_db` in a template moves a tone from there.
+  `probe_peak_db` is how hard the reference guitar plays: at -12 it is as loud as a guitar whose `peak in` lines in
+  `host.log` read about -10 in ordinary playing and -7 hit hard. A clean tone is as loud as the playing and a distorted
+  one as loud whatever comes in, so a guitar played harder than the reference has its clean tones louder than its
+  distorted ones, and one played softer has them quieter: `probe_peak_db` is the place to correct that.
+  The phrase repeats until two rounds agree, as a plug-in ramps a knob that was moved, and the level is kept in `levels.plist`
   until the config's templates or rules change: a tone measured once changes within 0.1 s where its slot still has it, else in 0.3 s and a load, or in 0.1 s and a load where its preset is handed to the engine, which has no knobs to ramp. Without `target_db` the template's `output_db` applies.
 - The system's volume controls the guitar, wherever the sound goes: the host follows it where it plays straight to an
   interface, and where it plays through the system's own output that device turns the guitar down as it does everything
@@ -205,5 +211,14 @@ change takes the tone in play through the instance nobody hears, as any tone cha
 
 Offline, against the game with a test signal: on one song a template with the tone's amp, compressor and drive pedal
 came within 0.29 dB RMS of the distorted tone's level and 1.41 dB of the clean one's, the clean amp being a stand-in.
+How loud a tone is, offline: eight excerpts of recorded dry guitar (8 s each, from Guitar-TECHS,
+zenodo.org/records/14963133) through 105 guitar tones of a library's 1,199, each as Helix Native plays it, the guitar as
+loud as the reference at -12. What the reference guitar says of a tone is the recordings' loudness within 1.3 dB for
+nine tones in ten and 4.8 dB for the worst, leaning neither to clean tones nor to distorted ones (under 0.5 dB); the
+recordings themselves are 1.5 dB apart within a tone. The single low pluck that was the reference before: 4.2 dB for
+nine in ten and 15 dB for the worst, and one song's two tones, a crunchy clean and a distorted one, 6 dB apart with the
+distorted the quieter (now 0.1 dB). Not measured: bass tones with a bass (recordings slowed to an octave down say the
+phrase does no worse there than the pluck did), a player's own level, which `probe_peak_db` stands for, and none of this
+is by ear.
 A Helix instance costs about 3% of a core with a tone's own blocks, where the whole chain with most of it switched off cost 7.5%, and two take about 1.4 GB; the one standing by renders only around a switch. Not done:
 measuring each amp's drive against the game, latency measured end to end, two players.
