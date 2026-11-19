@@ -9,7 +9,7 @@ struct ModSettings: View {
     static let mods: Set<String> = [
         "ToggleLoft", "Headstock", "Skyline", "Lyrics", "ShowSongTimer", "CameraDirector", "Sunlight", "ExtendedRange",
         "ForceReEnumeration", "ForceProfileLoad", "UseCustomNSPTimer", "RRSpeedAboveOneHundred", "VolumeControl",
-        "AllowRewind", "AllowLooping", "OverrideInputVolumeEnabled", "ToneHost", "SongStems", "DropPedal", "SecondaryMonitor",
+        "AllowRewind", "AllowLooping", "OverrideInputVolumeEnabled", "ToneHost", "SongStems", "PitchShifter", "SecondaryMonitor",
         "BackupProfile", "GuitarSpeak", "MoreSongLists", "CustomSongListTitles", "CustomTunings", "DefaultTones",
         "CustomStringColors", "SeparateNoteColors", "CustomHighwayColors", "SevenString",
     ]
@@ -68,7 +68,7 @@ struct ModSettings: View {
         case "OverrideInputVolumeEnabled": OverrideInputSettings()
         case "ToneHost": ToneHostSettings()
         case "SongStems": SongStemsSettings()
-        case "DropPedal": DropPedalSettings()
+        case "PitchShifter": PitchShifterSettings()
         case "SecondaryMonitor": SecondaryMonitorSettings()
         case "BackupProfile": BackupSettings()
         case "GuitarSpeak": GuitarSpeakSettings()
@@ -403,11 +403,11 @@ private struct ToneHostSettings: View {
     }
 }
 
-private struct DropPedalSettings: View {
+private struct PitchShifterSettings: View {
     @EnvironmentObject var store: SettingsStore
 
     var body: some View {
-        NumberField(label: "Shift the guitar by", value: store.number("DropPedalSemitones"),
+        NumberField(label: "Shift the guitar by", value: store.number("PitchShifterSemitones"),
                     range: -12...12, step: 1, unit: "semitones")
         Text("-1 is E flat on a guitar in E, -2 is D. Above 0 shifts up, which is a little slower to follow your playing. The keys change it by a semitone while you play, and with Your Own Plug-in on, its sound is shifted too.")
     }

@@ -188,7 +188,7 @@ and `map` in itself and no `profile` plays as before. Here they are together:
 `helix/` makes all this for Helix Native: `gear.json` is the game's gear onto Helix models, and `make_presets.py` writes
 one preset per Helix amp as the plug-in's engine takes it, and the rules, from Line 6's model files in the install.
 
-Commands on the FIFO: `gear KEY=VALUE ...`, `mixer VALUE`, `shift SEMITONES` (Drop Pedal: the guitar is shifted by
+Commands on the FIFO: `gear KEY=VALUE ...`, `mixer VALUE`, `shift SEMITONES` (Pitch Shifter: the guitar is shifted by
 that much before the plug-in, as the game's own input is), `time SONG SECONDS` and a song's plan (`plan SONG`,
 `plantone SLOT KEY=VALUE ... @chain=GEAR,GEAR`, `planat TIME:SLOT ...`, `planend`) from the mod, `offset VALUE` from
 [RS Companion](https://github.com/glebb/rs-mac-companion), `use TEMPLATE`, `mute` and `quit` by hand.

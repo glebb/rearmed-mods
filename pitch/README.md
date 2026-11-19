@@ -1,8 +1,8 @@
 # pitch
 
-The pitch shifter of the Drop Pedal mod ([`src/mod_drop_pedal.c`](../src/mod_drop_pedal.c)): the live guitar a few
-semitones down, chords included, to be judged against a DigiTech Drop pedal for delay and sound. `splice_shift.c` is
-built into the library; the rest is how it was arrived at and measured.
+The shifter behind the Pitch Shifter mod ([`src/mod_pitch_shifter.c`](../src/mod_pitch_shifter.c)): the live guitar
+a few semitones down, chords included, to be judged against a DigiTech Drop pedal for delay and sound.
+`splice_shift.c` is built into the library; the rest is how it was arrived at and measured.
 
 | | |
 |---|---|
@@ -38,7 +38,9 @@ pitch/bench/run.sh -w OUT_DIR -r RECORDINGS_DIR/*.wav
 notes beside it as a MIDI file of the same name (the dataset's `midi_NN.mid` copied to `P3_music-NN.mid`) also gets
 every note's start looked at, those under ringing notes included.
 
-RocksmithAudioBridge's drop pedal shifter is the baseline (`rab`). Its source is not in this repository:
+[RocksmithAudioBridge](https://github.com/Cheesewizard/RocksmithAudioBridge)'s Drop Pedal shifter was the benchmark
+while this one was written. Its source is not in this repository; with a checkout of it the bench runs it too, as
+`rab`:
 
 ```bash
 RAB_DIR=/path/to/RocksmithAudioBridge pitch/bench/run.sh
@@ -46,35 +48,32 @@ RAB_DIR=/path/to/RocksmithAudioBridge pitch/bench/run.sh
 
 ## What it found (2026-11-18, one and two semitones down)
 
-`splice` next to the baseline, on recorded guitar (Guitar-TECHS: player 1's dry tracks and the twelve music excerpts):
+`splice` on recorded guitar (Guitar-TECHS: player 1's dry tracks and the twelve music excerpts):
 
 | | one semitone | two semitones |
 |---|---|---|
-| A note's start after a quiet moment comes out late by, in the middle | 0.6 to 1.0 ms against 5 to 11 | 0.6 to 1.2 ms against 5 to 11 |
-| Nine such starts in ten are within | 6.9 ms against 18 | 6.0 ms against 19 |
-| Chords (ten recordings): an overtone's level moves about by | 0.22 dB against 0.56 | 0.26 dB against 0.70 |
-| Chords: what lands off the overtones is down by | 47 dB against 33 | 43 dB against 27 |
-| Music excerpts: the same two | 0.09 against 0.20 dB, 36 against 31 dB | 0.07 against 0.27 dB, 34 against 30 dB |
+| A note's start after a quiet moment comes out late by, in the middle | 0.6 to 1.0 ms | 0.6 to 1.2 ms |
+| Nine such starts in ten are within | 6.9 ms | 6.0 ms |
+| Chords (ten recordings): an overtone's level moves about by | 0.22 dB | 0.26 dB |
+| Chords: what lands off the overtones is down by | 47 dB | 43 dB |
+| Music excerpts: the same two | 0.09 dB, 36 dB | 0.07 dB, 34 dB |
 
-- Single notes and bends: both are clean; the baseline's levels are a little steadier (0.01 dB against 0.03 to 0.05).
-  Palm mutes: about the same.
+- Single notes, bends and palm mutes are clean: a single note's level moves about by 0.03 to 0.05 dB.
 - While notes ring, `splice` is 12 to 20 ms behind on average, 30 at most as a rule and up to 62 for a sound that
-  only repeats that late; the baseline 7 to 11 and 27. `splice` makes a seam only when its lag has reached 30 ms
-  (about four a second against ten), and a new note takes the lag back. `most_ms = 20` with `nearly = 0.2` brings
-  that to 10 to 13 ms and halves the late notes of the next point, with chords and music as clean; single notes,
-  palm mutes and bends then have their first seam sooner, and what lands off the overtones is 4 to 8 dB more at one
-  semitone. `patient = 0` is the short-lag end: 5 to 8 ms, chords 4 dB worse.
+  only repeats that late. It makes a seam only when its lag has reached 30 ms (about four a second), and a new note
+  takes the lag back. `most_ms = 20` with `nearly = 0.2` brings that to 10 to 13 ms and halves the late notes of the
+  next point, with chords and music as clean; single notes, palm mutes and bends then have their first seam sooner,
+  and what lands off the overtones is 4 to 8 dB more at one semitone. `patient = 0` is the short-lag end: 5 to 8 ms,
+  chords 4 dB worse.
 - Every note, not only those after a quiet moment: the music excerpts come with their notes written down (1923 of
   them). When a note starts, `splice` is 1 ms behind in the middle, and more than 10 ms behind for 14% of them at one
   semitone and 19% at two. Those are soft notes under louder ringing ones: where the recording shows them, the level
   does not rise at all. Some of the written notes may not be audible starts.
-- `splice` takes 1.1 to 1.2% of one processor core on the recordings, about what the baseline takes (1.0% on the
-  made-up guitar, where `splice` is at 1.5%). Its slowest block of 128 samples took 0.6 to 0.8 ms of the 2.7 ms a
-  block has, and 19 blocks in 20 take under 0.1 ms.
+- `splice` takes 1.1 to 1.2% of one processor core on the recordings (1.5% on the made-up guitar). Its slowest block
+  of 128 samples took 0.6 to 0.8 ms of the 2.7 ms a block has, and 19 blocks in 20 take under 0.1 ms.
 
-On the made-up guitar, where the ideal is known: open chords' levels move about by 0.21 dB against the baseline's 1.7
-and 2.2, two low notes a third apart by 0.28 against 2.4 and 2.8, a ringing chord through the start of a new note by
-0.2 to 0.3 against 0.9 to 1.2. Single notes: 0.11 against 0.07.
+On the made-up guitar, where the ideal is known: open chords' levels move about by 0.21 dB, two low notes a third
+apart by 0.28, a ringing chord through the start of a new note by 0.2 to 0.3, and single notes by 0.11.
 
 What made it better, in the order it was found:
 
@@ -105,27 +104,27 @@ What made it better, in the order it was found:
 
 ### Larger shifts (three, five and seven semitones down)
 
-Nothing falls apart. On the recordings, `splice` against the baseline:
+Nothing falls apart. On the recordings:
 
 | | three | five | seven |
 |---|---|---|---|
-| Chords: an overtone's level moves about by | 0.31 dB against 0.75 | 0.34 against 1.02 | 0.42 against 1.29 |
-| Chords: what lands off the overtones is down by | 39 dB against 26 | 37 against 24 | 35 against 23 |
-| Music excerpts: the same two | 0.10 against 0.30 dB, 35 against 29 dB | 0.10 against 0.34, 34 against 29 | 0.12 against 0.28, 34 against 30 |
-| A note's start comes out late by, in the middle | 0.7 to 1.2 ms against 5 to 8 | 0.8 to 1.7 against 5 to 11 | 0.9 to 2.1 against 5 to 10 |
+| Chords: an overtone's level moves about by | 0.31 dB | 0.34 dB | 0.42 dB |
+| Chords: what lands off the overtones is down by | 39 dB | 37 dB | 35 dB |
+| Music excerpts: the same two | 0.10 dB, 35 dB | 0.10 dB, 34 dB | 0.12 dB, 34 dB |
+| A note's start comes out late by, in the middle | 0.7 to 1.2 ms | 0.8 to 1.7 ms | 0.9 to 2.1 ms |
 
-- Single notes and palm mutes stay about as clean as at one and two semitones, in both.
-- Bends and vibrato are the one kind of playing where the baseline is cleaner, by 3 to 5 dB from three semitones on:
-  a jump of 20 ms lands a moving pitch somewhere else, a jump of a few ms does not. An overtone found more than 3 Hz
-  from where the model has it is no longer mended, which gave back 1 dB.
-- An overtone's tuning is off by more as the shift grows, in both: in the music excerpts 2, 4 and 5 cents in the
-  middle and 4, 8 and 10 for nine in ten.
+- Single notes and palm mutes stay about as clean as at one and two semitones.
+- Bends and vibrato are the weakest kind of playing from three semitones on: a jump of 20 ms lands a moving pitch
+  somewhere else. An overtone found more than 3 Hz from where the model has it is no longer mended, which gave back
+  1 dB.
+- An overtone's tuning is off by more as the shift grows: in the music excerpts 2, 4 and 5 cents in the middle and
+  4, 8 and 10 for nine in ten.
 
 `eager` (the bench's `splice-e`) lets a sound that repeats cleanly and soon, a single note or a power chord, jump as
 soon as its lag holds one repeat, while chords still wait. While single notes ring the lag is then 9 to 10 ms where
 it was 18, in the music excerpts 7 to 13 where it was 12 to 17, and the notes found more than 10 ms behind are 7, 11
 and 15% (at one, two and five semitones) where they were 14, 19 and 20%. Single notes' levels are steadier for it
-(0.01 dB, the baseline's figure), chords are unchanged, and what lands off the overtones is 2 to 3 dB more on palm
+(0.01 dB), chords are unchanged, and what lands off the overtones is 2 to 3 dB more on palm
 mutes and bends at one semitone and within 1 dB elsewhere. Listened to on 2026-11-18, on the palm mute and bends
 recordings: without it sounds better. It stays off.
 
@@ -160,8 +159,27 @@ are not in the bench:
 
 Not looked at on recorded guitar: the recordings were not at hand that day.
 
+### Upward (2026-11-19)
+
+A note's start takes the lag back under a downward shift alone, and it shows. On the made-up guitar, what lands off
+the overtones is down by:
+
+| | two semitones up | five up |
+|---|---|---|
+| Single notes | 48 dB | 31 dB, and 23 cents off |
+| Power chords | 53 dB | 44 dB |
+| Open chords | 47 dB | 33 dB |
+| Two low notes close together | 31 dB | 16 dB |
+
+- A note after a quiet moment comes through at once (0.1 to 1 ms), but at its own pitch: the shifted overtones come
+  up 3 to 29 ms later. A note while others ring is as late as the lag is then.
+- Twelve up is past what `splice` does: single notes 12 dB down.
+- Tried: the longest repeat in place of the shortest when the lag runs out. Single notes gain 7 to 19 dB (48 dB down
+  at five up, 31 at twelve) and are then 14 to 24 ms behind while they ring where they were 4 to 6, and an upward
+  shift has no start to take that back at. Not built in.
+
 A correction to the bench: a start in the shifted sound is timed at the level the recording passes there, not at a
-share of what follows. A pick touching the string 40 ms before a loud note had made both shifters look 41 to 47 ms
+share of what follows. A pick touching the string 40 ms before a loud note had made the shifter look 41 to 47 ms
 late once.
 
 What the bench does not say: how any of it sounds (listen to the files `-w` writes), and how a DigiTech Drop would

@@ -33,7 +33,7 @@ static size_t g_len, g_last_len;
 static int g_fd = -1, g_frames, g_was_on;
 static void send_plan(void);
 static int g_self, g_remute;  // our own call is under way; the game has just set the fader
-static int g_shift = 1000;    // the Drop Pedal shift the host was last told; 1000: none yet
+static int g_shift = 1000;    // the Pitch Shifter shift the host was last told; 1000: none yet
 static float g_fader = -1;    // what the game or a key asked for
 static char g_start[900];     // the host's start script
 static int g_starts;
@@ -153,10 +153,10 @@ static void tick(void) {
     g_remute = 0;
     set_fader(0.f);
   }
-  // The host reads the guitar itself: what Drop Pedal shifts for the game, the host shifts for the plug-in
-  if (g_fd >= 0 && rsm_drop_pedal_semitones() != g_shift) {
+  // The host reads the guitar itself: what Pitch Shifter shifts for the game, the host shifts for the plug-in
+  if (g_fd >= 0 && rsm_pitch_shifter_semitones() != g_shift) {
     char text[32];
-    g_shift = rsm_drop_pedal_semitones();
+    g_shift = rsm_pitch_shifter_semitones();
     send_text(text, (size_t)snprintf(text, sizeof text, "shift %d\n", g_shift));
   }
   g_song_at = rsm_song_time();  // -1 with no song playing, and while one is paused

@@ -147,7 +147,7 @@ static double device_rate(AudioObjectID dev) {
 }
 
 // ---- Audio ----
-static sp *g_shift;  // Drop Pedal's shifter (pitch/splice_shift.c), told by the game's "shift"; made in main
+static sp *g_shift;  // the shifter behind Pitch Shifter (pitch/splice_shift.c), told by the game's "shift"; made in main
 
 static OSStatus input_proc(AudioObjectID dev, const AudioTimeStamp *now, const AudioBufferList *in, const AudioTimeStamp *in_time,
                            AudioBufferList *out, const AudioTimeStamp *out_time, void *user) {
@@ -252,7 +252,7 @@ static OSStatus output_proc(AudioObjectID dev, const AudioTimeStamp *now, const 
   if (fill > g_target_fill + n + 256) { g_ring_read = w - g_target_fill - n; fill = w - g_ring_read; atomic_fetch_add(&g_late_blocks, 1); }
   if (fill < n) { memset(block, 0, sizeof block); atomic_fetch_add(&g_empty_blocks, 1); }
   else for (UInt32 i = 0; i < n; i++) block[i] = g_ring[g_ring_read++ & (RING - 1)];
-  if (g_shift) sp_process(g_shift, block, block, (int)n);  // Drop Pedal: nothing at 0 semitones
+  if (g_shift) sp_process(g_shift, block, block, (int)n);  // Pitch Shifter: nothing at 0 semitones
   note_peak(&g_peak_in, block, n, 1);
   gate(block, n);
   g_block = block;
@@ -998,10 +998,10 @@ static void command(char *line) {
     g_gain_offset = v;
     say("song's gain offset %+.2f", v);
     if (last_gear) use_template(pick(last_gear), last_gear);  // through the instance nobody hears, like any tone
-  } else if (!strncmp(line, "shift ", 6)) {  // Drop Pedal: the guitar that many semitones off, as the game hears it
+  } else if (!strncmp(line, "shift ", 6)) {  // Pitch Shifter: the guitar that many semitones off, as the game hears it
     int v = atoi(line + 6);
     if (g_shift) sp_set_semitones(g_shift, v);
-    say("drop pedal %+d", v);
+    say("pitch shifter %+d", v);
   } else if (!strncmp(line, "mixer ", 6)) {  // the game's guitar fader, 0 to 100
     float v = strtof(line + 6, NULL);
     atomic_store(&g_mixer_gain, v / 100.f);

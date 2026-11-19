@@ -1,5 +1,5 @@
 // A pitch shifter for a live guitar: a few semitones down or up, chords included, with a delay that is a few
-// milliseconds for the high notes and the pick, and longer only where the low strings need it. For Drop Pedal: the
+// milliseconds for the high notes and the pick, and longer only where the low strings need it. For Pitch Shifter: the
 // guitar comes out as if it were tuned lower, before the game or a tone host hears it. An experiment so far: pitch/README.md
 // has what it does and what the bench (pitch/bench) measures.
 //

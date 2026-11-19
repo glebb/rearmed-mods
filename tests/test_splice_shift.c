@@ -1,4 +1,4 @@
-// The pitch shifter of Drop Pedal (pitch/splice_shift.c), without the game: that it shifts by what it is asked, leaves
+// The shifter behind Pitch Shifter (pitch/splice_shift.c), without the game: that it shifts by what it is asked, leaves
 // the guitar alone at 0 semitones, gives the same samples however the input is cut into buffers, takes its lag back at
 // a hammered-on note however quiet the guitar comes in, and stays finite on silence, noise and a click. How good it
 // sounds is the bench's matter (pitch/bench).

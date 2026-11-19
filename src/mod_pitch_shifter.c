@@ -1,5 +1,5 @@
-// Drop Pedal (not in RSMods): the guitar a few semitones lower, or higher, before the game hears it, so a song in
-// another tuning is played without retuning (DropPedal = on, DropPedalSemitones: -1 is E flat on a guitar in E).
+// Pitch Shifter (not in RSMods): the guitar a few semitones lower, or higher, before the game hears it, so a song in
+// another tuning is played without retuning (PitchShifter = on, PitchShifterSemitones: -1 is E flat on a guitar in E).
 // The game is given the shifted guitar as its input: its note detection, tuner and tones all follow. The down and up
 // keys change the shift by a semitone, and the shift shows for a moment when it changes.
 //
@@ -14,7 +14,7 @@
 // they remember current.
 //
 // Tone Host reads the guitar from the device itself, so it shifts it itself: mod_tone_host.c tells it by how much
-// (rsm_drop_pedal_semitones).
+// (rsm_pitch_shifter_semitones).
 // Needs the hook point si_io: the Mac edition, and Learn & Play from the RS Re-ARMed after 1.17.1. With an older one
 // the mod stays off there.
 #include <CoreAudio/CoreAudio.h>
@@ -120,12 +120,12 @@ static void give_shifters(int semitones) {
       }
       double rate = rate_of(atomic_load_explicit(&in->dev, memory_order_relaxed));
       if (!(shift = sp_new(rate, NULL))) {
-        rsm_log("drop pedal: no memory for a shifter");
+        rsm_log("pitch shifter: no memory for a shifter");
         return;
       }
       sp_set_semitones(shift, semitones);
       atomic_store_explicit(&in->shift[ch], shift, memory_order_release);
-      rsm_log("drop pedal: a guitar input at %g Hz%s", rate, ch ? ", its second channel" : "");
+      rsm_log("pitch shifter: a guitar input at %g Hz%s", rate, ch ? ", its second channel" : "");
     }
   }
   g_set = semitones;
@@ -133,46 +133,46 @@ static void give_shifters(int semitones) {
 
 static int within(long v) { return (int)(v < -RANGE ? -RANGE : v > RANGE ? RANGE : v); }
 
-int rsm_drop_pedal_semitones(void) { return g_hooked && g_on ? g_semitones : 0; }
+int rsm_pitch_shifter_semitones(void) { return g_hooked && g_on ? g_semitones : 0; }
 
 static void tick(void) {
   if (!g_hooked) return;
   double now = rsm_now();
-  int was = rsm_drop_pedal_semitones();
-  g_on = rsm_on("DropPedal");
-  if (now - g_changed >= KEEP_FOR) g_semitones = within(rsm_long("DropPedalSemitones", -1));
-  int semitones = rsm_drop_pedal_semitones();
+  int was = rsm_pitch_shifter_semitones();
+  g_on = rsm_on("PitchShifter");
+  if (now - g_changed >= KEEP_FOR) g_semitones = within(rsm_long("PitchShifterSemitones", -1));
+  int semitones = rsm_pitch_shifter_semitones();
   if (g_on) atomic_store_explicit(&g_wanted, 1, memory_order_relaxed);
   if (atomic_load_explicit(&g_wanted, memory_order_relaxed)) give_shifters(semitones);
   if (semitones != was) {
     if (semitones)
-      rsm_log("drop pedal: the guitar is shifted by %+d semitones before the game hears it", semitones);
+      rsm_log("pitch shifter: the guitar is shifted by %+d semitones before the game hears it", semitones);
     else
-      rsm_log("drop pedal: off");
+      rsm_log("pitch shifter: off");
   }
   if (g_on && now - g_changed < SHOW_SECONDS) {
     // What a string tuned to E sounds as
     static const char *const NAMES[] = {"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
     char txt[64];
     if (g_semitones)
-      snprintf(txt, sizeof txt, "Drop Pedal: %+d (E plays as %s)", g_semitones, NAMES[((4 + g_semitones) % 12 + 12) % 12]);
+      snprintf(txt, sizeof txt, "Pitch Shifter: %+d (E plays as %s)", g_semitones, NAMES[((4 + g_semitones) % 12 + 12) % 12]);
     else
-      snprintf(txt, sizeof txt, "Drop Pedal: 0");
+      snprintf(txt, sizeof txt, "Pitch Shifter: 0");
     rsm_text(txt, 0.5f, 1.f / 54, 0.04f, RSM_ALIGN_CENTER, 0xffffffff);
   }
 }
 
 static void key(const rsm_key_event *e) {
-  if (e->down || !g_hooked || !rsm_on("DropPedal")) return;
-  int by = e->keycode == rsm_key("DropPedalDownKey") ? -1 : e->keycode == rsm_key("DropPedalUpKey") ? 1 : 0;
+  if (e->down || !g_hooked || !rsm_on("PitchShifter")) return;
+  int by = e->keycode == rsm_key("PitchShifterDownKey") ? -1 : e->keycode == rsm_key("PitchShifterUpKey") ? 1 : 0;
   if (!by) return;
   char v[8];
   g_semitones = within(g_semitones + by);
   g_changed = rsm_now();
   snprintf(v, sizeof v, "%d", g_semitones);
-  rsm_set("Mod Settings", "DropPedalSemitones", v);
+  rsm_set("Mod Settings", "PitchShifterSemitones", v);
 }
 
 __attribute__((constructor)) static void init(void) { g_hooked = !rsm_hook("si_io", before_io, NULL); }
 
-const rsm_mod rsm_mod_drop_pedal = {"drop_pedal", tick, key, NULL, NULL};
+const rsm_mod rsm_mod_pitch_shifter = {"pitch_shifter", tick, key, NULL, NULL};

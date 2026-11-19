@@ -93,19 +93,18 @@ The code names no sources; these are the known techniques it belongs with.
 What is its own is the combination: long, rare jumps for the sake of chords, the lag taken back at every note start,
 and seams mended overtone by overtone.
 
-Two other things it was measured against:
+The idea of the mod is from [RocksmithAudioBridge](https://github.com/Cheesewizard/RocksmithAudioBridge)'s Drop
+Pedal (MIT, by Cheesewizard), and that mod's shifter was the benchmark on the bench while this one was written.
 
-- **RocksmithAudioBridge's drop pedal shifter** (MIT, by Cheesewizard) is the baseline on the bench. It is also a
-  delay-line shifter, with short, frequent jumps: about ten seams a second against four.
-- **`pitch_shift.c`**, the first design, follows a published low-latency approach (Juillerat, Schubiger-Banz and
-  Müller Arisona, 2008): split the guitar into many narrow bands and shift each band's frequency directly, with no
-  seams at all. It lost: chords only come out clean at 25 to 40 ms of delay, for every note including new ones.
+`pitch_shift.c`, the first design, follows a published low-latency approach (Juillerat, Schubiger-Banz and Müller
+Arisona, 2008): split the guitar into many narrow bands and shift each band's frequency directly, with no seams at
+all. It lost: chords only come out clean at 25 to 40 ms of delay, for every note including new ones.
 
 ## Limits
 
-- **Bends and vibrato** are the one kind of playing where the baseline is cleaner: a long jump lands a moving pitch
-  somewhere else.
+- **Bends and vibrato** are its weakest kind of playing: a long jump lands a moving pitch somewhere else.
 - **Soft notes under a loud ringing chord** are sometimes not detected as new, and then come out as late as the lag
   (14 to 19% of notes in the music excerpts are more than 10 ms behind).
 - The note-start trick only works for downward shifts.
-- It has never been measured against a real DigiTech Drop, and not yet played with a guitar in the game.
+- It has never been measured against a real DigiTech Drop. Played with a guitar in the game it works and sounds good
+  (2026-11-19), which is by ear and not a measurement.
