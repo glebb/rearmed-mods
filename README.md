@@ -40,8 +40,8 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   game's note counts (in Learn & Play's Score Attack the accuracy needs RS Re-ARMed 1.14.0, and the
   grey-note reset isn't there), and so do Prevent Buggy
   Tones and Custom Song List Titles, for its hook points on the tone change and a song list's name.
-- Seven-String Guitar and Plain Packages need RS Re-ARMed's edits and mid points: in Learn & Play from 1.12.0, on the
-  Mac from 1.13.0; with an older one they stay off.
+- Seven-String Guitar, Plain Packages and Nashville Numbers need RS Re-ARMed's edits and mid points: in Learn & Play
+  from 1.12.0, on the Mac from 1.13.0; with an older one they stay off.
 - Pitch Shifter needs RS Re-ARMed's hook point on the guitar input: the Mac edition has it, Learn & Play from the RS
   Re-ARMed after 1.17.1. With an older one it stays off in Learn & Play.
 - Song Stems needs RS Re-ARMed 1.12.0, for its hook point on the audio the game decodes, and macOS 15 or later for
@@ -409,8 +409,8 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     second guess for 3 more: songs on a ♭VII (I-♭VII-IV) may come out a fourth up. The key gives the song its next
     guess and keeps it in `[Nashville Keys]`; Control + the key goes back to the guess. The chords are named from their
     notes (the chart's own names are often missing). Keys are at the chart's pitch, which isn't always the record's.
-  * Needs the song-load point Tone Host uses: on the Mac RS Re-ARMed 1.13.0, in Learn & Play 1.12.0. Not yet checked in
-    the game.
+  * Needs the song-load point Tone Host uses: on the Mac RS Re-ARMed 1.13.0, in Learn & Play 1.12.0. Seen in songs on
+    the Mac; not yet run in Learn & Play.
 
 * **Camera Director** (not in RSMods)
   * Your own view of the note highway. In a song the keys zoom it, raise the camera, move it sideways and tilt it,
