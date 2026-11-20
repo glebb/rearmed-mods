@@ -11,6 +11,9 @@ set -eu
 # The same sources give the same library: without this the linker records the object files' modification times,
 # and the settings app, which compares the installed library with its own, would offer every rebuild as an update
 export ZERO_AR_DATE=1
+# and src/*.c is listed in one order everywhere: in a UTF-8 locale rsmods.c comes after rsmods_tuning.c, and the
+# library's functions lie in the order of its sources
+export LC_ALL=C
 here=$(cd "$(dirname "$0")" && pwd)
 install=0
 [ "${1:-}" = --install ] && install=1

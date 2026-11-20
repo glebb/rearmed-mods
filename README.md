@@ -709,7 +709,8 @@ anyone else comes as a pull request from a fork.
 The run does `./test.sh` and `gui/build-app.sh --zip`, checks that the app has the library, `rs-stems` with its model
 and Tone Host, makes the annotated tag `vX.Y.Z` and the release "rearmed-mods X.Y.Z" with `Re-ARMed-Mods-X.Y.Z.zip` as
 its one asset. It stops when there is a release of that version already. A run that failed after it made the tag can be
-run again, as long as `main` hasn't moved.
+run again, as long as `main` hasn't moved. It builds with the Xcode the releases made by hand were built with, 27.2, on
+GitHub's `xcode-27` image, and its log says which tools it had.
 
 Song Stems' model isn't in the repository. The workflow takes it, compiled, from the release
 [`stems-model`](https://github.com/glebb/rearmed-mods/releases/tag/stems-model) and checks it against a checksum in the
