@@ -51,17 +51,29 @@ jobs:
   release:
     name: Build and release
     needs: admin
-    runs-on: macos-26
+    # The image with Xcode 27 (macOS 27), and of its Xcodes the one the releases were built with by hand
+    runs-on: xcode-27
     permissions:
       contents: write
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
       MODE: ${{ inputs.mode }}
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Tools
+        run: |
+          set -eu
+          [ -d "$DEVELOPER_DIR" ] || { echo "::error::the runner has no $DEVELOPER_DIR"; ls /Applications | grep -i xcode; exit 1; }
+          sw_vers -productVersion
+          xcodebuild -version
+          echo "SDK $(xcrun --show-sdk-version)"
+          clang --version | head -1
+          swift --version 2>&1 | head -1
 
       - name: Version
         id: version
