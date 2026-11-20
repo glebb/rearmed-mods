@@ -54,6 +54,19 @@ final class ToneHostInstallerTests: XCTestCase {
         }
     }
 
+    // What Update Tone Host goes by: a host from another version of the app is not the carried one, and is after an install
+    func testKnowsAHostThatIsNotTheCarriedOne() throws {
+        let folder = temp.appendingPathComponent("install/tonehost", isDirectory: true)
+        XCTAssertFalse(ToneHostInstaller.hostIsCarried(try carried(start: "one"), in: folder))  // none installed
+        XCTAssertNil(ToneHostInstaller.installHost(from: try carried(start: "one"), to: folder))
+        XCTAssertTrue(ToneHostInstaller.hostIsCarried(try carried(start: "one"), in: folder))
+        let newer = try carried(start: "two")
+        XCTAssertFalse(ToneHostInstaller.hostIsCarried(newer, in: folder))
+        try Data("another host".utf8).write(to: newer.appendingPathComponent("RS Tone Host.app/Contents/MacOS/rs-tonehost"))
+        XCTAssertNil(ToneHostInstaller.installHost(from: newer, to: folder))
+        XCTAssertTrue(ToneHostInstaller.hostIsCarried(newer, in: folder))
+    }
+
     func testSaysWhatIsMissing() throws {
         let nothing = temp.appendingPathComponent("nothing", isDirectory: true)
         XCTAssertNotNil(ToneHostInstaller.installHost(from: nothing, to: temp.appendingPathComponent("install/tonehost")))

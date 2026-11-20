@@ -19,6 +19,14 @@ enum ToneHostInstaller {
         ToneHostProfiles.component(type: helix[0], subtype: helix[1], manufacturer: helix[2]) != nil
     }
 
+    // Whether the host in the tonehost folder is the one the app carries, byte for byte: its program and the two scripts.
+    // false for one from another version of the app or built from source, and where there is none
+    static func hostIsCarried(_ carried: URL, in folder: URL) -> Bool {
+        ["RS Tone Host.app/Contents/MacOS/rs-tonehost", "start.sh", "stop.sh"].allSatisfy {
+            FileManager.default.contentsEqual(atPath: carried.appendingPathComponent($0).path, andPath: folder.appendingPathComponent($0).path)
+        }
+    }
+
     // The host into the tonehost folder, over one that is there, and a config if there is none. nil, or what went wrong
     static func installHost(from carried: URL, to folder: URL) -> String? {
         let fm = FileManager.default

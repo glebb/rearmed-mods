@@ -417,7 +417,9 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     while ToneHost is off), and the game's guitar is silent while it runs; the guitar fader and the volume keys still
     work. Without the host the game keeps its tones. The app carries the host: with Helix Native on the Mac, Set Up
     Helix Native in this mod's settings installs it and makes a sound for every amp of the game, with nothing to do by
-    hand; for another plug-in, Install Tone Host and then Add a Plug-in.
+    hand; for another plug-in, Install Tone Host and then Add a Plug-in. When the host installed isn't the one the app
+    carries, after an update of the app, Update Tone Host puts the app's in and keeps your plug-ins, their sounds and
+    your settings.
   * Once it is set up, the app's settings for this mod choose the plug-in, the interface the guitar is on, its channel
     and gain, and where the sound goes. Each interface chosen is kept, so with one unplugged the host takes another
     that is connected. A plug-in can be chosen once its setup has finished: it is installed, every sound it needs is

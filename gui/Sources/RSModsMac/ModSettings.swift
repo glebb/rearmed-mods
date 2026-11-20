@@ -226,6 +226,7 @@ private struct ToneHostSettings: View {
     @State private var adding: Adding?
     @State private var settingUp = false
     @State private var setUpSaid: String?
+    @State private var hostBehind = false  // a host is installed, and it isn't the one this app carries
 
     private struct Adding: Identifiable {
         let changing: String?
@@ -273,16 +274,28 @@ private struct ToneHostSettings: View {
                 }
             }
         }
-        if let carried = ToneHostInstaller.carried, ToneHostInstaller.helixInstalled || !store.toneHostInstalled {
+        if hostBehind {
+            Label("The host installed isn't this app's: Update Tone Host puts this app's in.", systemImage: "arrow.triangle.2.circlepath")
+                .foregroundStyle(Color.orange)
+        }
+        if let carried = ToneHostInstaller.carried, ToneHostInstaller.helixInstalled || !store.toneHostInstalled || hostBehind {
             // One click: the host installed or brought up to this app's, and Helix Native's sounds made and checked
             HStack {
+                if hostBehind {
+                    // the host alone: the plug-ins, their sounds and the settings stay as they are
+                    Button("Update Tone Host") {
+                        setUp(done: "Done. The host is this app's; your plug-ins, their sounds and your settings are as they were.") {
+                            ToneHostInstaller.installHost(from: carried, to: store.toneHostFolder)
+                        }
+                    }
+                }
                 if ToneHostInstaller.helixInstalled {
                     Button(plugins.contains { $0.id == ToneHostInstaller.helixID } ? "Set Up Helix Native Again" : "Set Up Helix Native") {
                         setUp(done: "Done. Helix Native's sounds are made and played; choose the interface the guitar is on.") {
                             ToneHostInstaller.setUpHelix(from: carried, in: store.toneHostFolder)
                         }
                     }
-                } else {
+                } else if !store.toneHostInstalled {
                     Button("Install Tone Host") {
                         setUp(done: "Done. Choose the interface the guitar is on, and add a plug-in.") {
                             ToneHostInstaller.installHost(from: carried, to: store.toneHostFolder)
@@ -292,9 +305,10 @@ private struct ToneHostSettings: View {
                 if settingUp { ProgressView().controlSize(.small) }
             }
             .disabled(settingUp)
-            if let setUpSaid {
-                Text(setUpSaid).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
+        }
+        // outside the buttons' condition: Update Tone Host is gone once it has done its work
+        if let setUpSaid {
+            Text(setUpSaid).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         if store.toneHostInstalled, setup == nil {
             Picker("Interface", selection: Binding(get: { "" }, set: { if !$0.isEmpty { choose($0) } })) {
@@ -367,6 +381,8 @@ private struct ToneHostSettings: View {
         setup = ToneHostConfig.chosen(config)
         plugins = ToneHostProfiles.all(in: store.toneHostFolder, config: config)
         plugin = ToneHostProfiles.chosen(config)
+        hostBehind = store.toneHostInstalled
+            && ToneHostInstaller.carried.map { !ToneHostInstaller.hostIsCarried($0, in: store.toneHostFolder) } == true
     }
 
     private func choosePlugin(_ id: String) {
