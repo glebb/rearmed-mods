@@ -11,8 +11,8 @@
 //   * a note high up, which comes round cleanly within a few milliseconds and not at all over a long jump, is taken
 //     a repeat at a time, one seam running into the next;
 //   * a seam is a plain crossfade of 5 ms, so that what comes out is the guitar's own waveform but for those: an
-//     amplifier's distortion makes its sound out of the waveform. (Carrying each overtone across a seam by itself,
-//     `mend`, is steadier in the plain sound and worse through an amplifier: off.);
+//     amplifier's distortion makes its sound out of the waveform. (Carrying each overtone across a seam by itself
+//     was steadier in the plain sound and worse through an amplifier: taken out, pitch/README.md.);
 //   * a start that comes during a crossfade does not drop what was being faded out: it fades out on, so the output
 //     never steps.
 //
@@ -38,10 +38,6 @@ typedef struct {
   double nearly;     // how much less alike than the best repeat the longest one taken may be
   int patient;       // 1: jump only when the lag has reached most_ms. 0: as soon as it holds one repeat, which keeps
                      // the lag of ringing notes short and makes two to three times the seams
-  int mend;          // 1: at a seam the overtones are carried across each by itself (splice_shift.c, mend). 0, as it
-                     // is by default: a seam is a plain crossfade
-  double mend_ms;    // with `mend`: how long an overtone is given to turn its phase across the seam,
-  double start_mend_ms;  // and across the seam at a note's start, for what rang before it; 0: that seam is not mended
 } sp_params;
 
 void sp_defaults(sp_params *p);

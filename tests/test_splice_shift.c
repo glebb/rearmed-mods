@@ -44,18 +44,8 @@ static double level_at(const float *x, double hz, int from, int n) {
   return 2 * hypot(re, im) / all;
 }
 
-// Everything here is asked of the shifter as it is used, and again with its seams mended (sp_params.mend), which is
-// off by default and must go on holding all of it
-static int g_mend;
-static sp *made(void) {
-  sp_params p;
-  sp_defaults(&p);
-  p.mend = g_mend;
-  return sp_new(RATE, &p);
-}
-
 static void run(const float *in, float *out, double semitones, int block) {
-  sp *s = made();
+  sp *s = sp_new(RATE, NULL);
   sp_set_semitones(s, semitones);
   memcpy(out, in, N * sizeof *in);
   for (int at = 0; at < N; at += block) sp_process(s, out + at, out + at, N - at < block ? N - at : block);
@@ -72,7 +62,7 @@ static double share_at(const float *x, double hz) {
   return 2 * (re * re + im * im) / (N / 2) / all;
 }
 
-static void all(void) {
+int main(void) {
   float *in = malloc(N * sizeof *in), *a = malloc(N * sizeof *a), *b = malloc(N * sizeof *b);
 
   // Two semitones down, and one up: the first overtone, a third of the power as the tone is made, is where it should
@@ -103,7 +93,7 @@ static void all(void) {
   CHECK(!memcmp(a + RATE / 2, in + RATE / 2, (N - RATE / 2) * sizeof *a));
 
   // Changed while it runs: back to 0 gives the guitar itself again
-  sp *s = made();
+  sp *s = sp_new(RATE, NULL);
   sp_set_semitones(s, -3);
   memcpy(a, in, N * sizeof *in);
   sp_process(s, a, a, N / 2);
@@ -114,7 +104,7 @@ static void all(void) {
 
   // From down to up just after a note started: the pause a start leaves behind under a downward shift doesn't keep
   // the upward one from shifting
-  s = made();
+  s = sp_new(RATE, NULL);
   sp_set_semitones(s, -1);
   memcpy(a, in, N * sizeof *in);
   int left = 2400 + RATE / 100;  // 10 ms into the note
@@ -133,7 +123,7 @@ static void all(void) {
   for (int quiet = 0; quiet < 2; quiet++) {
     int on = RATE * 3 / 10;
     replaced(in, quiet ? 1.4 / 32 : 1.4, on, 110, 130.81, 0.012);
-    s = made();
+    s = sp_new(RATE, NULL);
     sp_set_semitones(s, -2);
     double before = 0, after = 0;
     for (int at = 0; at < N; at += 64) {
@@ -151,7 +141,7 @@ static void all(void) {
   // note comes out where it should.
   for (int st = -1; st >= -7; st -= 3) {
     tone(in, 659.26, 2400);
-    s = made();
+    s = sp_new(RATE, NULL);
     sp_set_semitones(s, st);
     double most = 0;
     for (int at = 0; at < N; at += 16) {
@@ -171,7 +161,7 @@ static void all(void) {
     tone(in, 659.26, 2400);
     tone(b, 207.65, 2400);
     for (int t = 0; t < N; t++) in[t] += (float)(under * 0.03 * b[t]);
-    s = made();
+    s = sp_new(RATE, NULL);
     sp_set_semitones(s, -2);
     double most = 0;
     for (int at = 0; at < N; at += 16) {
@@ -185,7 +175,7 @@ static void all(void) {
 
   // A note that stops as the next one starts, as on one string, is over: 30 to 80 ms after the new note's start,
   // what is left of the old one's first overtone is a tenth of what it was or less, wherever in its turn the start
-  // finds it. (Carried across the start's seam on trust, it would sound on for 80 ms, at times louder than before.)
+  // finds it.
   // A high pair, taken a repeat at a time, and a low one, which waits.
   for (int pair = 0; pair < 2; pair++)
     for (int j = 0; j < 8; j++) {
@@ -196,13 +186,10 @@ static void all(void) {
       CHECK(level_at(a, from * down, on + RATE * 3 / 100, RATE / 20) < 0.1 * level_at(a, from * down, on - RATE / 10, RATE / 20));
     }
 
-  // A note that stops, and then a gap: the gap stays a gap. A seam that falls just after the note has stopped must not
-  // carry the note's overtones into the silence (they were fitted over the 85 ms before, when the note still rang).
-  // The note's overtones are a little off whole multiples, as a string's are, or a seam would have nothing to mend.
-  // From 32 ms after the stop, by when a shifter 30 ms behind has played the note out, to 62 ms: what sounds is 25 dB
-  // under the note or less, for notes of many lengths, so that a seam falls in some of the gaps. (25 and not more:
-  // a note that stops while its overtones are being carried across a seam made before it is sounded for the 15 ms
-  // it takes to find them gone.)
+  // A note that stops, and then a gap: the gap stays a gap, whatever a seam that falls just after the note has stopped
+  // does. The note's overtones are a little off whole multiples, as a string's are. From 32 ms after the stop, by when
+  // a shifter 30 ms behind has played the note out, to 62 ms: what sounds is 25 dB under the note or less, for notes
+  // of many lengths, so that a seam falls in some of the gaps.
   for (int j = 0; j < 24; j++) {
     int stop = 2400 + (int)((0.20 + 0.015 * j) * RATE);
     memset(in, 0, N * sizeof *in);
@@ -250,9 +237,5 @@ static void all(void) {
     if (kind == 0) CHECK(silent);
   }
   free(in), free(a), free(b);
-}
-
-int main(void) {
-  for (g_mend = 0; g_mend < 2; g_mend++) all();
   return check_done("splice_shift");
 }

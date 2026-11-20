@@ -57,7 +57,7 @@ RAB_DIR=/path/to/RocksmithAudioBridge pitch/bench/run.sh
 ## What it found (2026-11-18, one and two semitones down)
 
 These are figures of the shifter as it was then, with its seams mended, and of its own sound, with no amplifier
-after it. The mend is off since 2026-11-20: [Through an amplifier](#through-an-amplifier-2026-11-20), below, says why
+after it. The mend is gone since 2026-11-20: [Through an amplifier](#through-an-amplifier-2026-11-20), below, says why
 and what the figures are without it.
 
 `splice` on recorded guitar (Guitar-TECHS: player 1's dry tracks and the twelve music excerpts):
@@ -439,8 +439,9 @@ a seam is its crossfade and nothing else.
 
 What was done:
 
-- **Seams are not mended** (`mend` 0). The code is there and the tests run it; the model of the ringing sound is
-  still made, since the close repeat asks it whether a note is alone.
+- **Seams are not mended.** At first by a setting (`mend` 0) with the code left in; once it had been played, the
+  code was taken out, and what it made is the same sample for sample. The model of the ringing sound is still
+  made, since the close repeat asks it whether a note is alone.
 - **Every seam fades over 5 ms.** A less alike one had twice that: 2 dB worse on the fourth take through both
   tones, and no better anywhere. 2.5 ms and 10 and 20 ms were tried too, and at a start half a millisecond, two
   and four in place of one: nothing gained.

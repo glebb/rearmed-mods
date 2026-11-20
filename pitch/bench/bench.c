@@ -1346,9 +1346,6 @@ int main(int argc, char **argv) {
   g_splice.nearly = env_or("SP_NEARLY", g_splice.nearly);
   g_splice.eager = (int)env_or("SP_EAGER", g_splice.eager);
   g_splice.close_ms = env_or("SP_CLOSE_MS", g_splice.close_ms);
-  g_splice.mend = (int)env_or("SP_MEND", g_splice.mend);
-  g_splice.mend_ms = env_or("SP_MEND_MS", g_splice.mend_ms);
-  g_splice.start_mend_ms = env_or("SP_START_MEND_MS", g_splice.start_mend_ms);
   g_splice.patient = (int)env_or("SP_PATIENT", g_splice.patient);
   g_only = getenv("BENCH_ONLY");
   if (first_file) {

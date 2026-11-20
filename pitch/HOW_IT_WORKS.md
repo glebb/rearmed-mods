@@ -109,8 +109,8 @@ seams came out 4 to 7 dB closer to the true thing than the build that was played
 level with it through a clean one
 ([README.md](README.md) has the figures).
 
-So the mend is switched off (`mend` in `sp_params`; the code is still there and still tested). The model of the
-ringing sound is still built, because the check for a high note being "alone" needs it.
+So the mend was switched off, played that way, and then taken out of the code (the commit before that one has
+it). The model of the ringing sound is still built, because the check for a high note being "alone" needs it.
 
 ### No steps
 
@@ -133,10 +133,9 @@ The code names no sources; these are the known techniques it belongs with.
 |---|---|
 | Reading a delay line at a different speed and crossfading at jumps | Delay-line (splicing) pitch shifting, the method of the early harmonizers (Eventide H910, 1975) and of most pitch pedals |
 | Choosing the jump by how alike two stretches are | Waveform-similarity splicing: SOLA and WSOLA (Verhelst and Roelands, 1993) |
-| Treating a ringing sound as a sum of overtones with level, frequency and phase (the model that says whether a note is alone, and the mend that is off) | Sinusoidal modelling (McAulay and Quatieri, 1986) |
+| Treating a ringing sound as a sum of overtones with level, frequency and phase (the model that says whether a note is alone) | Sinusoidal modelling (McAulay and Quatieri, 1986) |
 | Finding note starts from high-frequency bursts and per-range level rises | Standard onset detection |
 | One-period jumps for a single note | Pitch-synchronous splicing (PSOLA, Moulines and Charpentier, 1990) |
-| With the mend on: checking that a carried overtone is still there | An adaptive filter with one sine and cosine per overtone (the LMS line canceller, Widrow and others, 1975) |
 
 What is its own is the combination: long, rare jumps for the sake of chords, short ones for high notes, and the lag
 taken back at every note start.
