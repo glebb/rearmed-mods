@@ -11,9 +11,12 @@
 //
 // The guitar: each note is a sum of overtones a little sharp of whole multiples (as a string's are), each with its
 // own decay, behind a short burst of noise for the pick. The same notes made with every frequency times the ratio are
-// the ideal. The cases are single notes over the neck, power chords, strummed open chords, two low notes close
-// together, a note hammered on, pulled off or picked while others ring, palm-muted hits, a fast run, a bend and a
-// vibrato.
+// the ideal. The cases are single notes over the neck, notes high up as a real guitar has them (their first overtone
+// flat of where the others put it: on the recorded guitar the second is 9 to 13 cents sharp of twice the first from
+// A#3 up, which is what keeps such a note from repeating), power chords, strummed open chords, two low
+// notes close together, a note hammered on, pulled off or picked while others ring, a note high up with a quiet one
+// under it, a note that stops as the next one starts (one string), notes with a gap after each, palm-muted hits, a
+// fast run, a bend and vibratos.
 //
 // What is measured, per case:
 //   attack   ms the note's start comes later than in the ideal (the level's first rise: the pick and the high end)
@@ -25,6 +28,10 @@
 //   waver    dB an overtone's level moves about against the ideal's over time (the louder ones count more)
 //   differ   dB the spectrum over time is off the ideal's, on average: the one measure of the cases that move, and
 //            for chords it also moves with the overtones' phases alone (the row "ideal" shows by how much)
+//   left     dB of a note that stopped when the next one started, 30 to 80 ms on, against while it rang: its first
+//            overtone (the row "ideal": how fast the made-up note dies away). For notes with a gap after each: all
+//            that sounds from 70 to 110 ms into the gap (a shifter 30 ms behind has the note's end by then), against
+//            the note's last 60 ms, the worst of the gaps
 // low to waver follow single overtones, those with no other within 30 Hz, and only in the cases that ring.
 // The row "ideal" is the ideal made again with other phases: what the measures say of a perfect shifter.
 // Through a distortion nothing is measured: -w writes that for listening.
@@ -56,16 +63,19 @@ typedef struct {
   double vib, vib_hz;             // cents either way
   double amp;                     // 1: as loud as the others
   int soft;                       // a hammer-on or pull-off: no pick, and the note comes up over 4 ms
+  double sharp;                   // cents the second overtone is sharp of twice the first, by the first being flat
 } note;
 
 typedef struct {
   const char *name, *group;
   int n, steady;                  // steady: the notes ring and stay where they are
+  int left;                       // 1: the first note stops as the second starts: what is left of it is measured;
+                                  // 2: every note stops and a gap follows: what sounds in the gaps is
   double dur;
   note note[MAXN];
 } tcase;
 
-static tcase g_case[64];
+static tcase g_case[96];
 static int g_cases;
 
 static tcase *add(const char *group, const char *name, double dur, int steady) {
@@ -94,6 +104,8 @@ static void make_cases(void) {
   static const char *const names[] = {"E2", "A2", "D3", "G3", "B3", "E4", "A4", "E5"};
   static const double single[] = {40, 45, 50, 55, 59, 64, 69, 76};
   for (int i = 0; i < 8; i++) hit(add("single notes", names[i], 1.6, 1), single[i], 0, 1.0);
+  static const char *const up[] = {"E4", "B4", "E5", "A5", "C6", "E6"};
+  for (int i = 0; i < 6; i++) hit(add("high notes", up[i], 1.6, 1), (double[]){64, 71, 76, 81, 84, 88}[i], 0, 0.7)->sharp = (double[]){6, 9, 10, 12, 12, 10}[i];
   chord("power chords", "E5", (double[]){40, 47, 52}, 3, 0);
   chord("power chords", "G5", (double[]){43, 50, 55}, 3, 0);
   chord("power chords", "A5", (double[]){45, 52, 57}, 3, 0);
@@ -126,6 +138,40 @@ static void make_cases(void) {
     note *to = hit(l, legato[i].to, 0.4, 1.0);
     to->amp = legato[i].amp, to->soft = legato[i].soft;
   }
+  // A note high up with a quiet one under it, as a string left ringing is: the quiet one is to come out lower too
+  static const struct {
+    const char *name;
+    double high, low, amp;
+  } under[] = {{"A5, E4 30 dB under", 81, 64, 0.03}, {"E5, B3 36 dB under", 76, 59, 0.016}, {"C6, G3 40 dB under", 84, 55, 0.01}};
+  for (int i = 0; i < 3; i++) {
+    tcase *u = add("a quiet note under", under[i].name, 1.6, 1);
+    hit(u, under[i].low, 0, 1.0)->amp = under[i].amp;
+    hit(u, under[i].high, 0.3, 0.7)->sharp = 10;
+  }
+  // A note that stops as the next one starts, as on one string: nothing of it should be left
+  static const struct {
+    const char *name;
+    double from, to;
+  } one[] = {{"E3 then B3", 52, 59}, {"A3 then C4", 57, 60}, {"E4 then G4", 64, 67}, {"B4 then D5", 71, 74}, {"E5 then G5", 76, 79}, {"A5 then C6", 81, 84}};
+  for (int i = 0; i < 6; i++) {
+    tcase *o = add("one string", one[i].name, 1.2, 0);
+    o->left = 1;
+    hit(o, one[i].from, 0, 1.0)->len = 0.5 + i * 0.0013;  // not always at the same place in the first note's turn
+    hit(o, one[i].to, 0.5 + i * 0.0013, 1.0);
+  }
+  // Notes of many lengths with a gap after each, as when a part is played short: a seam falls in some of the gaps,
+  // and nothing of the note before should sound there
+  for (int i = 0; i < 4; i++) {
+    tcase *g = add("notes with gaps", (const char *[]){"0.20 to 0.26 s", "0.29 to 0.35 s", "0.38 to 0.44 s", "0.47 to 0.53 s"}[i], 0, 0);
+    double at = 0;
+    g->left = 2;
+    for (int j = 0; j < 3; j++) {
+      double len = 0.20 + 0.03 * (3 * i + j);
+      hit(g, (double[]){45, 50, 52}[j], at, 1.0)->len = len;
+      at += len + 0.12;
+    }
+    g->dur = at + 0.08;
+  }
   tcase *c = add("moving", "palm mutes", 1.2, 0);
   for (int i = 0; i < 6; i++)
     for (int j = 0; j < 3; j++) hit(c, (double[]){40, 47, 52}[j], i * 0.14, 0.05);
@@ -137,6 +183,12 @@ static void make_cases(void) {
   c = add("moving", "vibrato", 1.4, 0);
   n = hit(c, 57, 0, 1.0);
   n->vib = 35, n->vib_hz = 5.5;
+  c = add("moving", "vibrato high up", 1.4, 0);
+  n = hit(c, 79, 0, 0.7);
+  n->vib = 35, n->vib_hz = 5.5, n->sharp = 10;
+  c = add("moving", "bend high up", 1.4, 0);
+  n = hit(c, 74, 0, 0.7);
+  n->bend = 2, n->bend_at = 0.15, n->bend_len = 0.3, n->sharp = 10;
 }
 
 static uint32_t g_rng;
@@ -171,8 +223,11 @@ static void render(const tcase *c, double ratio, uint32_t seed, float *out, int 
     int start = (int)(n->at * SR), harmonics = 0;
     double fac[160], amp[160], tau[160], ph[160];
     g_rng = seed * 2654435761u + (uint32_t)i * 40503u + 1;
+    // The first overtone flat by a share `pull` of the note, the k-th by a k-th of that (in Hz): what makes the
+    // second `sharp` cents sharp of twice the first
+    double twice = pow(2, n->sharp / 1200), pull = (2 * twice - 2) / (2 * twice - 0.5);
     for (int k = 1; k <= 160; k++) {
-      double f = k * sqrt(1 + STIFF * k * k);
+      double f = k * sqrt(1 + STIFF * k * k) * (1 - pull / (k * k)) / (1 - pull);
       if (f * f0 > 7000) break;
       fac[harmonics] = f;
       amp[harmonics] = fabs(sin(k * M_PI * 0.17)) / k / (1 + pow(f * f0 / 3500, 2));
@@ -524,11 +579,12 @@ static double median(double *v, int n) {
   return n & 1 ? v[n / 2] : (v[n / 2 - 1] + v[n / 2]) / 2;
 }
 
-enum { ATTACK, LOW, MID, LAST, HELD, MOST, TUNE, JUNK, WAVER, DIFFER, MEASURES };
+enum { ATTACK, LOW, MID, LAST, HELD, MOST, TUNE, JUNK, WAVER, DIFFER, LEFT, MEASURES };
 typedef struct {
   double v[MEASURES];  // NAN: not measured in this case
 } measures;
 
+static double g_ratio = 1;  // the shift being measured
 static measures measure(const tcase *c, const float *got, const float *want, int frames) {
   measures m;
   for (int i = 0; i < MEASURES; i++) m.v[i] = NAN;
@@ -628,8 +684,88 @@ static measures measure(const tcase *c, const float *got, const float *want, int
       }
     }
   if (cells) m.v[DIFFER] = sum / cells;
+  if (c->left == 1) {
+    // The first note's first overtone, under a window that keeps what is 40 Hz away out: from 100 to 50 ms before
+    // the second note starts, and from 30 to 80 ms after
+    double w = 2 * M_PI * 440 * pow(2, (c->note[0].midi - 69) / 12) * sqrt(1 + STIFF) * g_ratio / SR, level[2];
+    for (int k = 0; k < 2; k++) {
+      int from = (int)(c->note[1].at * SR) + (k ? 1440 : -4800);
+      double re = 0, im = 0, all = 0;
+      for (int t = 0; t < 2400; t++) {
+        double win = 0.5 - 0.5 * cos(2 * M_PI * (t + 0.5) / 2400);
+        re += win * got[from + t] * cos(w * t), im += win * got[from + t] * sin(w * t), all += win;
+      }
+      level[k] = hypot(re, im) / all;
+    }
+    m.v[LEFT] = 20 * log10((level[1] + 1e-9) / (level[0] + 1e-9));
+  }
+  if (c->left == 2) {
+    m.v[LEFT] = -200;
+    for (int i = 0; i < c->n; i++) {
+      int stop = (int)((c->note[i].at + c->note[i].len) * SR);
+      double before = 1e-30, after = 1e-30;
+      for (int t = stop - 2880; t < stop; t++) before += (double)got[t] * got[t] / 2880;
+      for (int t = stop + 3360; t < stop + 5280 && t < frames; t++) after += (double)got[t] * got[t] / 1920;
+      m.v[LEFT] = fmax(m.v[LEFT], 10 * log10(after / before));
+    }
+  }
   free(eg), free(ew);
   return m;
+}
+
+// ------------------------------------------------------------------------------------------------
+// A shifter against the true thing on a recording. The true thing: the recording played back slower (every sound is
+// then lower by the shift, and nothing else is changed but its length). A moment of what the shifter made is held
+// against the same moment there, spectrum against spectrum, in windows of 85 ms, each first driven hard by itself as
+// an amplifier does, which brings up what is quiet: a note sounded on, a string under the played note left at its own
+// pitch. *extra: the power of what the shifter's sound has and the true one has not (a bin 10 dB over the true one's
+// loudest within 25 Hz), against all of it; *lost: the same the other way round. `lag`: where the shifter says it
+// is, block by block, in frames (g_trace); without it the shifter is taken to be 15 ms behind.
+// ------------------------------------------------------------------------------------------------
+#define TW 4096
+// in at the place p, between samples: a sinc of 32 samples under a window, cut a little under half the rate, from a
+// table of 256 places between two samples
+static double between(const float *in, int frames, double p) {
+  static float table[257][32];
+  static int made;
+  if (!made) {
+    for (int f = 0; f <= 256; f++)
+      for (int j = -15; j <= 16; j++) {
+        double x = j - f / 256.0, s = fabs(x) < 1e-9 ? 0.92 : sin(M_PI * 0.92 * x) / (M_PI * x), w = cos(M_PI * x / 33);
+        table[f][j + 15] = (float)(s * w * w);
+      }
+    made = 1;
+  }
+  int i0 = (int)floor(p), f = (int)lround((p - i0) * 256);
+  if (i0 < 15 || i0 + 16 >= frames) return 0;
+  double sum = 0;
+  for (int j = 0; j < 32; j++) sum += in[i0 - 15 + j] * table[f][j];
+  return sum;
+}
+static void against_true(const float *in, const float *got, int frames, double ratio, const float *lag, double *extra, double *lost, double *all_got, double *all_true) {
+  static double mg[TW / 2 + 1], mt[TW / 2 + 1];
+  static float sg[TW], st[TW];
+  double top = 0;
+  for (int i = 0; i < frames; i++) top = fmax(top, fabs(in[i]));
+  for (int t = 4800; t + TW + 4800 < frames; t += TW / 2) {
+    int block = (t + TW / 2) / BLOCK;
+    double from = t + TW / 2 - (lag && block < 1 << 16 ? lag[block] : 0.015 * SR), pg = 1e-9, pt = 1e-9;
+    for (int i = 0; i < TW; i++) {
+      sg[i] = got[t + i], st[i] = (float)between(in, frames, from + (i - TW / 2) * ratio);
+      pg = fmax(pg, fabs(sg[i])), pt = fmax(pt, fabs(st[i]));
+    }
+    if (pt < 0.02 * top) continue;  // nothing is playing
+    for (int i = 0; i < TW; i++) sg[i] = (float)tanh(30 * sg[i] / pg), st[i] = (float)tanh(30 * st[i] / pt);
+    spectrum(sg, TW, 0, TW, 1, mg);
+    spectrum(st, TW, 0, TW, 1, mt);
+    for (int k = 4; k < (int)(6000 * TW / SR); k++) {
+      double near_t = 0, near_g = 0;
+      for (int j = k - 2; j <= k + 2; j++) near_t = fmax(near_t, mt[j]), near_g = fmax(near_g, mg[j]);
+      *all_got += mg[k] * mg[k], *all_true += mt[k] * mt[k];
+      if (mg[k] > 3.16 * near_t) *extra += mg[k] * mg[k];
+      if (mt[k] > 3.16 * near_g) *lost += mt[k] * mt[k];
+    }
+  }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -687,8 +823,10 @@ static void identity(void) {
 // Recorded guitar (-r): how late a note's start comes out, at every start that follows a quiet moment; and, where the
 // notes then ring on for 0.85 s with nothing new starting, waver, tune and junk as above, with the recording's own
 // overtones standing in for the ideal (ringing_of). And for a recording with its notes beside it (the same name,
-// .mid), how late the notes come that start while others ring ("over"): those the level does not show. The rest is
-// for listening (-w).
+// .mid), how late the notes come that start while others ring ("over"): those the level does not show; and junk and
+// waver of the stretches that ring on by the pitch of the note that starts them, an octave to a row, which is where
+// a shifter that is good low down and poor high up shows. And all of each recording against the true thing
+// (against_true): "extra" and "lost". The rest is for listening (-w).
 // ------------------------------------------------------------------------------------------------
 static double g_from, g_length = 60;  // the stretch of each recording that is used, in seconds (-f, -t)
 
@@ -979,6 +1117,11 @@ static void recordings(char **file, int files, const double *shifts, int nshift,
   static double over[SHIFTERS][8][4096];  // how late the notes that start over ringing ones come
   static double behind[SHIFTERS][8][8192];  // how far behind the shifter is when a note starts, any note
   int overs[SHIFTERS][8] = {{0}}, behinds[SHIFTERS][8] = {{0}};
+  enum { OCTAVES = 4 };  // from E2, E3, E4 and E5
+  static int pitch_of[MOST];
+  double by_junk[SHIFTERS][8][OCTAVES] = {{{0}}}, by_waver[SHIFTERS][8][OCTAVES] = {{{0}}};
+  int by_n[SHIFTERS][8][OCTAVES] = {{{0}}}, by_wn[SHIFTERS][8][OCTAVES] = {{{0}}}, by_any = 0;
+  double extra[SHIFTERS][8] = {{0}}, lost[SHIFTERS][8] = {{0}}, all_got[SHIFTERS][8] = {{0}}, all_true[SHIFTERS][8] = {{0}};
   for (int fi = 0; fi < files; fi++) {
     int frames = 0;
     float *in = read_wav(file[fi], &frames);
@@ -1014,6 +1157,12 @@ static void recordings(char **file, int files, const double *shifts, int nshift,
     int notes = read_midi(mid, note, 4096), ringing = 0, all = 0;
     for (int k = 0; k < notes; k++)
       if (note[k].at - g_from > 0.2 && (note[k].at - g_from) * SR < frames - 9600) every[all] = note[k], every[all++].at -= g_from;
+    for (int k = 0; k < n; k++) {  // the written note nearest each start, within half a second
+      double near = 0.5;
+      pitch_of[k] = 0;
+      for (int j = 0; j < all; j++)
+        if (fabs(every[j].at - at[k] / SR) < near) near = fabs(every[j].at - at[k] / SR), pitch_of[k] = every[j].pitch;
+    }
     for (int k = 0; k < notes; k++) {
       int i = (int)((note[k].at - g_from) * SR);
       double before = 0, after = 0;
@@ -1027,12 +1176,15 @@ static void recordings(char **file, int files, const double *shifts, int nshift,
     for (int si = 0; si < nshift && si < 8; si++)
       for (int w = 0; w < SHIFTERS; w++) {
         shift(w, shifts[si], in, got, frames);
+        if (!(g_only && *g_only && strcmp(g_only, g_shifter[w].name)))  // not for a shifter that was not run
+          against_true(in, got, frames, pow(2, shifts[si] / 12), g_shifter[w].lag ? g_trace : NULL, &extra[w][si], &lost[w][si], &all_got[w][si], &all_true[w][si]);
         // By the shifter's own account: the least it is behind from 20 ms before the note is written down to
         // 25 ms after, which lets it notice the note
         for (int k = 0; k < all && g_shifter[w].exact && behinds[w][si] < 8192; k++) {
           double least = 1e9;
           for (int b = (int)((every[k].at - 0.02) * SR) / BLOCK; b <= (int)((every[k].at + 0.025) * SR) / BLOCK; b++)
             if (b >= 0 && b < 1 << 16) least = fmin(least, g_trace[b]);
+          if (least > 1e8) continue;  // past where the shifter's account is kept
           behind[w][si][behinds[w][si]++] = least / SR * 1e3;
           if (g_verbose) printf("  %s %+g note %d at %.3f s: behind %.1f ms\n", stem, shifts[si], every[k].pitch, every[k].at + g_from, least / SR * 1e3);
         }
@@ -1061,6 +1213,11 @@ static void recordings(char **file, int files, const double *shifts, int nshift,
           tunes[w][si] += ringing_in(&ring[k], in, got, frames, at[k], pow(2, shifts[si] / 12), &wv, tune[w][si] + tunes[w][si], &jk);
           if (!isnan(wv)) waver[w][si] += wv;
           junk[w][si] += jk;
+          if (pitch_of[k]) {
+            int o = pitch_of[k] < 40 ? 0 : pitch_of[k] >= 40 + 12 * OCTAVES ? OCTAVES - 1 : (pitch_of[k] - 40) / 12;
+            by_junk[w][si][o] += jk, by_n[w][si][o]++, by_any = 1;
+            if (!isnan(wv)) by_waver[w][si][o] += wv, by_wn[w][si][o]++;
+          }
         }
         if (dir) {
           char kind[64];
@@ -1079,12 +1236,12 @@ static void recordings(char **file, int files, const double *shifts, int nshift,
          g_jumps / g_audio[0], g_jumps ? g_jumped / g_jumps / SR * 1e3 : 0, g_jumps ? g_scores / g_jumps : 0,
          g_jumps ? 100.0 * g_poor / g_jumps : 0, g_attacks / g_audio[0]);
   for (int si = 0; si < nshift && si < 8; si++) {
-    printf("\n%+g semitones\n    %-10s %7s %7s %7s %7s %7s %7s %7s %7s %11s %5s %7s %7s\n", shifts[si], "", "starts", "middle", "9 in 10", "worst", "waver", "tune", "9 in 10", "junk", "held/most", "over", "middle", "9 in 10");
-    printf("    %-10s %7s %7s %7s %7s %7s %7s %7s %7s %11s %5s %7s %7s\n", "", "timed", "ms", "ms", "ms", "dB", "cents", "cents", "dB", "ms", "", "ms", "ms");
+    printf("\n%+g semitones\n    %-10s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %11s %5s %7s %7s\n", shifts[si], "", "extra", "lost", "starts", "middle", "9 in 10", "worst", "waver", "tune", "9 in 10", "junk", "held/most", "over", "middle", "9 in 10");
+    printf("    %-10s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %11s %5s %7s %7s\n", "", "dB", "dB", "timed", "ms", "ms", "ms", "dB", "cents", "cents", "dB", "ms", "", "ms", "ms");
     for (int w = 0; w < SHIFTERS; w++) {
       int n = lates[w][si];
       double *v = late[w][si];
-      printf("    %-10s %7d", g_shifter[w].name, n);
+      printf("    %-10s %7.1f %7.1f %7d", g_shifter[w].name, 10 * log10(extra[w][si] / (all_got[w][si] + 1e-30) + 1e-20), 10 * log10(lost[w][si] / (all_true[w][si] + 1e-30) + 1e-20), n);
       if (n) {
         qsort(v, (size_t)n, sizeof *v, by_value);
         printf(" %7.1f %7.1f %7.1f", v[n / 2], v[(int)(0.9 * (n - 1))], v[n - 1]);
@@ -1114,6 +1271,20 @@ static void recordings(char **file, int files, const double *shifts, int nshift,
       }
       printf("\n");
     }
+    if (by_any) {
+      printf("    the notes that ring on, by the pitch written for them: junk dB, waver dB (how many)\n    %-10s", "");
+      for (int o = 0; o < OCTAVES; o++) printf(" %22s", (const char *[]){"E2 to D#3", "E3 to D#4", "E4 to D#5", "E5 and up"}[o]);
+      printf("\n");
+      for (int w = 0; w < SHIFTERS; w++) {
+        printf("    %-10s", g_shifter[w].name);
+        for (int o = 0; o < OCTAVES; o++)
+          if (by_n[w][si][o])
+            printf("  %6.1f %5.2f (%3d)   ", by_junk[w][si][o] / by_n[w][si][o], by_wn[w][si][o] ? by_waver[w][si][o] / by_wn[w][si][o] : NAN, by_n[w][si][o]);
+          else
+            printf(" %22s", "");
+        printf("\n");
+      }
+    }
   }
 }
 
@@ -1128,7 +1299,7 @@ static void row(const char *who, const measures *m) {
     if (isnan(m->v[i]))
       printf(" %7s", "");
     else
-      printf(i >= WAVER ? " %7.2f" : " %7.1f", m->v[i]);
+      printf(i == WAVER || i == DIFFER ? " %7.2f" : " %7.1f", m->v[i]);
   printf("\n");
 }
 
@@ -1174,6 +1345,7 @@ int main(int argc, char **argv) {
   g_splice.soft = env_or("SP_SOFT", g_splice.soft);
   g_splice.nearly = env_or("SP_NEARLY", g_splice.nearly);
   g_splice.eager = (int)env_or("SP_EAGER", g_splice.eager);
+  g_splice.close_ms = env_or("SP_CLOSE_MS", g_splice.close_ms);
   g_splice.mend = (int)env_or("SP_MEND", g_splice.mend);
   g_splice.mend_ms = env_or("SP_MEND_MS", g_splice.mend_ms);
   g_splice.start_mend_ms = env_or("SP_START_MEND_MS", g_splice.start_mend_ms);
@@ -1193,9 +1365,9 @@ int main(int argc, char **argv) {
   float *tour[WHO + 1] = {0};
   int tour_at = 0, tour_len = (int)(g_cases * 2.0 * SR);
   for (int si = 0; si < nshift; si++) {
-    double st = shifts[si], ratio = pow(2, st / 12);
-    printf("\n%+g semitones\n    %-10s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s\n", st, "", "attack", "low", "mid", "later", "held", "most", "tune", "junk", "waver", "differ");
-    printf("    %-10s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s\n", "", "ms", "ms", "ms", "ms", "ms", "ms", "cents", "dB", "dB", "dB");
+    double st = shifts[si], ratio = g_ratio = pow(2, st / 12);
+    printf("\n%+g semitones\n    %-10s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s\n", st, "", "attack", "low", "mid", "later", "held", "most", "tune", "junk", "waver", "differ", "left");
+    printf("    %-10s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s\n", "", "ms", "ms", "ms", "ms", "ms", "ms", "cents", "dB", "dB", "dB", "dB");
     if (dir)
       for (int w = 0; w <= WHO; w++) {
         free(tour[w]);

@@ -1,7 +1,9 @@
 // The shifter behind Pitch Shifter (pitch/splice_shift.c), without the game: that it shifts by what it is asked, leaves
 // the guitar alone at 0 semitones, gives the same samples however the input is cut into buffers, takes its lag back at
-// a hammered-on note however quiet the guitar comes in, and stays finite on silence, noise and a click. How good it
-// sounds is the bench's matter (pitch/bench).
+// a hammered-on note however quiet the guitar comes in, keeps a high note's lag within a few periods when it is alone
+// and not when a quieter note rings under it, lets a note that has stopped be over and a gap after a note stay a gap,
+// makes no step at a note's start, and stays finite on silence, noise and a click. How good it sounds is the bench's matter
+// (pitch/bench).
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,20 +21,41 @@ static void tone(float *x, double hz, int from) {
     for (int k = 1; k <= 5; k++) x[t] += (float)(0.2 / k * sin(2 * M_PI * hz * k * (t - from) / RATE + k));
 }
 
-// A note, and at sample `on` one hammered on from it: no pick, the old note dies away in a few ms as the new one comes
-// up. `level` 1 peaks at about a third.
-static void hammered(float *x, double level, int on) {
+// A note of `from` Hz, and at sample `on` one of `to` Hz in its place: no pick, the old note dies away over `dies`
+// seconds as the new one comes up. `level` 1 peaks at about a third.
+static void replaced(float *x, double level, int on, double from, double to, double dies) {
   memset(x, 0, N * sizeof *x);
   for (int t = 2400; t < N; t++)
     for (int k = 1; k <= 5; k++) {
-      double old = t < on ? 1 : exp(-(t - on) / (0.012 * RATE));
+      double old = t < on ? 1 : exp(-(t - on) / (dies * RATE));
       double new = t < on ? 0 : t - on < 192 ? 0.5 - 0.5 * cos(M_PI * (t - on) / 192.0) : 1;
-      x[t] += (float)(level * 0.2 / k * (old * sin(2 * M_PI * 220 * k * (t - 2400) / RATE + k) + 0.8 * new * sin(2 * M_PI * 261.63 * k * (t - on) / RATE + k)));
+      x[t] += (float)(level * 0.2 / k * (old * sin(2 * M_PI * from * k * (t - 2400) / RATE + k) + 0.8 * new * sin(2 * M_PI * to * k * (t - on) / RATE + k)));
     }
 }
 
+// How loud x is at hz over the n samples from `from`, under a window that keeps a sound 2 / n of the rate away out
+static double level_at(const float *x, double hz, int from, int n) {
+  double re = 0, im = 0, all = 0;
+  for (int t = 0; t < n; t++) {
+    double w = 0.5 - 0.5 * cos(2 * M_PI * (t + 0.5) / n);
+    re += w * x[from + t] * cos(2 * M_PI * hz * t / RATE), im += w * x[from + t] * sin(2 * M_PI * hz * t / RATE);
+    all += w;
+  }
+  return 2 * hypot(re, im) / all;
+}
+
+// Everything here is asked of the shifter as it is used, and again with its seams mended (sp_params.mend), which is
+// off by default and must go on holding all of it
+static int g_mend;
+static sp *made(void) {
+  sp_params p;
+  sp_defaults(&p);
+  p.mend = g_mend;
+  return sp_new(RATE, &p);
+}
+
 static void run(const float *in, float *out, double semitones, int block) {
-  sp *s = sp_new(RATE, NULL);
+  sp *s = made();
   sp_set_semitones(s, semitones);
   memcpy(out, in, N * sizeof *in);
   for (int at = 0; at < N; at += block) sp_process(s, out + at, out + at, N - at < block ? N - at : block);
@@ -49,7 +72,7 @@ static double share_at(const float *x, double hz) {
   return 2 * (re * re + im * im) / (N / 2) / all;
 }
 
-int main(void) {
+static void all(void) {
   float *in = malloc(N * sizeof *in), *a = malloc(N * sizeof *a), *b = malloc(N * sizeof *b);
 
   // Two semitones down, and one up: the first overtone, a third of the power as the tone is made, is where it should
@@ -80,7 +103,7 @@ int main(void) {
   CHECK(!memcmp(a + RATE / 2, in + RATE / 2, (N - RATE / 2) * sizeof *a));
 
   // Changed while it runs: back to 0 gives the guitar itself again
-  sp *s = sp_new(RATE, NULL);
+  sp *s = made();
   sp_set_semitones(s, -3);
   memcpy(a, in, N * sizeof *in);
   sp_process(s, a, a, N / 2);
@@ -91,7 +114,7 @@ int main(void) {
 
   // From down to up just after a note started: the pause a start leaves behind under a downward shift doesn't keep
   // the upward one from shifting
-  s = sp_new(RATE, NULL);
+  s = made();
   sp_set_semitones(s, -1);
   memcpy(a, in, N * sizeof *in);
   int left = 2400 + RATE / 100;  // 10 ms into the note
@@ -106,11 +129,11 @@ int main(void) {
 
   // A hammered-on note has no pick: it is found by its own range rising, over a level that noise stays under. That
   // level follows the guitar's: a guitar that comes in loud and one that comes in 30 dB quieter both have the lag,
-  // long by then, taken back at the note
+  // long by then (the notes are low ones, which wait for a long repeat), taken back at the note
   for (int quiet = 0; quiet < 2; quiet++) {
     int on = RATE * 3 / 10;
-    hammered(in, quiet ? 1.4 / 32 : 1.4, on);
-    s = sp_new(RATE, NULL);
+    replaced(in, quiet ? 1.4 / 32 : 1.4, on, 110, 130.81, 0.012);
+    s = made();
     sp_set_semitones(s, -2);
     double before = 0, after = 0;
     for (int at = 0; at < N; at += 64) {
@@ -121,6 +144,96 @@ int main(void) {
     sp_free(s);
     CHECK(before > 0.015 * RATE);
     CHECK(after < 0.003 * RATE);
+  }
+
+  // A note high up comes round within a few milliseconds, and is taken a repeat at a time: from its start on, the lag
+  // never holds more than a few of its periods, whatever the shift, where a low note's is let grow to 30 ms. And the
+  // note comes out where it should.
+  for (int st = -1; st >= -7; st -= 3) {
+    tone(in, 659.26, 2400);
+    s = made();
+    sp_set_semitones(s, st);
+    double most = 0;
+    for (int at = 0; at < N; at += 16) {
+      sp_process(s, in + at, a + at, 16);
+      if (at > RATE / 4) most = fmax(most, sp_delay(s));
+    }
+    sp_free(s);
+    CHECK(most < 0.006 * RATE);
+    CHECK(share_at(a, 659.26 * pow(2, st / 12.0)) > 0.5);
+    CHECK(share_at(a, 659.26) < 0.01);
+  }
+
+  // That is for a note that is alone. With a quieter one under it, 30 dB down, which such jumps would leave at its own
+  // pitch, the high note waits like any chord (its lag passes 15 ms), and the quiet one comes out where it should.
+  // On its own the high note does not wait.
+  for (int under = 0; under < 2; under++) {
+    tone(in, 659.26, 2400);
+    tone(b, 207.65, 2400);
+    for (int t = 0; t < N; t++) in[t] += (float)(under * 0.03 * b[t]);
+    s = made();
+    sp_set_semitones(s, -2);
+    double most = 0;
+    for (int at = 0; at < N; at += 16) {
+      sp_process(s, in + at, a + at, 16);
+      if (at > RATE / 4) most = fmax(most, sp_delay(s));
+    }
+    sp_free(s);
+    CHECK(under ? most > 0.015 * RATE : most < 0.006 * RATE);
+    if (under) CHECK(level_at(a, 207.65 * pow(2, -2 / 12.0), RATE, RATE / 2) > 5 * level_at(a, 207.65, RATE, RATE / 2));
+  }
+
+  // A note that stops as the next one starts, as on one string, is over: 30 to 80 ms after the new note's start,
+  // what is left of the old one's first overtone is a tenth of what it was or less, wherever in its turn the start
+  // finds it. (Carried across the start's seam on trust, it would sound on for 80 ms, at times louder than before.)
+  // A high pair, taken a repeat at a time, and a low one, which waits.
+  for (int pair = 0; pair < 2; pair++)
+    for (int j = 0; j < 8; j++) {
+      double from = pair ? 146.83 : 440, to = pair ? 220 : 523.25, down = pow(2, -2 / 12.0);
+      int on = RATE * 6 / 10 + j * 37;
+      replaced(in, 1.4, on, from, to, 0.001);
+      run(in, a, -2, 128);
+      CHECK(level_at(a, from * down, on + RATE * 3 / 100, RATE / 20) < 0.1 * level_at(a, from * down, on - RATE / 10, RATE / 20));
+    }
+
+  // A note that stops, and then a gap: the gap stays a gap. A seam that falls just after the note has stopped must not
+  // carry the note's overtones into the silence (they were fitted over the 85 ms before, when the note still rang).
+  // The note's overtones are a little off whole multiples, as a string's are, or a seam would have nothing to mend.
+  // From 32 ms after the stop, by when a shifter 30 ms behind has played the note out, to 62 ms: what sounds is 25 dB
+  // under the note or less, for notes of many lengths, so that a seam falls in some of the gaps. (25 and not more:
+  // a note that stops while its overtones are being carried across a seam made before it is sounded for the 15 ms
+  // it takes to find them gone.)
+  for (int j = 0; j < 24; j++) {
+    int stop = 2400 + (int)((0.20 + 0.015 * j) * RATE);
+    memset(in, 0, N * sizeof *in);
+    for (int t = 2400; t < stop + 48; t++)
+      for (int k = 1; k <= 5; k++)
+        in[t] += (float)((t < stop ? 1 : 1 - (t - stop) / 48.0) * 0.2 / k * sin(2 * M_PI * 146.83 * k * (1 + 0.003 * (k - 1)) * (t - 2400) / RATE + k));
+    run(in, a, -2, 128);
+    double note = 0, gap = 0;
+    for (int t = stop - RATE / 20; t < stop; t++) note += (double)a[t] * a[t];
+    for (int t = stop + RATE * 32 / 1000; t < stop + RATE * 62 / 1000; t++) gap += (double)a[t] * a[t];
+    CHECK(gap / (RATE * 3 / 100) < 3e-3 * note / (RATE / 20));
+  }
+
+  // No clicks. A note's start takes the read point at once, whatever the shifter was in the middle of (a fade from
+  // one read point to another, overtones being carried), and that must not show as a step in the output. Notes that
+  // start every 150 ms over the ones before, each coming up over 2 ms, at three shifts: from one sample to the next
+  // the output never moves much more than the guitar itself ever does.
+  for (int st = -1; st >= -5; st -= 2) {
+    memset(in, 0, N * sizeof *in);
+    for (int j = 0; j < 12; j++) {
+      int from = 2400 + j * (RATE * 15 / 100);
+      double hz = 110 * pow(2, (double[]){0, 3, 7, 10, 5, 8, 12, 2, 7, 3, 10, 0}[j] / 12);
+      for (int t = from; t < N; t++) {
+        double up = t - from < 96 ? 0.5 - 0.5 * cos(M_PI * (t - from) / 96.0) : 1, ring = exp(-(t - from) / (0.4 * RATE));
+        for (int k = 1; k <= 5; k++) in[t] += (float)(up * ring * 0.08 / k * sin(2 * M_PI * hz * k * (1 + 0.003 * (k - 1)) * (t - from) / RATE + k + j));
+      }
+    }
+    run(in, a, st, 64);
+    double most_in = 0, most_out = 0;
+    for (int t = 1; t < N; t++) most_in = fmax(most_in, fabs(in[t] - in[t - 1])), most_out = fmax(most_out, fabs(a[t] - a[t - 1]));
+    CHECK(most_out < 1.5 * most_in);
   }
 
   // Silence, noise and a click: nothing but numbers comes out, and silence stays silent
@@ -137,5 +250,9 @@ int main(void) {
     if (kind == 0) CHECK(silent);
   }
   free(in), free(a), free(b);
+}
+
+int main(void) {
+  for (g_mend = 0; g_mend < 2; g_mend++) all();
   return check_done("splice_shift");
 }

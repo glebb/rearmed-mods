@@ -7,7 +7,14 @@
 //   * seams are few: the lag is let grow to `most_ms` and then taken back by the longest repeat that fits, since
 //     every seam costs a chord something;
 //   * a note's start takes the lag back to almost nothing at once (downward shifts only), so what is felt as
-//     lateness, the start of a note, comes about a millisecond and a half late whatever was ringing before.
+//     lateness, the start of a note, comes about a millisecond and a half late whatever was ringing before;
+//   * a note high up, which comes round cleanly within a few milliseconds and not at all over a long jump, is taken
+//     a repeat at a time, one seam running into the next;
+//   * a seam is a plain crossfade of 5 ms, so that what comes out is the guitar's own waveform but for those: an
+//     amplifier's distortion makes its sound out of the waveform. (Carrying each overtone across a seam by itself,
+//     `mend`, is steadier in the plain sound and worse through an amplifier: off.);
+//   * a start that comes during a crossfade does not drop what was being faded out: it fades out on, so the output
+//     never steps.
 //
 // No allocation, lock or system call in sp_process. One instance is one mono stream.
 #ifndef RS_SPLICE_SHIFT_H
@@ -26,11 +33,14 @@ typedef struct {
                      // by an ordinary jump; 0: never
   int eager;         // 1: with `patient`, a sound that repeats cleanly and soon (a single note, a power chord) still
                      // jumps as soon as its lag holds one repeat
+  double close_ms;   // a sound that comes round cleanly within this (a note high up) is taken a repeat at a time,
+                     // as soon as its lag holds one, whatever `patient` says; 0: never
   double nearly;     // how much less alike than the best repeat the longest one taken may be
   int patient;       // 1: jump only when the lag has reached most_ms. 0: as soon as it holds one repeat, which keeps
                      // the lag of ringing notes short and makes two to three times the seams
-  int mend;          // 1: at a seam the overtones are carried across each by itself (splice_shift.c, mend)
-  double mend_ms;    // how long an overtone is given to turn its phase across the seam,
+  int mend;          // 1: at a seam the overtones are carried across each by itself (splice_shift.c, mend). 0, as it
+                     // is by default: a seam is a plain crossfade
+  double mend_ms;    // with `mend`: how long an overtone is given to turn its phase across the seam,
   double start_mend_ms;  // and across the seam at a note's start, for what rang before it; 0: that seam is not mended
 } sp_params;
 

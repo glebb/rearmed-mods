@@ -448,8 +448,8 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     guitar as its input, so note detection, the tuner and the tones follow. It moves the whole guitar: a drop tuning
     still needs its one string retuned.
   * The shifter (`pitch/splice_shift.c`, with its bench and what it found in [`pitch`](pitch/README.md)) starts a
-    note half a millisecond to a millisecond late; while notes ring on it runs up to 30 ms behind and catches up at
-    the next note.
+    note half a millisecond to a millisecond late; while chords and low notes ring on it runs up to 30 ms behind
+    and catches up at the next note, and a note from about F3 up that rings alone is kept within 1 to 6 ms.
   * The down and up keys change the shift by a semitone while you play, and the shift shows for a moment when it
     changes. With Your Own Plug-in (Tone Host) on, the host shifts the guitar for the plug-in by the same amount,
     since it reads the guitar itself; it needs the host of this version.
@@ -654,7 +654,9 @@ localization and tone edits, a tone key the file has many times, Song Stems' ind
 only a file provider serves, through RS Re-ARMed's own `rc_file.c`, and without the file layer, a song's names from
 a manifest and from an archive, Discord's activity and a conversation with a socket that answers as Discord does,
 the shifter behind Pitch Shifter: that it shifts by what it is asked, down, up and from one to the other just after a note
-started, and takes its lag back at a hammered-on note from a quiet guitar as from a loud one, a manifest's tones for Tone Host's plan of a song, where a value goes in a preset for a plug-in's engine,
+started, takes its lag back at a hammered-on note from a quiet guitar as from a loud one, keeps a high note's lag within
+a few periods when it is alone and not when a quieter note rings under it, lets a note that has stopped be over
+and a gap after a note stay a gap, makes no step at a note's start, a manifest's tones for Tone Host's plan of a song, where a value goes in a preset for a plug-in's engine,
 the guitar Tone Host measures a tone's loudness with and its meter,
 and the move of a Tone Host config into a profile) and the app's
 (`gui/Tests`: settings, a section that is a list, install and update for both editions, the app's profile backups,

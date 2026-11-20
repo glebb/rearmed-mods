@@ -18,6 +18,27 @@
 // that repeats clearly better (by FAR_GAIN) a little later has its lag let grow on, to `far` at most: two low notes
 // a third apart come round together only after 40 to 60 ms, and until then every jump puts one of them out of step.
 //
+// A close repeat (downward): a sound that comes round cleanly (CLEAN) within `close`, which is a single note from
+// about F3 up, or two that share so short a period, is not made to wait. Up there the long jump is the wrong one. A
+// real string's overtones are not whole multiples of its first: on a recorded guitar the second is 9 to 13 cents
+// sharp of twice the first from A#3 up. Over the 25 ms of a long jump a note at 880 Hz has then
+// had its overtones slide half a turn against each other, and no place fits, where over one period they slide a
+// hundredth of a turn; and a pitch that moves, a bend or a vibrato, is somewhere else after 25 ms. So the lag is
+// taken back one repeat at a time, as soon as it holds one: found in the coarse ring (close_repeat), placed at the
+// read point over a few periods, and looked for again, sample by sample, when the lag has grown by it. Its crossfade
+// is a straight line that lasts as long as the lag takes to grow by the repeat (CLOSE_FADE at most), so one seam
+// runs into the next: an overtone a little off the repeat then comes out turning evenly, which is a pitch a hair
+// off, and not in steps. No mend: there is nothing left for one to carry, and a seam every few milliseconds leaves
+// it no time. Such a note's lag while it rings is a period or two. A sound stops being taken so when its two places
+// are no longer alike enough, as when another note joins it, and at every start.
+// It is for a sound that is alone. Whatever does not come round with the repeat, a quieter note under this one, a
+// string ringing along, is not shifted by such jumps at all: it comes out at its own pitch, chopped as often as there
+// are seams, and through an amplifier's distortion that is a second, wrong note under the played one. Two places 0.99
+// alike still leave room for a sound 20 dB down. So the model of the ringing sound is asked as well (beside): only
+// when every overtone it has found, down to 45 dB under the loudest, sits at a whole multiple of the repeat or a
+// string's own little way off it, is the sound taken so, and each new model is asked again. Until there is a model,
+// 70 ms into a note, the lag grows as it would anyway.
+//
 // A note's start jumps a downward shift to ATTACK_LAG whatever the sound: the old read point holds the tail of what
 // rang before, the new one the start, and the start covers the seam. That is what keeps a long lag from being felt:
 // what is late is only the ringing on of notes already heard. Two things count as a start:
@@ -58,14 +79,24 @@
 #define ATTACK_LAG 24.0     // where a start starts over: half a millisecond back, which holds its first rise
 #define LEAST_JUMP 40       // 0.8 ms at 48 kHz: no guitar note repeats sooner
 #define NEARLY 0.03         // with no repeat alike enough, how far under the best one still counts
-#define FADE 256            // a seam between two alike places; twice that between less alike ones
+#define FADE 256            // a seam: 5 ms, however alike its two places are (twice that for less alike ones made the
+                            // player's own takes 2 dB worse through an amplifier and nothing better)
 #define FADE_ATTACK 48
 #define REST 1920           // samples after a start before the next counts
 #define FAR_UNDER 0.9       // a best repeat less alike than this may be passed over for a longer one,
 #define FAR_GAIN 0.08       // that is this much more alike
 #define RISE 2.0
-#define EARLY 4             // looks between two tries for a clean repeat to take early
+#define EARLY 4             // looks between two tries for a clean repeat to take early, or for a close one
+#define CLEAN 0.99          // how alike a close repeat's two places are to be: a hundredth of the power may differ
+#define ALONE 2.5e-5        // and how much of the ringing sound it may get wrong (beside): 46 dB down
+#define COARSE 0.12         // and how much less alike than that in the coarse ring, which has it to 4 samples only
+#define CLOSE_ROOM 16.0     // samples the lag keeps under a close repeat: the read's own, and the search around it
+#define CLOSE_FADE 0.025    // seconds: the longest seam of a close repeat,
+#define CLOSE_FADE_LEAST 32 // and the shortest, in samples
 #define SOFT_LAG 384        // samples: a lag under this is not shortened for what may be a soft note
+#define SOFT_WAIT 0.003     // seconds before it is: the first of a pick's rise looks like one, and is a start by then
+#define PATCH 0.002         // seconds over which a step in the output is let out (below, at the output)
+#define TRAIL 0.003         // seconds over which what carried overtones were adding dies away when they are dropped
 #define BROAD 5
 #define NARROW 30
 #define RANGES (BROAD + NARROW)
@@ -88,16 +119,31 @@
 #define MOVED 3.0           // Hz: an overtone this far from where the model has it is on the move, and not mended
 #define REFRESH 4800        // samples after which a model is made again
 #define MEND_MOST 8192      // samples: the longest mend
+#define FOLLOW 0.006        // seconds within which what the read points have of a carried overtone is known,
+#define SURE 0.005          // and over which that is evened out before it is believed
+#define PRIOR 0.010         // seconds before a seam over which the new read point is asked what it still has,
+#define HAD 0.6             // and the share of an overtone as fitted that it has to have had then, to be carried
+#define GONE 0.2            // an overtone the read points have less than this share of is given up,
+#define LET_GO 0.001        // over about this many seconds
+#define SOLO 1e-2           // a ringing sound is one note when all but this much of it sits on one note's overtones
+#define SOLO_FIRST 0.1      // and that note's first overtone is this loud against the loudest
 
 // The ringing sound's overtones
 typedef struct {
   int n, m;                 // how many, and the samples a fit takes: every second one, so over twice that many
   unsigned ref;             // the ring's sample the phases are at
   double w[TONES], amp[TONES], ph[TONES];  // radians a sample, the level (0: not ringing steadily), the phase
+  double lev[TONES];        // the level, ringing steadily or not
   double cw[TONES], sw[TONES];  // e^(2iw): an overtone's step from one fitted sample to the next
   float taper[FIT / 2];     // a fit's window
   double gram[2 * TONES][2 * TONES];  // a fit's matrix, factored
 } model;
+
+// What a carried overtone was adding to the output when it was dropped, which dies away over TRAIL: it turns on at
+// its own pitch (cr, ci by sr, si a sample) times what it was (zr, zi)
+typedef struct {
+  double cr, ci, sr, si, zr, zi;
+} trail;
 
 // An overtone being carried across a seam
 typedef struct {
@@ -107,9 +153,14 @@ typedef struct {
   double cphi, sphi;        // at the old read point it is this far behind
   double turn;              // the phase it starts out with against the new read point's, which the glide takes to 0
   double tr, ti, dr, di;    // e^i(what is left of that), and its step a sample for now
+  double hr, hi;            // what the read points really have of it, against what was fitted there: 1 at the seam
+  double step;              // how far that moves for what is read and not accounted for, a sample
+  double br, bi;            // the same evened out: what is believed
+  double keep, fall;        // the share of its mend still made, and what that is times a sample: 1 until it is given up
 } glider;
 
-enum { NONE, MATRIX, FIRST, SECOND };  // the making of a model: what comes next
+// The making of a model, a piece at a time (model_step): what comes next
+enum { NONE, TURN, PEAKS, MATRIX, FACTOR, FIRST, FIRST_ON, SECOND, SECOND_ON };
 
 struct sp {
   double rate, ratio, set;
@@ -137,6 +188,10 @@ struct sp {
   double moved;             // radians a sample: an overtone this far from where the model has it is on the move
   int soon;                 // a jump is wanted at the next look
   int eager, early;         // clean repeats are taken as soon as they fit, and the looks since that was last tried
+  double close, period;     // the longest close repeat, and the one the sound has now (0: none), both in samples
+  int seek, span;           // the looks since a close repeat was last looked for, and the samples `place` compares
+  int close_fade, even;     // CLOSE_FADE in samples, and whether the fade under way is a straight line
+  int alone;                // the number of the model the close repeat in use was last held against
   int look, attack, patient;
   long jumps, poor, attacks;
   double jumped, scores;    // the jumps' lengths and likenesses, summed
@@ -149,10 +204,22 @@ struct sp {
   unsigned q;               // the ring's sample the one being made is about
   int spectrum;             // the samples its spectrum is of
   double first[2 * TONES];  // its first fit
+  int turn, row;            // how far its spectrum's transform has got (the next span), and its fit's matrix (the next row)
+  double fo[TONES], fq[TONES], fa[TONES], fb[TONES];  // a fit of it that is half done: fit_sums' or_, oi, a and b
   double fr[FFT_N], fi[FFT_N];
   float straight[RING / SLOW / 2 + 16];  // the coarse ring's newest stretch, laid out straight (likeness)
   glider glide[TONES];
   int gliding, glide_len;   // samples of the glide under way that are left, and its length
+  double follow, let_go;    // FOLLOW as a step a sample, and LET_GO as what is kept from one sample to the next
+  double sure;              // SURE as a share of the newest, every 16 samples
+  int prior;                // PRIOR in samples
+  double old2, away, away_step;  // a read point that was being faded from when a jump came: its lag, its share of
+                            // what is faded from now, and that share's step down a sample
+  trail trail[3 * TONES];   // what dropped overtones were adding
+  int trails, trail_left, trail_len;
+  int cut;                  // a third read point has just been taken away (a jump inside a fade inside a fade)
+  double patch, y1, y2;     // the step that left in the output, which is let out over PATCH; the last two samples
+  int patch_left, patch_len, soft_wait;
   int glide_n, glide_gen;   // its overtones, and the number of the model they are of
 };
 
@@ -167,7 +234,8 @@ void sp_defaults(sp_params *p) {
   p->soft = 0.15;
   p->patient = 1;
   p->eager = 0;
-  p->mend = 1;
+  p->close_ms = 6;
+  p->mend = 0;
   p->mend_ms = 85;
   p->start_mend_ms = 85;
 }
@@ -194,10 +262,16 @@ sp *sp_new(double rate, const sp_params *params) {
   s->soft = params->soft > 0 ? params->soft : 1e9;
   s->patient = params->patient;
   s->eager = params->eager;
+  s->close = params->close_ms * 1e-3 * rate;
+  s->close_fade = (int)(CLOSE_FADE * rate);
+  s->span = s->look * SLOW < 768 ? s->look * SLOW : 768;
   s->mend = params->mend;
   s->mend_len = (int)fmin(params->mend_ms * 1e-3 * rate, MEND_MOST);
   s->start_len = (int)fmin(params->start_mend_ms * 1e-3 * rate, MEND_MOST);
   s->lag = LEAST_LAG;
+  s->follow = 2 / (FOLLOW * rate), s->let_go = exp(-1 / (LET_GO * rate)), s->sure = 1 - exp(-16 / (SURE * rate));
+  s->prior = (int)(PRIOR * rate);
+  s->patch_len = (int)(PATCH * rate), s->soft_wait = (int)(SOFT_WAIT * rate), s->trail_len = (int)(TRAIL * rate);
   s->tried = -REFRESH;
   s->ms_len = (int)(rate / 1000);
   s->hold_k = exp(-1 / (0.003 * rate));
@@ -309,11 +383,44 @@ static double beyond(sp *s, double from) {
   return best;
 }
 
+// How much of the ringing sound, as the model has it, a close repeat of `period` samples would get wrong: the power
+// of each overtone by how far it is from a whole multiple of the repeat, against all of them. An overtone a little
+// off (a string's own, a fiftieth of a turn a repeat) comes out turning evenly and costs nothing to speak of; one
+// half way between two multiples, which is another sound's, comes out at another pitch altogether, and counts half
+// (what seams that run into each other make of it, against what it should be): so the fourth power of the sine.
+static double beside(const model *md, double period) {
+  double all = 1e-30, off = 0;
+  for (int i = 0; i < md->n; i++) {
+    double h = md->w[i] * period / (2 * M_PI), d = sin(M_PI * (h - round(h))), p = md->lev[i] * md->lev[i];
+    all += p, off += p * d * d * d * d / 2;
+  }
+  return off / all;
+}
+
+// A close repeat: the shortest stretch, no longer than `limit` samples, after which the coarse ring has the sound
+// come round nearly cleanly; the read point then says how cleanly, and where exactly (place). 0 when there is none,
+// or when the likeness is still rising at the limit: its top is then past it.
+static int close_repeat(sp *s, double limit) {
+  enum { MOST = RING / SLOW / 4 };
+  double score[MOST + 2];
+  int lo = LEAST_JUMP / SLOW, hi = (int)(limit / SLOW);
+  if (hi > MOST) hi = MOST;
+  if (hi <= lo) return 0;
+  likeness(s, lo, hi + 1, score);
+  while (lo < hi && score[lo + 1] <= score[lo]) lo++;  // as in repeat
+  for (int by = lo; by <= hi; by++)
+    if (score[by] >= CLEAN - COARSE) {
+      while (by <= hi && score[by + 1] > score[by]) by++;
+      return by <= hi ? by * SLOW : 0;
+    }
+  return 0;
+}
+
 // The jump of about `near` samples from the read point, toward the input (down, 1) or away from it, that lands on
-// the most alike place: how far, to a fraction of a sample. *score: how alike.
-static double place(const sp *s, int down, int near, double *score) {
+// the most alike place, going by the `n` samples before each: how far, to a fraction of a sample. *score: how alike.
+static double place(const sp *s, int down, int near, int n, double *score) {
   enum { SPAN = SLOW + 2 };
-  int here = (int)s->lag, n = s->look * SLOW < 768 ? s->look * SLOW : 768, top = 0;
+  int here = (int)s->lag, top = 0;
   double v[2 * SPAN + 3];
   for (int k = -SPAN - 1; k <= SPAN + 1; k++) {
     int by = near + k;
@@ -328,24 +435,47 @@ static double place(const sp *s, int down, int near, double *score) {
 }
 
 // ------------------------------------------------------------------------------------------------
-// Mending a seam. Across a jump every overtone whose period does not divide the jump arrives out of step. In a plain
+// Mending a seam (`mend`), which is off: a seam is a plain crossfade unless it is asked for. The model of the ringing
+// sound that it goes by is kept all the same, since the close repeat asks it whether a note is alone (beside).
+// Why off. Mended, each overtone takes 85 ms to come round to where the new read point has it, and each by a
+// different way, so for those 85 ms the overtones are out of step with one another: the guitar's waveform is not the
+// guitar's. An ear hears little of that in the plain sound, where a mended chord measures steadier than a crossfaded
+// one. An amplifier's distortion makes its sound out of the waveform, and Pitch Shifter is always played through
+// one: there the mended sound is the further from the true thing (the recording played back slower, through the same
+// tone) by 3 to 12 dB on every kind of playing, and it is what was heard in the game as artifacts in chords. A plain
+// seam leaves the waveform the guitar's own but for its 5 ms. pitch/README.md has the figures.
+//
+// What a mend does: across a jump every overtone whose period does not divide the jump arrives out of step. In a plain
 // crossfade it dips, to nothing when it is half a period out, and even with its level kept, a phase that steps within
-// 10 ms is a blip in pitch: that is most of what a seam adds, and a chord has many such overtones. So:
+// 10 ms is a blip in pitch. So:
 //
 //   * a model of the ringing sound is kept: its overtones, found in a spectrum of up to 170 ms of it, their levels and
 //     phases fitted all at once to the newest samples (least squares: overtones too close for a spectrum to tell apart
 //     are still told apart by a fit that knows where they are), and each one's frequency set right from how far its
-//     phase comes between two fits. It is made in the background once a note has rung long enough, a piece of the
-//     work every 128 samples (model_step), again when a longer fit has become possible and then every 0.4 s;
+//     phase comes between two fits. It is made in the background once a note has rung long enough, a small piece
+//     of the work every 64 samples (model_step), again when a longer fit has become possible and then every 0.1 s;
 //   * at a seam one more fit gives the overtones' phases now (and keeps their frequencies right), and from then on,
 //     sample by sample, each overtone's two out-of-step copies are taken out of the crossfade and one copy put in that
 //     keeps its level and turns its phase from the old place's to the new one's slowly, over `mend_ms`, far longer
-//     than the crossfade (glide). A seam inside that time takes each overtone on from where its turn has got to.
+//     than the crossfade (glide). A seam inside that time takes each overtone on from where its turn has got to;
+//   * that takes on trust that an overtone rings on as it was fitted, and what was fitted is what the read points had
+//     over the 85 ms up to the seam. Two things keep the trust from being misplaced. Before a seam the new read
+//     point's last 10 ms are asked what they still have of each overtone (mend): one that has stopped there, a note
+//     before a gap, is not carried into the gap. And while overtones turn, what the read points really have of each
+//     is kept track of, sample by sample: what is read, less what all the carried overtones should make of it, moves
+//     each one's share toward what is there (within FOLLOW, all of them at once, so that close ones don't answer
+//     for each other; then evened out over SURE). An overtone found GONE, a string muted during its turn, is given
+//     up within a few milliseconds. Nothing else is done with the share. A mend made as much as the share says, or
+//     given up when the share strays at all, was tried and heard: under a pick's attack the share jumps about, and
+//     the mend with it, which is static at every pick and a chord that does not hold still.
 //
 // What the model doesn't account for is crossfaded as before, quickly, so a note it doesn't know of yet is not held
 // back. All of it comes from sound already in the ring: nothing waits for it.
 // ------------------------------------------------------------------------------------------------
-static void fft(double *re, double *im, int n) {
+// A transform in two parts, so that it need not be done in one go: the samples put in the order it wants them, and
+// then its passes, `passes` of them from the span `len` on. Returns the next span; the transform is done when that
+// is over n.
+static void fft_order(double *re, double *im, int n) {
   for (int i = 1, j = 0; i < n; i++) {
     int bit = n >> 1;
     for (; j & bit; bit >>= 1) j ^= bit;
@@ -356,7 +486,10 @@ static void fft(double *re, double *im, int n) {
       t = im[i], im[i] = im[j], im[j] = t;
     }
   }
-  for (int len = 2; len <= n; len <<= 1) {
+}
+
+static int fft_passes(double *re, double *im, int n, int len, int passes) {
+  for (; len <= n && passes > 0; len <<= 1, passes--) {
     double ang = -2 * M_PI / len, wr = cos(ang), wi = sin(ang);
     for (int i = 0; i < n; i += len) {
       double cr = 1, ci = 0;
@@ -370,6 +503,7 @@ static void fft(double *re, double *im, int n) {
       }
     }
   }
+  return len;
 }
 
 // The sum over a fit's window of e^(i t k): three sums of a plain run of e^(i t k), each of which has a closed form
@@ -387,11 +521,13 @@ static void taper_sum(double t, int m, double *re, double *im) {
 // 5 kHz, and nothing a guitar has above 12 kHz is loud enough to pass for one of them. c[2i], c[2i + 1]: overtone i
 // there is c[2i] cos(w k) + c[2i + 1] sin(w k), k samples before `last`, so its level is their hypot and its phase at
 // `last` their atan2.
-static void fit(sp *s, const model *md, unsigned last, double *c) {
-  int m = md->m, n = md->n;
-  double or_[TONES], oi[TONES], a[TONES], b[TONES];
-  for (int i = 0; i < n; i++) or_[i] = 1, oi[i] = a[i] = b[i] = 0;
-  for (int k = 0; k < m; k++) {
+//
+// In parts, for a model in the making, which is in no hurry: the sums over the samples (fit_sums, over the `from`-th
+// to the `to`-th fitted sample before `last`, begun with or_ 1 and the rest 0), and then the overtones from the sums
+// (fit_solve).
+static void fit_sums(const sp *s, const model *md, unsigned last, int from, int to, double *or_, double *oi, double *a, double *b) {
+  int n = md->n;
+  for (int k = from; k < to; k++) {
     double x = md->taper[k] * s->ring[(last - (unsigned)(2 * k)) & (RING - 1)];
     for (int i = 0; i < n; i++) {  // the overtones don't depend on each other: the compiler does several at a time
       double t = or_[i] * md->cw[i] - oi[i] * md->sw[i];
@@ -399,6 +535,10 @@ static void fit(sp *s, const model *md, unsigned last, double *c) {
       oi[i] = or_[i] * md->sw[i] + oi[i] * md->cw[i], or_[i] = t;
     }
   }
+}
+
+static void fit_solve(const model *md, const double *a, const double *b, double *c) {
+  int n = md->n;
   for (int i = 0; i < n; i++) c[2 * i] = a[i], c[2 * i + 1] = b[i];
   // The matrix is L times its transpose: first L, then the transpose
   for (int i = 0; i < 2 * n; i++) {
@@ -411,12 +551,19 @@ static void fit(sp *s, const model *md, unsigned last, double *c) {
   }
 }
 
-// The fit's matrix for the model's overtones, factored in place, and their steps for the fit. 0 if they can't be told
-// apart.
-static int fit_matrix(model *md) {
-  int m = md->m, n = md->n;
-  for (int i = 0; i < n; i++) md->cw[i] = cos(2 * md->w[i]), md->sw[i] = sin(2 * md->w[i]);
-  for (int i = 0; i < n; i++)
+static void fit(sp *s, const model *md, unsigned last, double *c) {
+  double or_[TONES], oi[TONES], a[TONES], b[TONES];
+  for (int i = 0; i < md->n; i++) or_[i] = 1, oi[i] = a[i] = b[i] = 0;
+  fit_sums(s, md, last, 0, md->m, or_, oi, a, b);
+  fit_solve(md, a, b, c);
+}
+
+// The fit's matrix for the model's overtones, in two parts: its rows from overtone `from` on, as many as hold about
+// `pairs` pairs of overtones (the pairs are the work: returns the overtone to go on from, md->n when done), and then
+// the whole of it factored in place (0 if the overtones can't be told apart).
+static int fit_rows(model *md, int from, int pairs) {
+  int m = md->m, n = md->n, i = from;
+  for (; i < n && pairs > 0; pairs -= i + 1, i++)
     for (int j = 0; j <= i; j++) {
       double dr, di, ar, ai;
       taper_sum(2 * (md->w[i] - md->w[j]), m, &dr, &di);
@@ -426,6 +573,11 @@ static int fit_matrix(model *md) {
       md->gram[2 * i + 1][2 * j] = (ai + di) / 2;      // sin i with cos j
       if (j < i) md->gram[2 * i][2 * j + 1] = (ai - di) / 2;  // cos i with sin j
     }
+  return i;
+}
+
+static int fit_factor(model *md) {
+  int n = md->n;
   double ridge = 1e-6 * md->gram[0][0];
   for (int i = 0; i < 2 * n; i++)
     for (int j = 0; j <= i; j++) {
@@ -463,7 +615,12 @@ static void peaks(sp *s, model *md, int spectrum) {
   }
 }
 
-// One piece of the work of making a model, if one is due
+// One piece of the work of making a model, if one is due. The pieces are small, a tenth of a millisecond or so each:
+// the work is done where the sound is, and a block of 64 samples has 1.3 ms for everything that plays the guitar.
+// Done in one go, the spectrum alone took half a millisecond and the matrix of a full chord as much again, ten times
+// a second.
+#define PASSES 3   // of the spectrum's transform to a piece
+#define PAIRS 160  // pairs of overtones of the fit's matrix to a piece
 static void model_step(sp *s) {
   model *md = &s->model[!s->active];
   double c[2 * TONES];
@@ -477,27 +634,56 @@ static void model_step(sp *s) {
       md->m = span / 2;
       s->q = s->at - 1;
       s->spectrum = (int)fmin(SPECTRUM, s->since - SETTLE);
+      // The samples under their window (its cosine by turning, a step a sample), in the order the transform wants
+      double step = 2 * M_PI / s->spectrum, wr = cos(step), wi = sin(step), cr = cos(step / 2), ci = sin(step / 2);
       for (int i = 0; i < FFT_N; i++) {
-        double x = i < s->spectrum ? s->ring[(s->q + 1 - (unsigned)s->spectrum + (unsigned)i) & (RING - 1)] : 0;
-        s->fr[i] = x * (0.5 - 0.5 * cos(2 * M_PI * (i + 0.5) / s->spectrum)), s->fi[i] = 0;
+        double x = i < s->spectrum ? s->ring[(s->q + 1 - (unsigned)s->spectrum + (unsigned)i) & (RING - 1)] : 0, t = cr * wr - ci * wi;
+        s->fr[i] = x * (0.5 - 0.5 * cr), s->fi[i] = 0;
+        ci = cr * wi + ci * wr, cr = t;
       }
-      fft(s->fr, s->fi, FFT_N);
+      fft_order(s->fr, s->fi, FFT_N);
+      s->turn = 2, s->stage = TURN;
+      return;
+    }
+    case TURN:
+      s->turn = fft_passes(s->fr, s->fi, FFT_N, s->turn, PASSES);
+      if (s->turn <= FFT_N) return;
       for (int k = 0; k < FFT_N / 4; k++) s->fr[k] = s->fr[k] * s->fr[k] + s->fi[k] * s->fi[k];
-      s->stage = MATRIX;
+      s->stage = PEAKS;
+      return;
+    case PEAKS: {
+      peaks(s, md, s->spectrum);
+      double step = 2 * M_PI / md->m, wr = cos(step), wi = sin(step), cr = cos(step / 2), ci = sin(step / 2);
+      for (int k = 0; k < md->m; k++) {
+        double t = cr * wr - ci * wi;
+        md->taper[k] = (float)(0.5 - 0.5 * cr);
+        ci = cr * wi + ci * wr, cr = t;
+      }
+      for (int i = 0; i < md->n; i++) md->cw[i] = cos(2 * md->w[i]), md->sw[i] = sin(2 * md->w[i]);
+      s->row = 0, s->stage = md->n ? MATRIX : NONE;
       return;
     }
     case MATRIX:
-      peaks(s, md, s->spectrum);
-      for (int k = 0; k < md->m; k++) md->taper[k] = (float)(0.5 - 0.5 * cos(2 * M_PI * (k + 0.5) / md->m));
-      s->stage = md->n && fit_matrix(md) ? FIRST : NONE;
-      for (int i = 0; s->stage && i < md->n; i++) md->cw[i] = cos(2 * md->w[i]), md->sw[i] = sin(2 * md->w[i]);
+      s->row = fit_rows(md, s->row, PAIRS);
+      if (s->row >= md->n) s->stage = FACTOR;
+      return;
+    case FACTOR:
+      s->stage = fit_factor(md) ? FIRST : NONE;
       return;
     case FIRST:
-      fit(s, md, s->q, s->first);
+    case SECOND:  // half a fit earlier
+      for (int i = 0; i < md->n; i++) s->fo[i] = 1, s->fq[i] = s->fa[i] = s->fb[i] = 0;
+      fit_sums(s, md, s->stage == FIRST ? s->q : s->q - (unsigned)md->m, 0, md->m / 2, s->fo, s->fq, s->fa, s->fb);
+      s->stage++;
+      return;
+    case FIRST_ON:
+      fit_sums(s, md, s->q, md->m / 2, md->m, s->fo, s->fq, s->fa, s->fb);
+      fit_solve(md, s->fa, s->fb, s->first);
       s->stage = SECOND;
       return;
-    case SECOND:
-      fit(s, md, s->q - (unsigned)md->m, c);  // half a fit earlier
+    case SECOND_ON:
+      fit_sums(s, md, s->q - (unsigned)md->m, md->m / 2, md->m, s->fo, s->fq, s->fa, s->fb);
+      fit_solve(md, s->fa, s->fb, c);
       for (int i = 0; i < md->n; i++) {
         double here = hypot(s->first[2 * i], s->first[2 * i + 1]), back = hypot(c[2 * i], c[2 * i + 1]);
         // The frequency, from how far the phase has come in half a fit against what the spectrum said. A fit with a
@@ -507,6 +693,7 @@ static void model_step(sp *s) {
         // An overtone that is not about as loud in both places is not ringing steadily: left to the crossfade
         int steady = here > 1e-6 && back > 0.6 * here && back < 1.6 * here && fabs(off) * md->m < 2.5;
         md->amp[i] = steady ? here : 0;
+        md->lev[i] = here;
         md->w[i] += steady ? off : 0;
         md->ph[i] = atan2(s->first[2 * i + 1], s->first[2 * i]) + off * (md->m - 1);  // the window's middle is m - 1 back
       }
@@ -514,6 +701,17 @@ static void model_step(sp *s) {
       s->active = !s->active, s->ready = 1, s->gen++, s->made = s->since, s->stage = NONE;
       return;
   }
+}
+
+// Whether the ringing sound, as the model has it, is one note: one of its louder overtones is a first overtone that
+// all the others sit over (beside). A chord is not, nor a power chord, whose fifth sits between; two notes an octave
+// apart are.
+static int solo(const model *md) {
+  double top = 0;
+  for (int i = 0; i < md->n; i++) top = fmax(top, md->lev[i]);
+  for (int i = 0; i < md->n; i++)
+    if (md->lev[i] >= SOLO_FIRST * top && beside(md, 2 * M_PI / md->w[i]) <= SOLO) return 1;
+  return 0;
 }
 
 // Starts the glide for a crossfade from the lag `from` to the lag `to`, both as they are before this sample's drift,
@@ -527,6 +725,7 @@ static int mend(sp *s, double from, double to, int len) {
   // Where the two read points are for the crossfade's first sample, and the ring's sample just before each
   double pa = (double)q - from - (1 - s->ratio), pb = (double)q - to - (1 - s->ratio), qa = floor(pa), qb = floor(pb);
   double here[2 * TONES], there[2 * TONES], span = qb - qa;
+  double or_[TONES], oi[TONES], cw[TONES], sw[TONES];  // each carried overtone, PRIOR before the new read point; its step
   fit(s, md, (unsigned)(long long)qa, here);
   fit(s, md, (unsigned)(long long)qb, there);
   int same = s->gliding && s->glide_gen == s->gen;
@@ -534,7 +733,7 @@ static int mend(sp *s, double from, double to, int len) {
     glider *g = &s->glide[i];
     double la = hypot(here[2 * i], here[2 * i + 1]), lb = hypot(there[2 * i], there[2 * i + 1]), w = md->w[i];
     double pha = atan2(here[2 * i + 1], here[2 * i]), phb = atan2(there[2 * i + 1], there[2 * i]);
-    double left = same && g->a > 0 ? atan2(g->ti, g->tr) : 0;  // of the turn under way
+    double left = same && g->a > 0 && g->fall == 1 ? atan2(g->ti, g->tr) : 0;  // of the turn under way
     g->a = 0;
     // An overtone that is not about as loud in both places is not ringing steadily: left to the crossfade
     if (md->amp[i] <= 0 || la < 1e-6 || lb < 0.6 * la || lb > 1.6 * la) continue;
@@ -551,52 +750,182 @@ static int mend(sp *s, double from, double to, int len) {
     g->turn = remainder(left - apart, 2 * M_PI);
     g->tr = cos(g->turn), g->ti = sin(g->turn), g->dr = g->di = 0;
     g->lv = la, g->dv = 0;
+    g->hr = g->br = 1, g->hi = g->bi = 0, g->step = 0, g->keep = g->fall = 1;
+    double before = phb + w * (qb - (s->prior - 1) - pb);
+    or_[i] = cos(before), oi[i] = sin(before), cw[i] = cos(w), sw[i] = sin(w);
+  }
+  // A fit is of the 85 ms before a read point, and says what rang over them, not what still rings at their end. A
+  // seam that lands just after a note has stopped (a gap between two notes, a muted string) would carry the note
+  // into the gap: a burst of it where there is silence. So the new read point's last PRIOR is gone through as the
+  // glide goes through what follows (the same following, sample by sample), and an overtone it has not had HAD of
+  // is not carried at all.
+  for (int j = s->prior - 1; j >= 0; j--) {
+    double x = s->ring[((unsigned)(long long)qb - (unsigned)j) & (RING - 1)], model = 0;
+    for (int i = 0; i < md->n; i++) {
+      glider *g = &s->glide[i];
+      if (g->a > 0) model += g->a * (g->hr * or_[i] - g->hi * oi[i]);
+    }
+    double rest = x - model;
+    for (int i = 0; i < md->n; i++) {
+      glider *g = &s->glide[i];
+      if (g->a <= 0) continue;
+      double k = 2 * s->follow / g->a * rest, t = or_[i] * cw[i] - oi[i] * sw[i];  // twice as fast as the glide's
+      g->hr += k * or_[i], g->hi -= k * oi[i];
+      oi[i] = or_[i] * sw[i] + oi[i] * cw[i], or_[i] = t;
+    }
+  }
+  for (int i = 0; i < md->n; i++) {
+    glider *g = &s->glide[i];
+    if (g->a <= 0) continue;
+    double has = hypot(g->hr, g->hi);
+    if (has < HAD) g->a = 0;
+    g->br = g->hr, g->bi = g->hi;  // the glide's following goes on from here
   }
   s->gliding = s->glide_len = len, s->glide_n = md->n, s->glide_gen = s->gen;
   return 1;
 }
 
 // This sample's mend: what the gliding overtones are, less what the read points give of them. `share`: how much of
-// the output is the new read point's (1 once the crossfade is over).
-static double glide(sp *s, double share) {
+// the output is the new read point's (1 once the crossfade is over); `y`: what the read points give, all of it.
+static double glide(sp *s, double share, double y) {
   int at = s->glide_len - s->gliding, len = s->glide_len;
   if (at % 16 == 0) {
     // Each overtone's turn for the next 16 samples: where it has got to, and a straight line to where it is to be
     double now = 0.5 + 0.5 * cos(M_PI * at / len), then = at + 16 >= len ? 0 : 0.5 + 0.5 * cos(M_PI * (at + 16) / len);
+    int left = 0;
     for (int i = 0; i < s->glide_n; i++) {
       glider *g = &s->glide[i];
       if (g->a <= 0) continue;
+      g->br += s->sure * (g->hr - g->br), g->bi += s->sure * (g->hi - g->bi);
+      if (g->fall == 1 && g->br * g->br + g->bi * g->bi < GONE * GONE) g->fall = s->let_go;
+      if (g->keep < 0.01) {
+        g->a = 0;
+        continue;
+      }
+      left++;
       double norm = hypot(g->cr, g->ci);
       g->cr /= norm, g->ci /= norm;
       g->tr = cos(g->turn * now), g->ti = sin(g->turn * now);
       g->dr = (cos(g->turn * then) - g->tr) / 16, g->di = (sin(g->turn * then) - g->ti) / 16;
       g->lv = g->a + (g->was - g->a) * now, g->dv = (g->was - g->a) * (then - now) / 16;
+      // How much of it the read points should have between them now, squared: its following is as fast whatever that is
+      double mr = share * g->a + (1 - share) * g->was * g->cphi, mi = (1 - share) * g->was * g->sphi;
+      g->step = s->follow / fmax(mr * mr + mi * mi, 0.25 * g->a * g->a);
+    }
+    if (!left) {  // nothing left to carry
+      s->gliding = 0;
+      return 0;
     }
   }
-  double fix = 0;
+  double fix = 0, model = 0, er[TONES], ei[TONES];
   for (int i = 0; i < s->glide_n; i++) {
     glider *g = &s->glide[i];
     if (g->a <= 0) continue;
-    double out = g->cr * g->tr - g->ci * g->ti, old = g->cr * g->cphi + g->ci * g->sphi;
-    fix += g->lv * out - share * g->a * g->cr - (1 - share) * g->was * old;
+    // The overtone as it is to come out, and, as a complex number, as the read points should have it between them
+    double out = g->cr * g->tr - g->ci * g->ti;
+    double old_r = g->cr * g->cphi + g->ci * g->sphi, old_i = g->ci * g->cphi - g->cr * g->sphi;
+    double e_r = share * g->a * g->cr + (1 - share) * g->was * old_r, e_i = share * g->a * g->ci + (1 - share) * g->was * old_i;
+    fix += g->keep * (g->lv * out - e_r);
+    model += g->hr * e_r - g->hi * e_i;
+    er[i] = e_r, ei[i] = e_i;
     double t = g->cr * g->sr - g->ci * g->si;
     g->ci = g->cr * g->si + g->ci * g->sr, g->cr = t;
-    g->tr += g->dr, g->ti += g->di, g->lv += g->dv;
+    g->tr += g->dr, g->ti += g->di, g->lv += g->dv, g->keep *= g->fall;
+  }
+  // What is read and the carried overtones don't account for, laid at each one's door by how much it is like it
+  double rest = y - model;
+  for (int i = 0; i < s->glide_n; i++) {
+    glider *g = &s->glide[i];
+    if (g->a <= 0) continue;
+    g->hr += g->step * rest * er[i], g->hi -= g->step * rest * ei[i];
   }
   s->gliding--;
   return fix;
 }
 
+// The new read point's share of the output's next sample: 1 with no fade under way
+static double fade_gain(const sp *s) {
+  if (!s->fade) return 1;
+  double g = (double)(s->fade_len - s->fade + 1) / (s->fade_len + 1);
+  return s->even ? g : 0.5 - 0.5 * cos(M_PI * g);
+}
+
+// A jump does not wait for a fade under way to end: a start takes the read point at once. The read point that fade
+// was coming from is not dropped for it, which would be a step in the output as large as what it still gave (a
+// tenth of full scale has been seen, at ordinary picks): it goes on fading out, beside the one the fade was going
+// to, for as long as the new fade lasts.
 static void jump(sp *s, double to, int fade) {
+  if (s->fade) {
+    if (s->away > 0) s->cut = 1;  // a third one: let out as a step is, at the output
+    s->old2 = s->old, s->away = 1 - fade_gain(s), s->away_step = s->away / fade;
+  } else
+    s->away = 0;
   s->old = s->lag;
   s->lag = to;
   s->fade = s->fade_len = fade;
+  s->even = 0;
+}
+
+// What the carried overtones add to the output's next sample (`sign` 1) is given to the trail, to die away from
+// there: for when they are dropped, or start over from other fits (then with what those add taken off, `sign` -1,
+// so that the trail is the difference). `share` as in glide.
+static void trail_add(sp *s, double sign, double share) {
+  if (s->trail_left) {  // what is still dying away, from where it has got to
+    double r = 0.5 - 0.5 * cos(M_PI * s->trail_left / s->trail_len);
+    for (int i = 0; i < s->trails; i++) s->trail[i].zr *= r, s->trail[i].zi *= r;
+  } else
+    s->trails = 0;
+  for (int i = 0; i < s->glide_n && s->trails < 3 * TONES; i++) {
+    const glider *g = &s->glide[i];
+    if (g->a <= 0) continue;
+    trail *t = &s->trail[s->trails++];
+    t->cr = g->cr, t->ci = g->ci, t->sr = g->sr, t->si = g->si;
+    t->zr = sign * g->keep * (g->lv * g->tr - share * g->a - (1 - share) * g->was * g->cphi);
+    t->zi = sign * g->keep * (g->lv * g->ti + (1 - share) * g->was * g->sphi);
+  }
+  s->trail_left = s->trail_len;
+}
+
+// The carried overtones are dropped
+static void let_go(sp *s) {
+  if (s->gliding) trail_add(s, 1, fade_gain(s));
+  s->gliding = 0;
 }
 
 // A jump with its seam mended, if that can be: over `len` samples
 static void seam(sp *s, double to, int fade, int len) {
-  if (!(s->mend && len > fade && mend(s, s->lag, to, len))) s->gliding = 0;
+  int carrying = s->gliding > 0;
+  if (carrying) trail_add(s, 1, fade_gain(s));
+  if (!(s->mend && len > fade && mend(s, s->lag, to, len)))
+    s->gliding = 0;
+  else if (carrying)
+    trail_add(s, -1, 0);
   jump(s, to, fade);
+}
+
+// A close repeat's jump: by as many of the repeat as the lag holds, or fewer, by halves, until the two places are
+// alike enough. 0 when not even one is: the sound has changed, and the repeat is forgotten.
+static int close_seam(sp *s, double drift) {
+  int n = (int)fmin(fmax(4 * s->period, s->span / 4), s->span);  // a few periods: a pitch on the move is still one
+  int most = (int)((s->lag - CLOSE_ROOM) / s->period);
+  if (most < 1) return 0;  // not yet
+  for (int m = most; m >= 1; m /= 2) {
+    double score, far = place(s, 1, (int)lround(m * s->period), n, &score);
+    if (score < CLEAN || s->lag - far < LEAST_LAG + 2) continue;
+    double after = s->lag - far;
+    s->period = far / m;
+    // The seam lasts as long as the lag takes to grow by one repeat again, so that the next one follows on; shorter
+    // while there is more than one repeat left to take back
+    int fade = after - CLOSE_ROOM >= s->period ? (int)(2 * s->period) : (int)(s->period / drift);
+    fade = fade > s->close_fade ? s->close_fade : fade < CLOSE_FADE_LEAST ? CLOSE_FADE_LEAST : fade;
+    let_go(s);
+    jump(s, after, fade);
+    s->even = 1;
+    s->jumps++, s->jumped += far, s->scores += score;
+    return 1;
+  }
+  s->period = 0;
+  return 0;
 }
 
 // 2 when this sample starts a note, 1 when it may (a small rise)
@@ -654,6 +983,7 @@ void sp_process(sp *s, const float *in, float *out, int frames) {
     // A start's pause counts down where starts are looked for, under a downward shift alone: one left over from there
     // would keep any other shift from ever jumping
     if (!(s->ratio < 1)) s->rest = 0, s->soon = 0;
+    s->period = 0;
   }
   int down = s->ratio < 1;
   double drift = 1 - s->ratio;
@@ -667,19 +997,30 @@ void sp_process(sp *s, const float *in, float *out, int frames) {
       s->sum4 = 0;
     }
     if (s->ratio == 1) {  // nothing to shift: the lag is let run out, and then the input is copied
-      if (s->lag > 0 && !s->fade) s->gliding = 0, jump(s, 0, FADE);
+      if (s->lag > 0 && !s->fade) let_go(s), jump(s, 0, FADE);
     } else {
-      if (s->mend && (s->at & 127) == 0) model_step(s);
+      if ((s->mend || s->close > 0) && (s->at & 63) == 0) model_step(s);  // the close repeat asks it too (beside)
       int start = s->attack && down ? starts(s, x) : 0;
       // What may be a soft note under louder ones is not worth a seam where the read point stands; it is worth an
       // ordinary jump to a repeat a little early, if the lag is long enough to be heard on a note
-      if (start == 1 && s->patient && s->lag >= SOFT_LAG) s->soon = 1, s->check = CHECK;
+      // The first of a pick's rise is such a small rise too: the jump waits SOFT_WAIT, by when a pick has become a
+      // start, which takes the lag back itself (a jump made first would be cut off by it mid-fade).
+      if (start == 1 && s->patient && s->lag >= SOFT_LAG && !s->soon) s->soon = 1, s->check = CHECK - s->soft_wait;
       if (start == 2) {
-        // What rang before the start rings on under it: its overtones are carried across this seam as across any
-        if (s->lag > ATTACK_LAG + 24) seam(s, ATTACK_LAG, FADE_ATTACK, s->start_len), s->attacks++;
+        // What rang before the start may ring on under it or have been played over, and nothing tells which in the
+        // start's first milliseconds. So it goes by what rang: a chord is taken to ring on, as under the next string
+        // of a strum or a note picked over it, and its overtones are carried across this seam as across any
+        // (`start_mend_ms`); a single note is taken to have been replaced, as by the next note of a line, and is not
+        // carried: carried, it sounds on into the new note for 85 ms, at times louder than it was.
+        if (s->lag > ATTACK_LAG + 24) seam(s, ATTACK_LAG, FADE_ATTACK, s->ready && solo(&s->model[s->active]) ? 0 : s->start_len), s->attacks++;
         s->since = 0, s->ready = 0, s->stage = NONE, s->tried = -REFRESH;
-        s->soon = 0;
-      } else if (s->since++, !s->fade && !s->rest && ++s->check >= CHECK) {
+        s->soon = 0, s->period = 0;
+      } else if (s->since++, s->fade || s->rest) {
+      } else if (s->period > 0 && s->alone != s->gen && (s->alone = s->gen, beside(&s->model[s->active], s->period) > ALONE)) {
+        s->period = 0;  // a new model of the ringing sound has something in it that does not come round with the repeat
+      } else if (s->period > 0 && s->lag >= s->period + CLOSE_ROOM && !s->gliding) {
+        close_seam(s, drift);  // a close repeat: looked at every sample, so one seam follows on the last
+      } else if (++s->check >= CHECK) {
         s->check = 0;
         double room = s->lag - LEAST_LAG - 2, score = 0, far = 0;
         if (down && s->patient) {
@@ -691,17 +1032,28 @@ void sp_process(sp *s, const float *in, float *out, int frames) {
             if (by && !s->soon && s->lag < s->far && here < FAR_UNDER && beyond(s, room) >= here + FAR_GAIN) by = 0, here = -1;
             s->soon = 0;
             if (by)
-              far = place(s, 1, by, &score);
+              far = place(s, 1, by, s->span, &score);
             else if (here < 0)
               ;
             else if (s->lag >= s->most + 4 * CHECK)
-              s->gliding = 0, jump(s, LEAST_LAG, FADE);  // nothing found in time: silence
+              let_go(s), jump(s, LEAST_LAG, FADE);  // nothing found in time: silence
+          } else if (s->close > 0 && !s->period && !s->gliding && s->ready && room - 8 >= LEAST_JUMP && ++s->seek >= EARLY) {
+            // A sound that comes round cleanly within a few milliseconds, a note high up, and that the model of the
+            // ringing sound shows to be all there is: taken a repeat at a time from here on (close_seam). Half of
+            // what the coarse ring found, if that is a repeat too.
+            s->seek = 0;
+            int by = close_repeat(s, fmin(room - 8, s->close));
+            double alike = 0, at = by ? place(s, 1, by, s->span, &alike) : 0, half = 0;
+            if (alike >= CLEAN && at / 2 >= LEAST_JUMP) half = place(s, 1, (int)lround(at / 2), s->span, &score);
+            if (alike >= CLEAN && half > 0 && score >= CLEAN) at = half;
+            if (alike >= CLEAN && beside(&s->model[s->active], at) <= ALONE) s->period = at, s->alone = s->gen, close_seam(s, drift);
+            score = 0;
           } else if (s->eager && room >= LEAST_JUMP && ++s->early >= EARLY) {
             // A sound that repeats cleanly and soon, a single note or a power chord, loses nothing by a seam: it
             // is not made to wait, and its lag stays within one repeat. Looked for every few looks only.
             s->early = 0;
             int by = repeat(s, room, 0, &score);
-            if (by && score >= s->good) far = place(s, 1, by, &score);
+            if (by && score >= s->good) far = place(s, 1, by, s->span, &score);
             if (score < s->good) far = 0;
           }
         } else if (down && room >= LEAST_JUMP) {
@@ -709,16 +1061,16 @@ void sp_process(sp *s, const float *in, float *out, int frames) {
           // A lag that holds two of them or more (a high note, or after a long seam): the longest it holds
           if (by && room >= 2 * by) by = repeat(s, room, 1, NULL);
           if (by && room >= by)
-            far = place(s, 1, by, &score);
+            far = place(s, 1, by, s->span, &score);
           else if (!by)
-            s->gliding = 0, jump(s, LEAST_LAG, FADE);  // silence: nothing to keep in step
+            let_go(s), jump(s, LEAST_LAG, FADE);  // silence: nothing to keep in step
         } else if (!down && s->lag < LEAST_LAG + (CHECK + 2 * FADE) * -drift + 4) {
           // The lag must not run out before the next look, or under a fade
           int by = repeat(s, s->most, 0, NULL);
-          if (by) far = place(s, 0, by, &score);
+          if (by) far = place(s, 0, by, s->span, &score);
         }
         if (far > 0) {
-          seam(s, down ? s->lag - far : s->lag + far, score >= s->good ? FADE : 2 * FADE, s->mend_len);
+          seam(s, down ? s->lag - far : s->lag + far, FADE, s->mend_len);
           s->jumps++, s->poor += score < s->good, s->jumped += far, s->scores += score;
         }
       }
@@ -729,11 +1081,34 @@ void sp_process(sp *s, const float *in, float *out, int frames) {
     if (s->fade) {
       s->old += drift;
       if (s->old < 2) s->old = 2;
-      g = 0.5 - 0.5 * cos(M_PI * (double)(s->fade_len - s->fade + 1) / (s->fade_len + 1));
-      y = g * y + (1 - g) * read_at(s, s->old);
-      s->fade--;
+      g = (double)(s->fade_len - s->fade + 1) / (s->fade_len + 1);
+      if (!s->even) g = 0.5 - 0.5 * cos(M_PI * g);
+      double from = read_at(s, s->old);
+      if (s->away > 0) {  // and the read point the fade before this one was coming from (jump)
+        s->old2 += drift;
+        if (s->old2 < 2) s->old2 = 2;
+        from += s->away * (read_at(s, s->old2) - from);
+        s->away -= s->away_step;
+      }
+      y = g * y + (1 - g) * from;
+      if (!--s->fade) s->away = 0;
     }
-    if (s->gliding) y += glide(s, g);
+    if (s->gliding) y += glide(s, g, y);
+    if (s->trail_left) {  // what dropped overtones were adding, dying away
+      double sum = 0;
+      for (int i = 0; i < s->trails; i++) {
+        trail *t = &s->trail[i];
+        sum += t->cr * t->zr - t->ci * t->zi;
+        double c = t->cr * t->sr - t->ci * t->si;
+        t->ci = t->cr * t->si + t->ci * t->sr, t->cr = c;
+      }
+      y += sum * (0.5 - 0.5 * cos(M_PI * s->trail_left-- / s->trail_len));
+    }
+    // A step all the same: a jump inside a fade inside a fade leaves a third read point, which is dropped. What is
+    // missing against where the last two samples were heading is put back, and let out over PATCH.
+    if (s->cut) s->cut = 0, s->patch = 2 * s->y1 - s->y2 - y, s->patch_left = s->patch_len;
+    if (s->patch_left) y += s->patch * (0.5 - 0.5 * cos(M_PI * s->patch_left-- / s->patch_len));
+    s->y2 = s->y1, s->y1 = y;
     out[f] = (float)y;
   }
 }
