@@ -116,6 +116,8 @@ enum Catalog {
                   help: "Moves the game's window to another screen when the game starts."),
         ModToggle(label: "Show Current Note", key: "ShowCurrentNoteOnScreen",
                   help: "The note you play, as the game hears it: in a song left of the middle, elsewhere at the top. Needs RS Re-ARMed 1.11.0."),
+        ModToggle(label: "Nashville Numbers", key: "NashvilleNumbers",
+                  help: "In a song, the chord being played as a numeral of the song's key (IV, vi, \u{266D}VII), right of the middle. The key is guessed from the song's notes; the key gives the song another. Needs RS Re-ARMed 1.13.0 (Learn & Play 1.12.0)."),
         ModToggle(label: "Guitar Speak", key: "GuitarSpeak",
                   help: "Play notes on your guitar to press keys in the game's menus."),
         ModToggle(label: "Show Current Accuracy", key: "DisplayCurrentAccuracy",
@@ -156,7 +158,7 @@ enum Catalog {
     static let categories: [ModCategory] = [
         ModCategory(name: "Screen", icon: "tv", keys: [
             "ToggleLoft", "GreenScreenWall", "Skyline", "Lyrics", "ShowSongTimer", "DisplayCurrentAccuracy",
-            "ShowCurrentNoteOnScreen", "Sunlight", "SecondaryMonitor", "ScreenShotScores",
+            "ShowCurrentNoteOnScreen", "NashvilleNumbers", "Sunlight", "SecondaryMonitor", "ScreenShotScores",
         ]),
         ModCategory(name: "Highway & Neck", icon: "guitars", keys: [
             "CameraDirector", "Headstock", "Fretless", "Inlays", "LaneMarkers", "RemoveFingerprints", "ExtendedRange",
@@ -206,6 +208,7 @@ enum Catalog {
         Keybind(label: "Sunlight", section: Section.keybinds, key: "SunlightKey", mod: "Sunlight"),
         Keybind(label: "Pitch Shifter Down", section: Section.keybinds, key: "PitchShifterDownKey", mod: "PitchShifter"),
         Keybind(label: "Pitch Shifter Up", section: Section.keybinds, key: "PitchShifterUpKey", mod: "PitchShifter"),
+        Keybind(label: "Nashville Numbers Key", section: Section.keybinds, key: "NashvilleKeyKey", mod: "NashvilleNumbers"),
         Keybind(label: "Rainbow Strings", section: Section.keybinds, key: "RainbowStringsKey", mod: "RainbowStrings"),
         Keybind(label: "Rainbow Notes", section: Section.keybinds, key: "RainbowNotesKey", mod: "RainbowNotes"),
         Keybind(label: "Toggle Extended Range", section: Section.keybinds, key: "ToggleExtendedRangeKey",
@@ -317,7 +320,7 @@ enum Catalog {
             "SeparateNoteColors": "off", "RainbowNotes": "off", "RainbowStrings": "off", "ProfileToLoad": "",
             "RemoveFingerprints": "off", "GreenScreenWall": "off", "UseCustomNSPTimer": "off", "SecondaryMonitor": "off",
             "ExtendedRange": "off", "ExtendedRangeDropTuning": "off", "ExtendedRangeFixBassTuning": "off",
-            "ShowCurrentNoteOnScreen": "off", "GuitarSpeak": "off", "PreventMidSongPause": "off", "FixBrokenTones": "off",
+            "ShowCurrentNoteOnScreen": "off", "NashvilleNumbers": "off", "GuitarSpeak": "off", "PreventMidSongPause": "off", "FixBrokenTones": "off",
             "DisplayCurrentAccuracy": "off", "CustomSongListTitles": "off", "CustomTunings": "off", "DefaultTones": "off",
             "MoreSongLists": "off", "SevenString": "off", "PlainPackages": "off",
         ],
@@ -337,13 +340,14 @@ enum Catalog {
             "SeparateNoteColorsMode": "0", "CustomNSPTimeLimit": "10000", "SecondaryMonitorXPosition": "0",
             "SecondaryMonitorYPosition": "0", "ExtendedRangeModeAt": "-5", "NumberOfSongLists": "6",
             "SongStemsGuitarLevel": "0", "SongStemsBassLevel": "0", "SongStemsCacheMB": "500",
-            "PitchShifterSemitones": "-1",
+            "PitchShifterSemitones": "-1", "NashvilleStyle": "roman", "NashvilleMinor": "tonic", "NashvilleDetail": "simple",
         ],
         Section.keybinds: [
             "RRSpeedKey": "R", "LoopStartKey": "Y", "LoopEndKey": "U", "RewindKey": "Z", "ShowSongTimerKey": "I",
             "ForceReEnumerationKey": "F", "ToggleLoftKey": "T", "RemoveLyricsKey": "L", "CameraZoomKey": "K",
             "CameraHeightKey": "H", "CameraSideKey": "D", "CameraTiltKey": "M", "CameraResetKey": "J",
             "SunlightKey": "G", "PitchShifterDownKey": "VK_OEM_COMMA", "PitchShifterUpKey": "VK_OEM_PERIOD", "RainbowNotesKey": "N", "RainbowStringsKey": "V", "ToggleExtendedRangeKey": "E",
+            "NashvilleKeyKey": "Q",
         ],
         Section.guitarSpeak: [
             "GuitarSpeakDeleteWhen": "0", "GuitarSpeakSpaceWhen": "0", "GuitarSpeakEnterWhen": "0",

@@ -53,6 +53,7 @@ static const rsm_mod *const MODS[] = {
     &rsm_mod_profile_backups,
     &rsm_mod_game_note,  // before the two that use the note
     &rsm_mod_current_note,
+    &rsm_mod_nashville,
     &rsm_mod_guitar_speak,
     &rsm_mod_buggy_tones,
     &rsm_mod_accuracy,

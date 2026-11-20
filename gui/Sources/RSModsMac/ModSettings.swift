@@ -11,7 +11,7 @@ struct ModSettings: View {
         "ForceReEnumeration", "ForceProfileLoad", "UseCustomNSPTimer", "RRSpeedAboveOneHundred", "VolumeControl",
         "AllowRewind", "AllowLooping", "OverrideInputVolumeEnabled", "ToneHost", "SongStems", "PitchShifter", "SecondaryMonitor",
         "BackupProfile", "GuitarSpeak", "MoreSongLists", "CustomSongListTitles", "CustomTunings", "DefaultTones",
-        "CustomStringColors", "SeparateNoteColors", "CustomHighwayColors", "SevenString",
+        "CustomStringColors", "SeparateNoteColors", "CustomHighwayColors", "SevenString", "NashvilleNumbers",
     ]
 
     var body: some View {
@@ -44,6 +44,7 @@ struct ModSettings: View {
             ])
         case "CameraDirector": CameraDirectorSettings()
         case "Sunlight": SunlightSettings()
+        case "NashvilleNumbers": NashvilleSettings()
         case "ExtendedRange": ExtendedRangeSettings()
         case "ForceReEnumeration": EnumerationSettings()
         case "ForceProfileLoad": ProfileLoadSettings()
@@ -121,6 +122,29 @@ private struct SunlightSettings: View {
         .pickerStyle(.radioGroup)
         .labelsHidden()
         Text("The sunlight key goes through these in the game. In a song the venue goes too. Needs the Metal renderer.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct NashvilleSettings: View {
+    @EnvironmentObject var store: SettingsStore
+
+    var body: some View {
+        Picker("Show", selection: store.binding(Section.settings, "NashvilleStyle")) {
+            Text("Roman numerals: IV, vi, \u{266D}VII").tag("roman")
+            Text("Nashville numbers: 4, 6m, \u{266D}7").tag("numbers")
+        }
+        Picker("A minor key", selection: store.binding(Section.settings, "NashvilleMinor")) {
+            Text("From its own tonic: Am is 1m").tag("tonic")
+            Text("From its relative major: Am is 6m").tag("relative")
+        }
+        Picker("Chords", selection: store.binding(Section.settings, "NashvilleDetail")) {
+            Text("Simple, as a chart writes them: \u{266D}VII, V7, Vsus").tag("simple")
+            Text("Full, as their notes name them: \u{266D}VII5, V9, Vsus2, Imaj7").tag("full")
+        }
+        Text("The key is a guess from the song's notes: right for most songs, but one with a \u{266D}VII may come out a fourth up. The Nashville Numbers key gives a song the next likely key, and the game keeps it for that song; Control + the key goes back to the guess.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

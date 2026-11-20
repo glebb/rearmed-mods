@@ -395,6 +395,23 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * `[Highway Colors]` `CustomHighwayColors`, `CustomHighwayNumbered`, `CustomHighwayUnNumbered`, `CustomHighwayGutter`,
     `CustomFretNubmers` (spelled so on Windows too)
 
+* **Nashville Numbers** (not in RSMods)
+  * In a song, the chord being played as a numeral of the song's key: `IV`, `vi`, `♭VII`, `V7`, `Vsus`, `I/3` (or as
+    Nashville numbers, `4`, `6m`, `♭7`, `57`, `5sus`, `1/3`), right of the middle with the key under it. A chord shows while it
+    rings and a moment after; single notes show none.
+  * `NashvilleNumbers`, `[Mod Settings] NashvilleStyle` (roman; or numbers), `NashvilleMinor` (tonic: Am is `i` / `1m`;
+    or relative: counted from the relative major, Am is `vi` / `6m`), `NashvilleDetail` (simple: as a Nashville chart
+    writes a chord, its job and not its voicing, with no power chord `5`, sus2, add9, 6 or maj7, a 9 as its 7, sus4 as
+    `sus`; or full: as its notes name it), `[Keybinds] NashvilleKeyKey` (Q),
+    `[Nashville Keys]` `<SongKey> = <key>` (`D`, `F#m`, `Bb`)
+  * Songs don't say their key, so it's guessed from the notes of all the song's arrangements, read from its archive as
+    it loads. On the songs on disc whose key is known it guesses the tonic right for 44 of 50, and the right one is its
+    second guess for 3 more: songs on a ♭VII (I-♭VII-IV) may come out a fourth up. The key gives the song its next
+    guess and keeps it in `[Nashville Keys]`; Control + the key goes back to the guess. The chords are named from their
+    notes (the chart's own names are often missing). Keys are at the chart's pitch, which isn't always the record's.
+  * Needs the song-load point Tone Host uses: on the Mac RS Re-ARMed 1.13.0, in Learn & Play 1.12.0. Not yet checked in
+    the game.
+
 * **Camera Director** (not in RSMods)
   * Your own view of the note highway. In a song the keys zoom it, raise the camera, move it sideways and tilt it,
     Control + key the other way, and the reset key goes back to the game's view. The game's camera still follows the
