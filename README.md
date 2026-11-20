@@ -627,6 +627,7 @@ gui/                     Re-ARMed Mods.app: settings and installer (SwiftUI); bu
 tonehost/                rs-tonehost: the add-on that hosts your own plug-in, and its Helix Native setup
 stems/                   rs-stems: the add-on that takes a part out of a song (Song Stems), and how its model is made
 docs/how-it-works.md     how the library works with RS Re-ARMed
+.github/workflows/       release.yml: builds the app and makes a release (see Releases)
 ```
 
 A mod is an `rsm_mod` (`rsmods.h`): a tick each frame, key events, song changes, Wwise event filtering. Key events don't
@@ -685,6 +686,34 @@ doesn't fit; the game then goes on as without the mod:
 `rs-stems` is started with none of the game's open files and without a test's key injector in its environment
 (`helper_env` in `src/mod_song_stems.c`). A new reader of such a file is to keep to the same rule; a damaged file is
 the test for it (`tests/test_7z.c` has archives the reader refuses).
+
+### Releases
+
+A release is made on GitHub by the workflow [`release.yml`](.github/workflows/release.yml), which only an admin of the
+repository can run; for anyone else its first job stops the run. `main` takes changes from admins only, so a change from
+anyone else comes as a pull request from a fork.
+
+1. Put the new number in `VERSION`, in a commit of its own ("Version X.Y.Z"), and push it to `main` with whatever the
+   README needs for the version.
+2. For notes of your own, commit them as `docs/release-notes/X.Y.Z.md`. Without the file the release gets GitHub's list
+   of the changes since the last version.
+3. On GitHub, open **Actions > Release > Run workflow**, on `main`, and choose a mode:
+   - `build`: only the zip, as an artifact of the run. Nothing is tagged or released.
+   - `draft` (the default): the tag and a draft release, which nobody else sees.
+   - `publish`: the tag and the release, at once.
+4. After `draft`, look at the release on the [Releases](https://github.com/glebb/rearmed-mods/releases) page, edit its
+   notes there if they need it, and publish it.
+
+The run does `./test.sh` and `gui/build-app.sh --zip`, checks that the app has the library, `rs-stems` with its model
+and Tone Host, makes the annotated tag `vX.Y.Z` and the release "rearmed-mods X.Y.Z" with `Re-ARMed-Mods-X.Y.Z.zip` as
+its one asset. It stops when there is a release of that version already. A run that failed after it made the tag can be
+run again, as long as `main` hasn't moved.
+
+Song Stems' model isn't in the repository. The workflow takes it, compiled, from the release
+[`stems-model`](https://github.com/glebb/rearmed-mods/releases/tag/stems-model) and checks it against a checksum in the
+workflow file. For a new model, replace `htdemucs_6s.mlmodelc.zip` there (the `.mlmodelc` folder, zipped) and put its
+SHA-256 in `STEMS_MODEL_SHA256`. A release build made by hand takes the model from `RS_STEMS_MODEL`
+([`stems/README.md`](stems/README.md)).
 
 ## Credits
 
