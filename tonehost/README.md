@@ -37,6 +37,15 @@ game starts the host (three times, 30 s apart, if it doesn't come; again when on
 ends a few seconds after the game does, a crash included. `start.sh` and `stop.sh` in
 `RS Re-ARMed/tonehost` do it by hand; `"stay_after_game": true` keeps it running. Everything is in that folder.
 
+Every five seconds `host.log` has a line with the guitar's peak and the host's own, and how long the host took over
+a buffer: `a buffer took 0.41 ms at most (shifter 0.12), 0 long, 0 overloads`. A buffer of 64 lasts 1.33 ms; `long`
+counts those that took over three quarters of what one lasts, and `overloads` the times the system said one was not
+ready, each of which is a gap in the sound. If clicks come with those, a larger `"buffer"` (128) is the cure.
+
+`"keep_guitar_s": 120` in the config has the host keep the last so many seconds of the guitar as it comes in (after
+the input's gain, before Pitch Shifter and the gate) and write them to `guitar.wav` in that folder when it quits: for
+looking into a sound that only your own guitar makes. Without it nothing is kept.
+
 A setup from before plug-ins had profiles keeps playing as it is. `tonehost/migrate.sh helix-native "Helix Native"` moves
 it into a profile as it is.
 

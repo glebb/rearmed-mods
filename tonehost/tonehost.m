@@ -19,6 +19,7 @@
 #include <CommonCrypto/CommonDigest.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <CoreAudio/CoreAudio.h>
+#include <mach/mach_time.h>
 #include <math.h>
 #include <errno.h>
 #include <float.h>
@@ -69,6 +70,12 @@ static int g_current = -1;          // audio thread: the slot playing
 static int g_previous = -1;         // audio thread: the slot fading out
 static uint32_t g_fade_left, g_fade_frames = 960;  // 20 ms
 static _Atomic uint32_t g_late_blocks, g_empty_blocks, g_peak_in, g_peak_out;  // peaks: float bits
+// How long a buffer takes to make, for the log: the longest since the last line, the shifter's share of the longest
+// it took, the buffers that took over three quarters of the time one lasts, and the overloads the system told of.
+// A buffer that takes longer than it lasts is a gap in the sound.
+static _Atomic uint64_t g_busy_most, g_shift_most;  // in the clock's ticks
+static _Atomic uint32_t g_busy_long, g_overloads;
+static mach_timebase_info_data_t g_clock;
 static uint32_t g_target_fill = 128;
 static _Atomic int g_quit;
 static _Atomic float g_system_gain = 1.f, g_mixer_gain = 1.f;  // the system's volume, and the game's guitar mixer
@@ -151,6 +158,27 @@ static double device_rate(AudioObjectID dev) {
 
 // ---- Audio ----
 static sp *g_shift;  // the shifter behind Pitch Shifter (pitch/splice_shift.c), told by the game's "shift"; made in main
+
+// "keep_guitar_s": the guitar as it comes in (after the input's gain, before the shifter and the gate), the last so
+// many seconds of it, written to guitar.wav beside the config when the host quits. For looking into a sound that only
+// the player's own guitar makes: off unless the config asks.
+static float *g_kept;
+static uint64_t g_kept_len;  // samples, a power of two
+static _Atomic uint64_t g_kept_at;
+static NSString *g_kept_path;
+
+static void keep_guitar(void) {
+  if (!g_kept) return;
+  uint64_t at = atomic_load(&g_kept_at), n = at < g_kept_len ? at : g_kept_len;
+  FILE *f = n ? fopen(g_kept_path.fileSystemRepresentation, "wb") : NULL;
+  if (!f) return;
+  uint32_t bytes = (uint32_t)(n * 4), rate = (uint32_t)RATE;
+  uint32_t head[11] = {0x46464952, 36 + bytes, 0x45564157, 0x20746d66, 16, 0x00010003, rate, rate * 4, 0x00200004, 0x61746164, bytes};
+  fwrite(head, 4, 11, f);
+  for (uint64_t i = at - n; i < at; i++) fwrite(&g_kept[i & (g_kept_len - 1)], 4, 1, f);
+  fclose(f);
+  say("the last %.0f s of guitar are in %s", n / RATE, g_kept_path.UTF8String);
+}
 
 static OSStatus input_proc(AudioObjectID dev, const AudioTimeStamp *now, const AudioBufferList *in, const AudioTimeStamp *in_time,
                            AudioBufferList *out, const AudioTimeStamp *out_time, void *user) {
@@ -243,6 +271,7 @@ static void note_peak(_Atomic uint32_t *peak, const float *x, UInt32 n, int stri
 
 static OSStatus output_proc(AudioObjectID dev, const AudioTimeStamp *now, const AudioBufferList *in, const AudioTimeStamp *in_time,
                             AudioBufferList *out, const AudioTimeStamp *out_time, void *user) {
+  uint64_t began = mach_absolute_time();
   AudioBuffer *ob = &out->mBuffers[0];
   int och = (int)ob->mNumberChannels;
   UInt32 n = ob->mDataByteSize / (UInt32)(och * sizeof(float));
@@ -255,7 +284,15 @@ static OSStatus output_proc(AudioObjectID dev, const AudioTimeStamp *now, const 
   if (fill > g_target_fill + n + 256) { g_ring_read = w - g_target_fill - n; fill = w - g_ring_read; atomic_fetch_add(&g_late_blocks, 1); }
   if (fill < n) { memset(block, 0, sizeof block); atomic_fetch_add(&g_empty_blocks, 1); }
   else for (UInt32 i = 0; i < n; i++) block[i] = g_ring[g_ring_read++ & (RING - 1)];
+  if (g_kept) {
+    uint64_t at = atomic_load_explicit(&g_kept_at, memory_order_relaxed);
+    for (UInt32 i = 0; i < n; i++) g_kept[at++ & (g_kept_len - 1)] = block[i];
+    atomic_store_explicit(&g_kept_at, at, memory_order_release);
+  }
+  uint64_t before_shift = mach_absolute_time();
   if (g_shift) sp_process(g_shift, block, block, (int)n);  // Pitch Shifter: nothing at 0 semitones
+  uint64_t shift_took = mach_absolute_time() - before_shift;
+  if (shift_took > atomic_load_explicit(&g_shift_most, memory_order_relaxed)) atomic_store_explicit(&g_shift_most, shift_took, memory_order_relaxed);
   note_peak(&g_peak_in, block, n, 1);
   gate(block, n);
   g_block = block;
@@ -284,6 +321,9 @@ static OSStatus output_proc(AudioObjectID dev, const AudioTimeStamp *now, const 
     if (second) second[i] = r;
   }
   note_peak(&g_peak_out, dst, n, och);
+  uint64_t took = mach_absolute_time() - began;
+  if (took > atomic_load_explicit(&g_busy_most, memory_order_relaxed)) atomic_store_explicit(&g_busy_most, took, memory_order_relaxed);
+  if ((double)took * g_clock.numer / g_clock.denom > 0.75e9 * n / RATE) atomic_fetch_add_explicit(&g_busy_long, 1, memory_order_relaxed);
   return noErr;
 }
 
@@ -314,6 +354,10 @@ static void start_output(AudioObjectID dev) {
   set_rate(dev);
   set_buffer(dev, g_frames);
   if (AudioDeviceCreateIOProcID(dev, g_proc, NULL, &g_out_id)) { say("device %u: no output", dev); return; }
+  // The system says when a buffer was not ready in time: counted for the log
+  AudioObjectPropertyAddress overload = {kAudioDeviceProcessorOverload, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+  AudioObjectAddPropertyListenerBlock(dev, &overload, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0),
+                                      ^(UInt32 count, const AudioObjectPropertyAddress *which) { atomic_fetch_add(&g_overloads, 1); });
   AudioDeviceStart(dev, g_out_id);
   say("output on device %u", dev);
 }
@@ -1408,6 +1452,13 @@ int main(int argc, char **argv) { @autoreleasepool {
   usleep(200000);
   if (device_rate(in_dev) != RATE) { say("the input must run at 48 kHz (%g)", device_rate(in_dev)); return 1; }
   if (!(g_shift = sp_new(RATE, NULL))) { say("no memory"); return 1; }
+  mach_timebase_info(&g_clock);
+  if (!edit && [c[@"keep_guitar_s"] doubleValue] > 0) {
+    double seconds = MIN([c[@"keep_guitar_s"] doubleValue], 600);
+    for (g_kept_len = 1 << 16; g_kept_len < seconds * RATE; g_kept_len <<= 1) ;
+    g_kept_path = [g_dir stringByAppendingPathComponent:@"guitar.wav"];
+    if ((g_kept = calloc(g_kept_len, sizeof *g_kept))) say("keeping the last %.0f s of guitar for guitar.wav", g_kept_len / RATE);
+  }
   if (c[@"slots"]) g_slots = MAX(2, MIN(SLOTS, [c[@"slots"] intValue]));
   if (edit) g_slots = 1;
   for (int i = 0; i < g_slots; i++)
@@ -1464,8 +1515,10 @@ int main(int argc, char **argv) { @autoreleasepool {
     float i, o;
     memcpy(&i, &a, 4);
     memcpy(&o, &b, 4);
-    say("peak in %.1f dB, out %.1f dB, floor %.1f dB, gate %.1f dB, late %u, empty %u", 20 * log10f(i + 1e-9f), 20 * log10f(o + 1e-9f), g_floor.db,
-        atomic_load(&g_open_db), atomic_load(&g_late_blocks), atomic_load(&g_empty_blocks));
+    double tick = (double)g_clock.numer / g_clock.denom / 1e6;  // ms
+    say("peak in %.1f dB, out %.1f dB, floor %.1f dB, gate %.1f dB, late %u, empty %u, a buffer took %.2f ms at most (shifter %.2f), %u long, %u overloads",
+        20 * log10f(i + 1e-9f), 20 * log10f(o + 1e-9f), g_floor.db, atomic_load(&g_open_db), atomic_load(&g_late_blocks), atomic_load(&g_empty_blocks),
+        atomic_exchange(&g_busy_most, 0) * tick, atomic_exchange(&g_shift_most, 0) * tick, atomic_load(&g_busy_long), atomic_load(&g_overloads));
   });
   dispatch_resume(meter);
   dispatch_source_t volume = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0));
@@ -1482,6 +1535,7 @@ int main(int argc, char **argv) { @autoreleasepool {
     if (quit_with_game && heard && (uint64_t)time(NULL) > heard + 5) {
       say("the game has gone: quitting");
       AudioDeviceStop(g_out_dev, g_out_id);
+      keep_guitar();
       _exit(0);
     }
     if (device_frames(g_out_dev, kAudioDevicePropertyBufferFrameSize, kAudioObjectPropertyScopeGlobal) != frames) {
@@ -1511,6 +1565,7 @@ int main(int argc, char **argv) { @autoreleasepool {
   }
   AudioDeviceStop(g_out_dev, g_out_id);
   if (in_id) AudioDeviceStop(in_dev, in_id);
+  keep_guitar();
   say("late blocks %u, empty blocks %u", atomic_load(&g_late_blocks), atomic_load(&g_empty_blocks));
   return 0;
 }}
