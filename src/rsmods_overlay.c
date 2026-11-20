@@ -185,7 +185,15 @@ static int window_size(int *w, int *h) {
 static int render(cached *e) {
   CFStringRef str = CFStringCreateWithCString(NULL, e->text, kCFStringEncodingUTF8);
   if (!str) return 0;
-  CTFontRef font = CTFontCreateWithName(CFSTR("Helvetica-Bold"), e->px, NULL);
+  // Helvetica Bold, and Helvetica Neue Bold for what it lacks (the flat sign: Nashville Numbers), whose glyphs sit
+  // as Helvetica's do; the system's own fallback spaces them apart
+  CTFontDescriptorRef fallback = CTFontDescriptorCreateWithNameAndSize(CFSTR("HelveticaNeue-Bold"), e->px);
+  CFArrayRef cascade = CFArrayCreate(NULL, (const void **)&fallback, 1, &kCFTypeArrayCallBacks);
+  const void *fkeys[] = {kCTFontNameAttribute, kCTFontCascadeListAttribute}, *fvals[] = {CFSTR("Helvetica-Bold"), cascade};
+  CFDictionaryRef fattrs = CFDictionaryCreate(NULL, fkeys, fvals, 2, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+  CTFontDescriptorRef desc = CTFontDescriptorCreateWithAttributes(fattrs);
+  CTFontRef font = CTFontCreateWithFontDescriptor(desc, e->px, NULL);
+  CFRelease(desc), CFRelease(fattrs), CFRelease(cascade), CFRelease(fallback);
   CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
   CGFloat comp[4] = {(e->rgba >> 24 & 0xff) / 255.0, (e->rgba >> 16 & 0xff) / 255.0, (e->rgba >> 8 & 0xff) / 255.0,
                      (e->rgba & 0xff) / 255.0};
