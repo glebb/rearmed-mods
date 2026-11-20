@@ -1,0 +1,144 @@
+# Builds "Re-ARMed Mods.app" from main and makes the release of the version in VERSION: the tests, gui/build-app.sh --zip,
+# the annotated tag vX.Y.Z and a GitHub release with the zip as its one asset.
+# It is started by hand (Actions > Release > Run workflow), and only by an admin of the repository: the first job stops
+# the run for anyone else, whoever has write access.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "build: only the zip, as an artifact of the run. draft: a draft release to check and publish. publish: the release, at once"
+        type: choice
+        options: [build, draft, publish]
+        default: draft
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # Song Stems' model isn't in the repository. It is the asset of the release "stems-model", compiled (an .mlmodelc,
+  # zipped). For a new model: replace the asset there, and put its checksum here.
+  STEMS_MODEL_TAG: stems-model
+  STEMS_MODEL_ZIP: htdemucs_6s.mlmodelc.zip
+  STEMS_MODEL_SHA256: b24cd1d7ffc5173fecdbfc1af89a992e24842e59eacb69e329992c36edfde133
+
+jobs:
+  admin:
+    name: Admins only
+    runs-on: ubuntu-latest
+    steps:
+      - name: The run is from main, by an admin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
+          ACTOR: ${{ github.actor }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -eu
+          [ "$REF" = refs/heads/main ] || { echo "::error::releases are made from main, not $REF"; exit 1; }
+          # the one who started the run, and the one who re-ran it if that is someone else
+          for user in "$ACTOR" "$TRIGGERING_ACTOR"; do
+            role=$(gh api "repos/$REPO/collaborators/$user/permission" --jq .permission)
+            [ "$role" = admin ] || { echo "::error::$user is not an admin of $REPO ($role)"; exit 1; }
+          done
+
+  release:
+    name: Build and release
+    needs: admin
+    runs-on: macos-26
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      MODE: ${{ inputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        id: version
+        run: |
+          set -eu
+          version=$(cat VERSION)
+          echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::VERSION is '$version'"; exit 1; }
+          tag="v$version"
+          if [ "$MODE" != build ]; then
+            if gh release view "$tag" -R "$REPO" >/dev/null 2>&1; then
+              echo "::error::there is a release $tag already: VERSION needs a new number"; exit 1
+            fi
+            # a tag left by a run that failed later is fine, as long as it is this commit's
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null && [ "$(git rev-parse "$tag^{commit}")" != "$(git rev-parse HEAD)" ]; then
+              echo "::error::the tag $tag is at another commit"; exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Tests
+        run: ./test.sh
+
+      - name: Song Stems' model
+        run: |
+          set -eu
+          dir="$RUNNER_TEMP/stems-model"
+          mkdir -p "$dir"
+          gh release download "$STEMS_MODEL_TAG" -R "$REPO" -p "$STEMS_MODEL_ZIP" -D "$dir"
+          echo "$STEMS_MODEL_SHA256  $dir/$STEMS_MODEL_ZIP" | shasum -a 256 -c -
+          ditto -x -k "$dir/$STEMS_MODEL_ZIP" "$dir"
+          model="$dir/htdemucs_6s.mlmodelc"
+          [ -f "$model/weights/weight.bin" ] || { echo "::error::no model in $STEMS_MODEL_ZIP"; exit 1; }
+          echo "RS_STEMS_MODEL=$model" >> "$GITHUB_ENV"
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          gui/build-app.sh --zip
+          app="gui/build/Re-ARMed Mods.app/Contents/Resources"
+          # build-app.sh only warns when it leaves a part out
+          for f in rearmed-mods.dylib stems/rs-stems stems/htdemucs_6s.mlmodelc/weights/weight.bin "tonehost/RS Tone Host.app"; do
+            [ -e "$app/$f" ] || { echo "::error::the app has no $f"; exit 1; }
+          done
+          codesign --verify --deep --strict "gui/build/Re-ARMed Mods.app"
+          shasum -a 256 "gui/build/Re-ARMed-Mods-$VERSION.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Re-ARMed-Mods-${{ steps.version.outputs.version }}
+          path: gui/build/Re-ARMed-Mods-${{ steps.version.outputs.version }}.zip
+          if-no-files-found: error
+
+      - name: Tag and release
+        if: inputs.mode != 'build'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -eu
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "rearmed-mods $VERSION"
+            git push origin "refs/tags/$TAG"
+          fi
+          # the notes are docs/release-notes/X.Y.Z.md where there is one, and the list of changes since the last release where not
+          notes="docs/release-notes/$VERSION.md"
+          if [ -f "$notes" ]; then
+            set -- --notes-file "$notes"
+          else
+            # since the last version's tag, named here because the newest release may be stems-model
+            last=$(git tag --list 'v*' --sort=-v:refname | grep -vx "$TAG" | head -1)
+            set -- --generate-notes ${last:+--notes-start-tag "$last"}
+          fi
+          [ "$MODE" = draft ] && set -- "$@" --draft
+          gh release create "$TAG" -R "$REPO" --verify-tag --title "rearmed-mods $VERSION" "$@" \
+            "gui/build/Re-ARMed-Mods-$VERSION.zip"
