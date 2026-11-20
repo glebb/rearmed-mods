@@ -354,10 +354,20 @@ static void start_output(AudioObjectID dev) {
   set_rate(dev);
   set_buffer(dev, g_frames);
   if (AudioDeviceCreateIOProcID(dev, g_proc, NULL, &g_out_id)) { say("device %u: no output", dev); return; }
-  // The system says when a buffer was not ready in time: counted for the log
-  AudioObjectPropertyAddress overload = {kAudioDeviceProcessorOverload, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
-  AudioObjectAddPropertyListenerBlock(dev, &overload, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0),
-                                      ^(UInt32 count, const AudioObjectPropertyAddress *which) { atomic_fetch_add(&g_overloads, 1); });
+  // The system says when a buffer was not ready in time: counted for the log. Once a device, or an output that came
+  // back to a device it had before would count each of them twice
+  static AudioObjectID heard[16];
+  static int heards;
+  int known = 0;
+  for (int i = 0; i < heards; i++) known |= heard[i] == dev;
+  if (!known && heards < 16) {
+    heard[heards++] = dev;
+    AudioObjectPropertyAddress overload = {kAudioDeviceProcessorOverload, kAudioObjectPropertyScopeGlobal, kAudioObjectPropertyElementMain};
+    AudioObjectAddPropertyListenerBlock(dev, &overload, dispatch_get_global_queue(QOS_CLASS_UTILITY, 0),
+                                        ^(UInt32 count, const AudioObjectPropertyAddress *which) {
+                                          if (dev == g_out_dev) atomic_fetch_add(&g_overloads, 1);
+                                        });
+  }
   AudioDeviceStart(dev, g_out_id);
   say("output on device %u", dev);
 }

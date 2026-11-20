@@ -43,6 +43,7 @@ typedef struct {
 
 static input g_in[INPUTS];
 static atomic_int g_wanted;  // the mod has been on: inputs are given shifters
+static atomic_int g_full;    // an input came that there was no place for (the I/O thread's word to tick)
 static int g_hooked, g_on, g_semitones, g_set = 1000;  // g_set: what the shifters were last told
 static double g_changed = -100;
 
@@ -67,7 +68,11 @@ static int before_io(rc_ctx *c, void *user) {
   AudioBufferList *list = OV_PTR(a, AudioBufferList);
   if (!self || !list || !list->mNumberBuffers) return 0;
   input *in = slot_of(self);
-  if (!in) return 0;
+  if (!in) {
+    int none = 0;
+    atomic_compare_exchange_strong_explicit(&g_full, &none, 1, memory_order_relaxed, memory_order_relaxed);
+    return 0;
+  }
   atomic_store_explicit(&in->dev, dev, memory_order_relaxed);
   AudioBuffer *b = &list->mBuffers[0];
   uint32_t channels = b->mNumberChannels;
@@ -144,6 +149,10 @@ static void tick(void) {
   int semitones = rsm_pitch_shifter_semitones();
   if (g_on) atomic_store_explicit(&g_wanted, 1, memory_order_relaxed);
   if (atomic_load_explicit(&g_wanted, memory_order_relaxed)) give_shifters(semitones);
+  if (atomic_load_explicit(&g_full, memory_order_relaxed) == 1) {
+    atomic_store_explicit(&g_full, 2, memory_order_relaxed);  // said once
+    rsm_log("pitch shifter: more than %d guitar inputs have been opened: the ones after them are not shifted", INPUTS);
+  }
   if (semitones != was) {
     if (semitones)
       rsm_log("pitch shifter: the guitar is shifted by %+d semitones before the game hears it", semitones);

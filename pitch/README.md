@@ -497,6 +497,23 @@ the overtones is down by:
   at five up, 31 at twelve) and are then 14 to 24 ms behind while they ring where they were 4 to 6, and an upward
   shift has no start to take that back at. Not built in.
 
+**The lag ran out (found 2026-11-20, in review).** Upward a seam costs lag itself: the read point goes on gaining
+on the input for the 5 ms the crossfade lasts and the 1.3 ms to the next look, by 107 samples at five up and 320 at
+twelve. A note whose repeat is shorter than that (from about A4 at five up, D4 at seven, D3 at twelve) gave back less at each seam than the seam took, the lag ran out, and the note came out at its own pitch:
+that was the "23 cents off" above and all of "twelve up is past what `splice` does". Now as many of the shortest
+repeat are taken as cover a seam, placed again where they land. Two up is as it was; what lands off the overtones:
+
+| | five up, before | now | twelve up, before | now |
+|---|---|---|---|---|
+| Single notes | 37 dB, 25 cents off | 44 dB, 5 cents | 15 dB | 38 dB |
+| High notes | 13 dB, 50 cents off | 36 dB, 2 cents | 1 dB | 30 dB |
+| A quiet note under | 12 dB | 33 dB | 2 dB | 30 dB |
+| Power chords | 39 dB | 39 dB | 35 dB | 35 dB |
+
+The lag while a note rings is what the shift needs and no more: 6 to 7 ms at five up, 15 at twelve (it read 0.4 to
+6 ms before, where the lag had run out). The longest repeat, tried above, is still not built in. Not played in the
+game: upward shifts have only been measured.
+
 A correction to the bench: a start in the shifted sound is timed at the level the recording passes there, not at a
 share of what follows. A pick touching the string 40 ms before a loud note had made the shifter look 41 to 47 ms
 late once.

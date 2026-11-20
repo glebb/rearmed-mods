@@ -82,7 +82,9 @@ then found as a loud one's are.
 
 For 40 ms after a start no other jump is made: the lag is short then anyway. All of this belongs to a downward shift.
 Shifting up, the lag shrinks by itself and starts are not looked for, so a pause left over from a downward shift
-ends when the shift changes.
+ends when the shift changes. Before the lag runs out it is put back by a jump the other way, of the shortest repeat,
+or of as many of it as a seam itself uses up: the lag goes on shrinking under the crossfade, by more than a high
+note's repeat at the larger shifts.
 
 ## Seams are plain crossfades
 

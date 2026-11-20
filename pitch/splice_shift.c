@@ -14,9 +14,10 @@
 // When (downward): every seam costs a chord something, since a real chord never repeats exactly, so there are as few
 // as can be. With `patient` the lag is left to grow to `most`, and the jump is then the longest repeat that fits in
 // it; without, a jump is made as soon as the lag holds one repeat, the shortest. Upward the lag runs out by itself,
-// and the jump is the shortest repeat. A sound whose best repeat within `most` is a poor one (under FAR_UNDER) and
-// that repeats clearly better (by FAR_GAIN) a little later has its lag let grow on, to `far` at most: two low notes
-// a third apart come round together only after 40 to 60 ms, and until then every jump puts one of them out of step.
+// and the jump is the shortest repeat, or as many of it as a seam itself takes of the lag. A sound whose best repeat
+// within `most` is a poor one (under FAR_UNDER) and that repeats clearly better (by FAR_GAIN) a little later has its
+// lag let grow on, to `far` at most: two low notes a third apart come round together only after 40 to 60 ms, and
+// until then every jump puts one of them out of step.
 //
 // A close repeat (downward): a sound that comes round cleanly (CLEAN) within `close`, which is a single note from
 // about F3 up, or two that share so short a period, is not made to wait. Up there the long jump is the wrong one. A
@@ -517,6 +518,8 @@ static void peaks(sp *s, model *md, int spectrum) {
   double *re = s->fr, top = 0, bin = (double)FFT_N / spectrum;
   int low = (int)(70 * FFT_N / s->rate), high = (int)(5000 * FFT_N / s->rate), found[TONES * 4], finds = 0;
   md->n = 0;
+  if (low < 1) low = 1;
+  if (high > FFT_N / 4 - 2) high = FFT_N / 4 - 2;  // the powers end there (a rate under 20 kHz)
   for (int k = low; k <= high; k++) top = fmax(top, re[k]);
   for (int k = low; k <= high && finds < TONES * 4; k++)
     if (re[k] > re[k - 1] && re[k] >= re[k + 1] && re[k] > 3e-5 * top) found[finds++] = k;
@@ -803,6 +806,11 @@ void sp_process(sp *s, const float *in, float *out, int frames) {
           // The lag must not run out before the next look, or under a fade
           int by = repeat(s, s->most, 0, NULL);
           if (by) far = place(s, 0, by, s->span, &score);
+          // A seam and the wait for the next look take (FADE + CHECK) * -drift of the lag. A repeat shorter than that
+          // (a high note, or a large shift) gives back less than its own seam takes: the lag would run out and the
+          // guitar come out at its own pitch. So as many of the repeat as it takes, placed again where they land.
+          int times = far > 0 ? (int)ceil(((FADE + CHECK) * -drift + 4) / far) : 1;
+          if (times > 1) far = place(s, 0, (int)lround(times * far), s->span, &score);
         }
         if (far > 0) {
           jump(s, down ? s->lag - far : s->lag + far, FADE);

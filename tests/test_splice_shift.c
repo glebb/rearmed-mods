@@ -77,7 +77,18 @@ int main(void) {
   CHECK(share_at(b, up) > 0.5);
   CHECK(share_at(b, 220) < 0.01);
 
+  // Upward a seam takes some of the lag itself, more the larger the shift, and a high note's repeat gives back less
+  // than that: several of them are taken then, or the lag would run out and the note come out where it was
+  for (int j = 0; j < 4; j++) {
+    double hz = (double[]){659.26, 440, 220, 880}[j], st = (double[]){5, 7, 12, 12}[j];
+    tone(b, hz, 2400);
+    run(b, a, st, 128);
+    CHECK(share_at(a, hz * pow(2, st / 12)) > 0.5);
+    CHECK(share_at(a, hz) < 0.01);
+  }
+
   // As loud as it went in
+  run(in, a, -2, 128);
   double pin = 0, pout = 0;
   for (int t = N / 2; t < N; t++) pin += (double)in[t] * in[t], pout += (double)a[t] * a[t];
   CHECK(pout > 0.8 * pin && pout < 1.25 * pin);
