@@ -84,8 +84,8 @@ static const char DEFAULT_INI[] =
     "ExtendedRangeFixBassTuning = off\n"
     "; The note you play, on screen (heard from the guitar's input)\n"
     "ShowCurrentNoteOnScreen = off\n"
-    "; The chord being played as a numeral of the song's key (guessed from its notes), right of the middle; the\n"
-    "; NashvilleStyle and NashvilleMinor settings are in [Mod Settings], a song's own key in [Nashville Keys]\n"
+    "; The song's chord as a numeral of its key (guessed from its notes), and the next one, right of the middle; the\n"
+    "; Nashville settings are in [Mod Settings], a song's own key in [Nashville Keys]\n"
     "NashvilleNumbers = off\n"
     "; Play notes to press keys in the menus: the notes are in [Guitar Speak]\n"
     "GuitarSpeak = off\n"
@@ -170,6 +170,9 @@ static const char DEFAULT_INI[] =
     "NashvilleMinor = tonic\n"
     "; simple: a chord as a chart writes it (no power chord 5, sus2, add9, maj7); full: as its notes name it\n"
     "NashvilleDetail = simple\n"
+    "; song: the song's chords throughout, from all its parts (riffs and solos too); charted: the chords the part\n"
+    "; played has, while they ring\n"
+    "NashvilleChords = song\n"
     "\n"
     "[Guitar Speak]\n"
     "; The MIDI note (0-96; E3, the low E's 12th fret, is 52) that presses each key; 0 = none. The close note stops\n"
@@ -435,6 +438,7 @@ static const struct {
     {"Mod Settings", "NashvilleStyle", "roman"},
     {"Mod Settings", "NashvilleMinor", "tonic"},
     {"Mod Settings", "NashvilleDetail", "simple"},
+    {"Mod Settings", "NashvilleChords", "song"},
     {"Keybinds", "NashvilleKeyKey", "Q"},
     {"Toggle Switches", "GuitarSpeak", "off"},
     {"Toggle Switches", "DisplayCurrentAccuracy", "off"},

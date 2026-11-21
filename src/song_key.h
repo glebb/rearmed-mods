@@ -29,6 +29,7 @@ typedef struct {
   float time, sustain;
   int n;
   int midi[SK_MAX_NOTES];
+  int chord;  // the chart's chord template, -1 for a single note
 } sk_event;
 
 // A song's notes, summed over its arrangements

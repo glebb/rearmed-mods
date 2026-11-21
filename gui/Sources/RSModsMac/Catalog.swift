@@ -117,7 +117,7 @@ enum Catalog {
         ModToggle(label: "Show Current Note", key: "ShowCurrentNoteOnScreen",
                   help: "The note you play, as the game hears it: in a song left of the middle, elsewhere at the top. Needs RS Re-ARMed 1.11.0."),
         ModToggle(label: "Nashville Numbers", key: "NashvilleNumbers",
-                  help: "In a song, the chord being played as a numeral of the song's key (IV, vi, \u{266D}VII), right of the middle. The key is guessed from the song's notes; the key gives the song another. Needs RS Re-ARMed 1.13.0 (Learn & Play 1.12.0)."),
+                  help: "In a song, its chord as a numeral of the song's key (IV, vi, \u{266D}VII) and the next one, right of the middle. The key is guessed from the song's notes; the key gives the song another. Needs RS Re-ARMed 1.13.0 (Learn & Play 1.12.0)."),
         ModToggle(label: "Guitar Speak", key: "GuitarSpeak",
                   help: "Play notes on your guitar to press keys in the game's menus."),
         ModToggle(label: "Show Current Accuracy", key: "DisplayCurrentAccuracy",
@@ -340,7 +340,7 @@ enum Catalog {
             "SeparateNoteColorsMode": "0", "CustomNSPTimeLimit": "10000", "SecondaryMonitorXPosition": "0",
             "SecondaryMonitorYPosition": "0", "ExtendedRangeModeAt": "-5", "NumberOfSongLists": "6",
             "SongStemsGuitarLevel": "0", "SongStemsBassLevel": "0", "SongStemsCacheMB": "500",
-            "PitchShifterSemitones": "-1", "NashvilleStyle": "roman", "NashvilleMinor": "tonic", "NashvilleDetail": "simple",
+            "PitchShifterSemitones": "-1", "NashvilleStyle": "roman", "NashvilleMinor": "tonic", "NashvilleDetail": "simple", "NashvilleChords": "song",
         ],
         Section.keybinds: [
             "RRSpeedKey": "R", "LoopStartKey": "Y", "LoopEndKey": "U", "RewindKey": "Z", "ShowSongTimerKey": "I",

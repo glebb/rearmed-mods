@@ -1,12 +1,13 @@
-// Nashville Numbers (NashvilleNumbers = on): in a song, the chord being played as a numeral of the song's key, "IV"
-// or "♭VII" ([Mod Settings] NashvilleStyle = roman), or "4", "♭7" (numbers), with the key under it; right of the
-// middle, where Show Current Note is on the left. Not an RSMods feature.
+// Nashville Numbers (NashvilleNumbers = on): in a song, the chord of the moment as a numeral of the song's key, "IV"
+// or "♭VII" ([Mod Settings] NashvilleStyle = roman), or "4", "♭7" (numbers), the next chord and the key under it;
+// right of the middle, where Show Current Note is on the left. Not an RSMods feature.
 //
 // The song's key is guessed from the notes of all its arrangements (song_key.h): when the game has loaded a song
 // (seven_pp1, as Tone Host), a thread reads every arrangement's SNG from the song's archive (song_sng.h; a Rocksmith
-// 1 song's from the compatibility pack), and the loaded one is the arrangement whose levels have as many notes as
-// the loaded song's. The chords are that arrangement's whole chart, named from their notes: the numeral of the last
-// chord that started, while it rings and a moment after. [Keybinds] NashvilleKeyKey (Q) gives the song the next of the
+// 1 song's from the compatibility pack). NashvilleChords = song (the default): the song's harmony through the whole
+// song, from all its parts over its beat grid (song_harmony.h), whatever the part played plays, a riff or a solo.
+// charted: the chords of the arrangement played (the one whose levels have as many notes as the loaded song's), named
+// from their notes, each while it rings and a moment after. [Keybinds] NashvilleKeyKey (Q) gives the song the next of the
 // guessed keys, written to [Nashville Keys] as <SongKey> = <key> ("D", "F#m", "Bb"); Control + the key goes back to
 // the guess. NashvilleMinor = relative counts a minor key from its relative major (Am: C's 6m) and not from 1m.
 // NashvilleDetail = simple (the default) shows a chord as a chart writes it, full as its notes name it.
@@ -18,6 +19,7 @@
 
 #include "rsmods.h"
 #include "rsmods_files.h"
+#include "song_harmony.h"
 #include "song_key.h"
 #include "song_sng.h"
 #include "stems_index.h"
@@ -37,8 +39,10 @@ static struct {
   char song[160];
   sk_key keys[CANDIDATES];
   int nkeys;
-  chord_at *chords;
+  chord_at *chords;  // the arrangement played's
   int nchords;
+  sh_chord *harmony;  // the song's
+  int nharmony;
 } g_found;
 // The loaded song, from the game: its levels' note counts
 static int g_levels, g_level_notes[MAX_LEVELS];
@@ -113,13 +117,22 @@ static void find(const char *song, const uint8_t key[32], int levels, const int 
       chords[nchords++].end = e->time + (e->sustain > 0 ? e->sustain : 0);
     }
   }
+  // the harmony, over the beat grid of the arrangement played (they're one song's: the same)
+  sh_part parts[16];
+  int np = 0, grid = match >= 0 ? match : 0, nharmony = 0;
+  for (int i = 0; i < n && np < 16; i++) parts[np++] = (sh_part){arr[i].ev, arr[i].n, arr[i].bass};
+  sh_chord *harmony = NULL;
+  if (nkeys) nharmony = sh_infer(parts, np, arr[grid].beats, arr[grid].nbeats, &keys[0], &harmony);
   char name[16] = "?";
   if (nkeys) sk_key_name(&keys[0], name, sizeof name);
-  fprintf(stderr, "[rsmods] nashville numbers: %s: %d arrangements, key %s, %s (%d chords)\n", song, n, name,
-          match >= 0 ? arr[match].name : "the loaded one not found", nchords);
+  fprintf(stderr, "[rsmods] nashville numbers: %s: %d arrangements, key %s, %s (%d chords), the song's harmony %d chords\n", song, n,
+          name, match >= 0 ? arr[match].name : "the loaded one not found", nchords, nharmony);
   sng_free_all(arr, n);
   pthread_mutex_lock(&g_lock);
   free(g_found.chords);
+  free(g_found.harmony);
+  g_found.harmony = harmony;
+  g_found.nharmony = nharmony;
   snprintf(g_found.song, sizeof g_found.song, "%s", song);
   memcpy(g_found.keys, keys, sizeof keys);
   g_found.nkeys = nkeys;
@@ -177,32 +190,48 @@ static void tick(void) {
   }
   sk_key k;
   int set = song_key_of(song, &k);
-  // the last chord that started
-  int lo = 0, hi = g_found.nchords - 1, at = -1;
-  while (lo <= hi) {
-    int mid = (lo + hi) / 2;
-    if (g_found.chords[mid].time <= now + EARLY) at = mid, lo = mid + 1;
-    else hi = mid - 1;
+  const char *style = rsm_get("Mod Settings", "NashvilleStyle"), *minor = rsm_get("Mod Settings", "NashvilleMinor"),
+             *detail = rsm_get("Mod Settings", "NashvilleDetail"), *which = rsm_get("Mod Settings", "NashvilleChords");
+  int roman = !style || strcasecmp(style, "numbers"), relative = minor && !strcasecmp(minor, "relative"),
+      simple = !detail || strcasecmp(detail, "full"), charted = which && !strcasecmp(which, "charted");
+  char text[32] = "", next[32] = "";
+  if (charted) {
+    // the last chord that started
+    int lo = 0, hi = g_found.nchords - 1, at = -1;
+    while (lo <= hi) {
+      int mid = (lo + hi) / 2;
+      if (g_found.chords[mid].time <= now + EARLY) at = mid, lo = mid + 1;
+      else hi = mid - 1;
+    }
+    if (at >= 0 && now <= g_found.chords[at].end + HOLD) sk_numeral(&g_found.chords[at].chord, &k, roman, relative, simple, text, sizeof text);
+  } else {
+    // the song's chord now, and the next that reads differently
+    int lo = 0, hi = g_found.nharmony - 1, at = -1;
+    while (lo <= hi) {
+      int mid = (lo + hi) / 2;
+      if (g_found.harmony[mid].start <= now + EARLY) at = mid, lo = mid + 1;
+      else hi = mid - 1;
+    }
+    if (at >= 0 && now < g_found.harmony[at].end) sk_numeral(&g_found.harmony[at].chord, &k, roman, relative, simple, text, sizeof text);
+    for (int i = at + 1; i < g_found.nharmony; i++) {
+      sk_numeral(&g_found.harmony[i].chord, &k, roman, relative, simple, next, sizeof next);
+      if (strcmp(next, text)) break;
+      *next = 0;
+    }
   }
-  sk_chord chord;
-  int show = at >= 0 && now <= g_found.chords[at].end + HOLD;
-  if (show) chord = g_found.chords[at].chord;
   pthread_mutex_unlock(&g_lock);
 
-  const char *style = rsm_get("Mod Settings", "NashvilleStyle"), *minor = rsm_get("Mod Settings", "NashvilleMinor"),
-             *detail = rsm_get("Mod Settings", "NashvilleDetail");
-  int roman = !style || strcasecmp(style, "numbers"), relative = minor && !strcasecmp(minor, "relative"),
-      simple = !detail || strcasecmp(detail, "full");
   float x = 0.5f + 349.f / 1920, y = 617.f / 1080;
-  if (show) {
-    char text[32];
-    sk_numeral(&chord, &k, roman, relative, simple, text, sizeof text);
-    rsm_text(text, x, y, 0.045f, RSM_ALIGN_CENTER, 0xffffffff);
+  if (*text) rsm_text(text, x, y, 0.045f, RSM_ALIGN_CENTER, 0xffffffff);
+  if (*next) {
+    char line[48];
+    snprintf(line, sizeof line, "next: %s", next);
+    rsm_text(line, x, y + 64.f / 1080, 0.024f, RSM_ALIGN_CENTER, 0xffffffd0);
   }
   char name[16], label[48];
   sk_key_name(&k, name, sizeof name);
   snprintf(label, sizeof label, "Key: %s%s", name, set ? " (set)" : "");
-  rsm_text(label, x, y + 68.f / 1080, 0.02f, RSM_ALIGN_CENTER, 0xffffffb0);
+  rsm_text(label, x, y + (charted ? 68.f : 100.f) / 1080, 0.02f, RSM_ALIGN_CENTER, 0xffffffb0);
 }
 
 // The key gives the song the next of the guessed keys; Control + the key, the guess again

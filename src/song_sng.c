@@ -99,7 +99,8 @@ int sng_parse(const uint8_t *d, size_t n, int bass, double cents, sng_arrangemen
   reader r = {d, d + n, 0};
   int shift = (int)lround(cents / 100);
   memset(out, 0, sizeof *out);
-  count(&r, 16);  // beats
+  uint32_t nbeats = u32(&r);
+  const uint8_t *beat = skip(&r, (size_t)nbeats * 16);
   uint32_t phrases = u32(&r);
   const uint8_t *phrase = skip(&r, (size_t)phrases * 44);
   uint32_t templates = u32(&r);
@@ -154,7 +155,9 @@ int sng_parse(const uint8_t *d, size_t n, int bass, double cents, sng_arrangemen
           if (m >= 0) x->e.midi[x->e.n++] = m + shift;
         }
         x->string = -1;
+        x->e.chord = chord;
       } else {
+        x->e.chord = -1;
         x->string = (int8_t)q[16], x->fret = (int8_t)q[17];
         x->e.n = x->string >= 0 && x->string < 6 ? -1 : 0;  // the 7th and 8th strings: not here
       }
@@ -187,6 +190,15 @@ int sng_parse(const uint8_t *d, size_t n, int bass, double cents, sng_arrangemen
   }
   free(notes);
   qsort(out->ev, (size_t)out->n, sizeof *out->ev, by_time);  // a merge of the levels' notes
+  out->beats = malloc((nbeats ? nbeats : 1) * sizeof *out->beats);
+  for (uint32_t i = 0; i < nbeats; i++) {
+    const uint8_t *b = beat + (size_t)i * 16;
+    out->beats[out->nbeats++] = (sng_beat){f32_at(b), (int16_t)(b[4] | b[5] << 8), (int16_t)(b[6] | b[7] << 8)};
+  }
+  out->chord_names = calloc(templates ? templates : 1, sizeof *out->chord_names);
+  for (uint32_t i = 0; i < templates; i++) memcpy(out->chord_names[i], tmpl + (size_t)i * 72 + 40, 32);
+  out->nchords = (int)templates;
+  out->bass = bass;
   out->levels = (int)levels;
   out->level_notes = level_notes;
   return 1;
@@ -195,6 +207,8 @@ int sng_parse(const uint8_t *d, size_t n, int bass, double cents, sng_arrangemen
 void sng_free(sng_arrangement *a) {
   free(a->level_notes);
   free(a->ev);
+  free(a->beats);
+  free(a->chord_names);
   memset(a, 0, sizeof *a);
 }
 

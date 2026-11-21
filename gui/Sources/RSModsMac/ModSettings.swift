@@ -132,6 +132,10 @@ private struct NashvilleSettings: View {
     @EnvironmentObject var store: SettingsStore
 
     var body: some View {
+        Picker("Follow", selection: store.binding(Section.settings, "NashvilleChords")) {
+            Text("The song: its chords throughout, riffs and solos too, and the next one").tag("song")
+            Text("The part played: its chords, while they ring").tag("charted")
+        }
         Picker("Show", selection: store.binding(Section.settings, "NashvilleStyle")) {
             Text("Roman numerals: IV, vi, \u{266D}VII").tag("roman")
             Text("Nashville numbers: 4, 6m, \u{266D}7").tag("numbers")

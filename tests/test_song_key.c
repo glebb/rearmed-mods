@@ -1,11 +1,12 @@
 // Nashville Numbers without the game (src/song_key.c, src/song_sng.c): chords named from their notes, numerals in
-// both styles and both ways of counting a minor key, key names both ways, the key of made-up songs, and an SNG made
-// here, encrypted as the game's are, read back as its whole chart.
+// both styles and both ways of counting a minor key, key names both ways, the key of made-up songs, an SNG made
+// here, encrypted as the game's are, read back as its whole chart, and the harmony of a made-up song's two parts.
 #include <CommonCrypto/CommonCryptor.h>
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
 
+#include "../src/song_harmony.h"
 #include "../src/song_key.h"
 #include "../src/song_sng.h"
 #include "check.h"
@@ -244,5 +245,38 @@ int main(void) {
   file.p[30] ^= 1;
   CHECK(sng_decrypt(file.p, file.n, 1, &n) == NULL);
   free(file.p), free(plain.p);
+  // harmony: a guitar strumming a chord a bar, a bass on whole notes; C G Am F, C over a B, E5; then a bar of nothing.
+  // Bars of four beats, half a second each.
+  static const int strum[6][4] = {{48, 52, 55, 60}, {43, 47, 50, 55}, {45, 52, 57, 60}, {41, 48, 53, 57}, {48, 52, 55, 60}, {40, 47, 52, 0}};
+  static const int bass_notes[6] = {36, 31, 33, 29, 35, 28};
+  sk_event gtr[12], bs[6];
+  int ng = 0;
+  for (int bar = 0; bar < 6; bar++) {
+    for (int half = 0; half < 2; half++) {  // struck on beats 1 and 3
+      sk_event *e = &gtr[ng++];
+      *e = (sk_event){.time = bar * 2.0f + half, .sustain = 0.9f, .n = strum[bar][3] ? 4 : 3, .chord = bar};
+      memcpy(e->midi, strum[bar], sizeof strum[bar]);
+    }
+    bs[bar] = (sk_event){.time = bar * 2.0f, .sustain = 1.9f, .n = 1, .midi = {bass_notes[bar]}, .chord = -1};
+  }
+  sng_beat grid[32];
+  for (int i = 0; i < 32; i++) grid[i] = (sng_beat){i * 0.5f, i / 4, i % 4};
+  sh_part parts[2] = {{gtr, ng, 0}, {bs, 6, 1}};
+  sh_chord *hc = NULL;
+  sk_key in_c = {0, SK_MAJOR, 0};
+  int nh = sh_infer(parts, 2, grid, 32, &in_c, &hc);
+  CHECK(nh == 6);
+  if (nh == 6) {
+    static const char *const want[6] = {"I", "V", "vi", "IV", "I/7", "III5"};
+    for (int i = 0; i < 6; i++) {
+      char got_num[32];
+      sk_numeral(&hc[i].chord, &in_c, 1, 0, 0, got_num, sizeof got_num);
+      CHECK(!strcmp(got_num, want[i]));
+      if (strcmp(got_num, want[i])) fprintf(stderr, "  chord %d: %s, not %s\n", i, got_num, want[i]);
+      CHECK(hc[i].start == i * 2.0f && hc[i].end == (i + 1) * 2.0f);  // a bar each, its halves one
+    }
+  }
+  free(hc);
+  CHECK(sh_infer(parts, 2, grid, 1, &in_c, &hc) == 0 && hc == NULL);  // no grid
   return check_done("song_key");
 }

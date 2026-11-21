@@ -4,8 +4,9 @@
 //
 // An SNG file: u32 0x4a, u32 flags, a 16-byte IV, then AES-256-CTR (the counter big-endian) with the platform's
 // key, giving a u32 length and zlib (flags 1, an unencrypted file as DotCharter writes them: that as it is). The
-// plain file is the toolkit's Sng2014File: the beats, the phrases (44 bytes: MaxDifficulty +4), the chord templates (72 bytes: int32 midi[6] +16), the chord notes (2376), the vocals (60),
-// the phrase iterations (24: phrase +0), extra info (16), linked difficulties, actions (260), events (260), tone
+// plain file is the toolkit's Sng2014File: the beats (16 bytes: float time, int16 bar, int16 beat in the bar), the
+// phrases (44 bytes: MaxDifficulty +4), the chord templates (72 bytes: int32 midi[6] +16, char name[32] +40), the
+// chord notes (2376), the vocals (60), the phrase iterations (24: phrase +0), extra info (16), linked difficulties, actions (260), events (260), tone
 // changes (8), DNA (8), sections (88), then the levels: each its difficulty, anchors (28), anchor extensions (12),
 // two fingerprint lists (20), its notes (63 bytes + u32 bends + 12 bytes each: time +12, string +16, fret +17,
 // chord +20, phrase iteration +32, sustain +55) and three int lists; then the metadata (capo +40, string count
@@ -21,11 +22,21 @@
 #include "song_key.h"
 
 typedef struct {
+  float time;
+  int bar, beat;  // the bar's number, and the beat's in it (0: the bar's first)
+} sng_beat;
+
+typedef struct {
   char name[16];      // the manifest's ArrangementName
+  int bass;           // a bass arrangement
   int levels;
   int *level_notes;   // each level's notes, all of them: what the loaded song is matched by
   sk_event *ev;       // the whole chart, in time order
   int n;
+  sng_beat *beats;    // the beat grid, in time order
+  int nbeats;
+  char (*chord_names)[33];  // each chord template's name as the chart has it ("" none)
+  int nchords;
 } sng_arrangement;
 
 // The plain file of an SNG: malloc'ed, or NULL. mac: the Mac's key, else the PC's (Learn & Play)

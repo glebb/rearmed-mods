@@ -396,19 +396,26 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     `CustomFretNubmers` (spelled so on Windows too)
 
 * **Nashville Numbers** (not in RSMods)
-  * In a song, the chord being played as a numeral of the song's key: `IV`, `vi`, `♭VII`, `V7`, `Vsus`, `I/3` (or as
-    Nashville numbers, `4`, `6m`, `♭7`, `57`, `5sus`, `1/3`), right of the middle with the key under it. A chord shows while it
-    rings and a moment after; single notes show none.
+  * In a song, its chord as a numeral of the song's key: `IV`, `vi`, `♭VII`, `V7`, `Vsus`, `I/3` (or as Nashville
+    numbers, `4`, `6m`, `♭7`, `57`, `5sus`, `1/3`), right of the middle, with the next chord and the key under it. The
+    chords are the song's harmony throughout, as a chart has it, whatever the part you play plays: worked out from
+    all the song's parts, the bass for the roots, a chord a bar (two where it clearly changes in the middle), and a
+    riff as the chord it sits on. With `NashvilleChords = charted` it shows the chords of the part you play instead,
+    each while it rings.
   * `NashvilleNumbers`, `[Mod Settings] NashvilleStyle` (roman; or numbers), `NashvilleMinor` (tonic: Am is `i` / `1m`;
     or relative: counted from the relative major, Am is `vi` / `6m`), `NashvilleDetail` (simple: as a Nashville chart
     writes a chord, its job and not its voicing, with no power chord `5`, sus2, add9, 6 or maj7, a 9 as its 7, sus4 as
-    `sus`; or full: as its notes name it), `[Keybinds] NashvilleKeyKey` (Q),
+    `sus`; or full: as its notes name it), `NashvilleChords` (song; or charted), `[Keybinds] NashvilleKeyKey` (Q),
     `[Nashville Keys]` `<SongKey> = <key>` (`D`, `F#m`, `Bb`)
   * Songs don't say their key, so it's guessed from the notes of all the song's arrangements, read from its archive as
     it loads. On the songs on disc whose key is known it guesses the tonic right for 44 of 50, and the right one is its
     second guess for 3 more: songs on a ♭VII (I-♭VII-IV) may come out a fourth up. The key gives the song its next
     guess and keeps it in `[Nashville Keys]`; Control + the key goes back to the guess. The chords are named from their
     notes (the chart's own names are often missing). Keys are at the chart's pitch, which isn't always the record's.
+  * The song's harmony was checked on the songs on disc: for each guitar part's chords, the harmony worked out from the
+    song's other parts has the root right for 77% of them, and for 85% the change is there half a bar early or late;
+    the chord changes every 1.4 bars on average. Most of the rest is a bass on another note (a walking bass, a pedal)
+    taken for the root. `tests/probe_harmony.c` runs the check, and prints a song's chart.
   * Needs the song-load point Tone Host uses: on the Mac RS Re-ARMed 1.13.0, in Learn & Play 1.12.0. Seen in songs on
     the Mac; not yet run in Learn & Play.
 
