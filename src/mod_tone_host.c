@@ -32,7 +32,7 @@ static char g_line[8192], g_last[8192], g_path[900];
 static size_t g_len, g_last_len;
 static int g_fd = -1, g_frames, g_was_on;
 static void send_plan(void);
-static int g_self, g_remute;  // our own call is under way; the game has just set the fader
+static int g_self;            // our own call is under way
 static int g_shift = 1000;    // the Pitch Shifter shift the host was last told; 1000: none yet
 static float g_fader = -1;    // what the game or a key asked for
 static char g_start[900];     // the host's start script
@@ -97,7 +97,9 @@ static int before_rtpc(rc_ctx *c, void *user) {
     if (!g_self) {
       g_fader = value;
       send_fader();
-      g_remute = 1;
+      // held at 0 while the host plays: the game's value goes to the host only, or the game's guitar would sound
+      // alongside it until the next frame
+      if (g_was_on && g_fd >= 0) c->x[0] = (rc_v128){rc_u32f(0.f), 0};
     }
   } else if (!strcmp(name, "P1_NoiseFloor")) {  // the last of a tone's values
     if (g_len) {
@@ -143,15 +145,14 @@ int rsm_guitar_fader(float *value) {
 static void tick(void) {
   if (!rsm_on("ToneHost")) {
     if (g_fd >= 0) {
+      // ended now, as the game's tones come back: on its own the host would play on until it has missed the game's
+      // lines for five seconds
+      send_text("quit\n", 5);
       close(g_fd);
       g_fd = -1;
     }
     give_back();
     return;
-  }
-  if (g_remute && g_fd >= 0) {
-    g_remute = 0;
-    set_fader(0.f);
   }
   // The host reads the guitar itself: what Pitch Shifter shifts for the game, the host shifts for the plug-in
   int shift = rsm_pitch_shifter_semitones();
