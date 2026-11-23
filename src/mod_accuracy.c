@@ -12,12 +12,28 @@
 
 static const char *const PAUSED[] = {"LearnASong_Pause", "NonStopPlay_Pause", "ScoreAttack_Pause", NULL};
 
+// Why it shows or doesn't, in the log when that changes (RS_MODS_LOG)
+static void say(int state, double t, int hits, int misses) {
+  static int said = -1;
+  if (state == said) return;
+  said = state;
+  static const char *const WHY[] = {"shown", "the song's position isn't read", "the song is at 0", "no note counts"};
+  rsm_log("accuracy: %s (%s, position %g, %d hit, %d missed)", WHY[state], rsm_menu(), t, hits, misses);
+}
+
 static void tick(void) {
   if (!rsm_on("DisplayCurrentAccuracy") || !rsm_menu_in(RSM_SONG_MODES)) return;
   double t = rsm_song_time();  // -1 while paused: the song's position isn't read then
-  if (t == 0 || (t < 0 && !rsm_menu_in(PAUSED))) return;
+  if (t == 0 || (t < 0 && !rsm_menu_in(PAUSED))) {
+    say(t == 0 ? 2 : 1, t, 0, 0);
+    return;
+  }
   int hits, misses;
-  if (!rsm_note_counts(&hits, &misses)) return;
+  if (!rsm_note_counts(&hits, &misses)) {
+    say(3, t, 0, 0);
+    return;
+  }
+  say(0, t, hits, misses);
   int total = hits + misses;
   double pct = total > 0 ? 100.0 * hits / total : 100.0;
   char txt[16];

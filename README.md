@@ -36,10 +36,10 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   and the render API, and the note and highway colors need its Metal renderer. Without them those mods stay off and the
   rest works. Sunlight needs the Metal renderer too.
 - Show Current Note and Guitar Speak need RS Re-ARMed 1.11.0, which names the note the game hears; with an older one
-  those two stay off. Show Current Accuracy, and the grey-note reset of looping and rewinding, need it too, for the
-  game's note counts (in Learn & Play's Score Attack the accuracy needs RS Re-ARMed 1.14.0, and the
-  grey-note reset isn't there), and so do Prevent Buggy
-  Tones and Custom Song List Titles, for its hook points on the tone change and a song list's name.
+  those two stay off. Show Current Accuracy, and the grey-note reset of looping and rewinding, need the game's note
+  counts: in Learn & Play RS Re-ARMed 1.11.0 (in its Score Attack the accuracy needs 1.14.0, and the grey-note reset
+  isn't there), on the Mac the RS Re-ARMed after 1.18.1. Prevent Buggy Tones and Custom Song List Titles need 1.11.0
+  too, for its hook points on the tone change and a song list's name.
 - Seven-String Guitar, Plain Packages and Nashville Numbers need RS Re-ARMed's edits and mid points: in Learn & Play
   from 1.12.0, on the Mac from 1.13.0; with an older one they stay off.
 - Pitch Shifter needs RS Re-ARMed's hook point on the guitar input: the Mac edition has it, Learn & Play from the RS
@@ -313,8 +313,12 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     (100% before the first note).
   * `DisplayCurrentAccuracy`
   * The counts are the game's own, the ones RSMods reads on Windows; on the Mac one set serves Learn a Song and Score
-    Attack. RS Re-ARMed 1.11.0 names them. Seen in Learn a Song on the Mac; the counts were read in Learn a Song and
-    Score Attack, playing and paused. In Learn & Play they are reached by RSMods' own path, in Learn a Song, playing
+    Attack. On the Mac they are reached as the game's own code reaches them, from the game that runs now to its
+    component of the counts' type, by names of the RS Re-ARMed after 1.18.1: with an older one nothing shows there.
+    (Until 0.18.0 they were reached by a path from the song's menu that had been read in runs. It held in some runs
+    and not in others, so the accuracy showed in some and not in others; it is not followed any more.) Seen
+    in Learn a Song on the Mac on 2026-11-23, with a game built from RS Re-ARMed's main and the names: the accuracy
+    showed and counted, playing and after a pause. Score Attack has not been run with it. In Learn & Play they are reached by RSMods' own path, in Learn a Song, playing
     and paused; its Score Attack counts in another object, read by RSMods' path to it, which RS Re-ARMed 1.14.0 names
     (seen in Score Attack, 2026-11-10); with 1.13.0 or older nothing shows there.
   * Different: RSMods shows 0.00% in the song's other menus (Riff Repeater, the tuner, the mixer); here nothing shows
