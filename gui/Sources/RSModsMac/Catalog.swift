@@ -142,7 +142,7 @@ enum Catalog {
         ModToggle(label: "Song Stems", key: "SongStems",
                   help: "Takes the guitar or the bass out of the song you play, at a level of your own: a line of the volume mixer, with its own key. rs-stems separates each song on the Neural Engine. Needs RS Re-ARMed 1.12.0."),
         ModToggle(label: "Pitch Shifter", key: "PitchShifter",
-                  help: "The guitar a few semitones lower before the game hears it: a song in E flat on a guitar in E, without retuning. Notes, tuner and tones follow.",
+                  help: "The guitar a few semitones lower before the game hears it: a song in E flat on a guitar in E, without retuning, or one off concert pitch (A428). Notes, tuner and tones follow.",
                   note: "In Learn & Play it needs the RS Re-ARMed after 1.17.1"),
         ModToggle(label: "Discord Rich Presence", key: "DiscordRichPresence",
                   help: "Discord shows that you play RS Re-ARMed, and the song, its artist and the game mode while you play one. Needs the Discord app running on this Mac."),
@@ -340,7 +340,7 @@ enum Catalog {
             "SeparateNoteColorsMode": "0", "CustomNSPTimeLimit": "10000", "SecondaryMonitorXPosition": "0",
             "SecondaryMonitorYPosition": "0", "ExtendedRangeModeAt": "-5", "NumberOfSongLists": "6",
             "SongStemsGuitarLevel": "0", "SongStemsBassLevel": "0", "SongStemsCacheMB": "500",
-            "PitchShifterSemitones": "-1", "NashvilleStyle": "roman", "NashvilleMinor": "tonic", "NashvilleDetail": "simple", "NashvilleChords": "song",
+            "PitchShifterSemitones": "-1", "PitchShifterA4": "440", "NashvilleStyle": "roman", "NashvilleMinor": "tonic", "NashvilleDetail": "simple", "NashvilleChords": "song",
         ],
         Section.keybinds: [
             "RRSpeedKey": "R", "LoopStartKey": "Y", "LoopEndKey": "U", "RewindKey": "Z", "ShowSongTimerKey": "I",

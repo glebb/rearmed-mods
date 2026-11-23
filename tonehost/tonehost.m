@@ -1057,9 +1057,10 @@ static void command(char *line) {
     say("song's gain offset %+.2f", v);
     if (last_gear) use_template(pick(last_gear), last_gear);  // through the instance nobody hears, like any tone
   } else if (!strncmp(line, "shift ", 6)) {  // Pitch Shifter: the guitar that many semitones off, as the game hears it
-    int v = atoi(line + 6);
+    double v = strtod(line + 6, NULL);  // a fraction with Pitch Shifter's A away from 440 Hz
+    if (!(v >= -13 && v <= 13)) v = 0;
     if (g_shift) sp_set_semitones(g_shift, v);
-    say("pitch shifter %+d", v);
+    say("pitch shifter %+.2f", v);
   } else if (!strncmp(line, "mixer ", 6)) {  // the game's guitar fader, 0 to 100
     float v = strtof(line + 6, NULL);
     atomic_store(&g_mixer_gain, v / 100.f);

@@ -453,7 +453,9 @@ private struct PitchShifterSettings: View {
     var body: some View {
         NumberField(label: "Shift the guitar by", value: store.number("PitchShifterSemitones"),
                     range: -12...12, step: 1, unit: "semitones")
-        Text("-1 is E flat on a guitar in E, -2 is D. Above 0 shifts up, which is a little slower to follow your playing. The keys change it by a semitone while you play, and with Your Own Plug-in on, its sound is shifted too.")
+        NumberField(label: "With its A at", value: store.number("PitchShifterA4"),
+                    range: 415...466, step: 1, unit: "Hz")
+        Text("-1 is E flat on a guitar in E, -2 is D. Above 0 shifts up, which is a little slower to follow your playing. For a song off concert pitch, set the A it is tuned to: 428 for E Standard A428 (440 is none). The keys change the shift by a semitone while you play, Control with a key changes the A by a hertz, and a key without Control goes back to the nearest semitone. With Your Own Plug-in on, its sound is shifted too.")
     }
 }
 

@@ -1,4 +1,4 @@
-// The shifter behind Pitch Shifter (pitch/splice_shift.c), without the game: that it shifts by what it is asked, leaves
+// The shifter behind Pitch Shifter (pitch/splice_shift.c), without the game: that it shifts by what it is asked (part of a semitone too), leaves
 // the guitar alone at 0 semitones, gives the same samples however the input is cut into buffers, takes its lag back at
 // a hammered-on note however quiet the guitar comes in, keeps a high note's lag within a few periods when it is alone
 // and not when a quieter note rings under it, lets a note that has stopped be over and a gap after a note stay a gap,
@@ -76,6 +76,14 @@ int main(void) {
   run(in, b, 1, 128);
   CHECK(share_at(b, up) > 0.5);
   CHECK(share_at(b, 220) < 0.01);
+
+  // Part of a semitone, as a song off concert pitch asks: a guitar at A440 for one at A428, and at A452
+  for (int j = 0; j < 2; j++) {
+    double a4 = j ? 452 : 428;
+    run(in, a, 12 * log2(a4 / 440), 128);
+    CHECK(share_at(a, 220 * a4 / 440) > 0.5);
+    CHECK(share_at(a, 220) < 0.01);
+  }
 
   // Upward a seam takes some of the lag itself, more the larger the shift, and a high note's repeat gives back less
   // than that: several of them are taken then, or the lag would run out and the note come out where it was

@@ -3,6 +3,11 @@
 // The game is given the shifted guitar as its input: its note detection, tuner and tones all follow. The down and up
 // keys change the shift by a semitone, and the shift shows for a moment when it changes.
 //
+// A song off concert pitch (E Standard at A428, say) is met by PitchShifterA4, the A the guitar is to sound at in
+// place of its own 440 Hz: Control with the down or up key moves it a hertz, and the shift is the semitones and that
+// together. A key without Control first drops it again, for the nearest semitone to where the shift stood, and
+// changes the shift by a semitone from the next press on.
+//
 // Every buffer of a guitar input passes RS Re-ARMed's hook point si_io on the device's I/O thread, before the game
 // has it. In the Mac game that is after RS Re-ARMed's own hook has put the chosen channel in a mono buffer of its own
 // (audio_chan.c); with nothing set there the buffer is the device's, of one or two channels, and the game takes one
@@ -18,6 +23,7 @@
 // Needs the hook point si_io: the Mac edition, and Learn & Play from the RS Re-ARMed after 1.17.1. With an older one
 // the mod stays off there.
 #include <CoreAudio/CoreAudio.h>
+#include <math.h>
 #include <stdatomic.h>
 #include <stdio.h>
 
@@ -30,6 +36,9 @@
 #define CHANNELS 2    // of a device's buffer that are shifted
 #define MOST_FRAMES 4096
 #define RANGE 12      // semitones either way
+#define A4 440        // Hz: the A a guitar is tuned to
+#define A4_LOW 415    // PitchShifterA4's range: a semitone either way
+#define A4_HIGH 466
 #define KEEP_FOR 2.0  // seconds a key's change stands before RSMods.ini is believed again (it is read back in one)
 #define SHOW_SECONDS 3.0
 
@@ -44,8 +53,10 @@ typedef struct {
 static input g_in[INPUTS];
 static atomic_int g_wanted;  // the mod has been on: inputs are given shifters
 static atomic_int g_full;    // an input came that there was no place for (the I/O thread's word to tick)
-static int g_hooked, g_on, g_semitones, g_set = 1000;  // g_set: what the shifters were last told
+static int g_hooked, g_on, g_semitones, g_a4 = A4;
+static double g_set = 1000;  // what the shifters were last told
 static double g_changed = -100;
+static int g_held = -1, g_fine;  // the key that is down, and whether Control has been down with it
 
 static input *slot_of(const uint8_t *self) {
   for (int i = 0; i < INPUTS; i++) {
@@ -113,7 +124,7 @@ static double rate_of(uint32_t dev) {
 }
 
 // Shifters for the channels that have been seen and have none, and every shifter told the shift
-static void give_shifters(int semitones) {
+static void give_shifters(double semitones) {
   for (int i = 0; i < INPUTS; i++) {
     input *in = &g_in[i];
     int channels = atomic_load_explicit(&in->channels, memory_order_relaxed);
@@ -137,16 +148,23 @@ static void give_shifters(int semitones) {
 }
 
 static int within(long v) { return (int)(v < -RANGE ? -RANGE : v > RANGE ? RANGE : v); }
+static int a4_within(long v) { return (int)(v < A4_LOW ? A4_LOW : v > A4_HIGH ? A4_HIGH : v); }
 
-int rsm_pitch_shifter_semitones(void) { return g_hooked && g_on ? g_semitones : 0; }
+// The shift in semitones: the whole ones, and what the A away from 440 Hz comes to
+static double shift_of(int semitones, int a4) { return semitones + 12 * log2(a4 / (double)A4); }
+
+double rsm_pitch_shifter_semitones(void) { return g_hooked && g_on ? shift_of(g_semitones, g_a4) : 0; }
 
 static void tick(void) {
   if (!g_hooked) return;
   double now = rsm_now();
-  int was = rsm_pitch_shifter_semitones();
+  double was = rsm_pitch_shifter_semitones();
   g_on = rsm_on("PitchShifter");
-  if (now - g_changed >= KEEP_FOR) g_semitones = within(rsm_long("PitchShifterSemitones", -1));
-  int semitones = rsm_pitch_shifter_semitones();
+  if (now - g_changed >= KEEP_FOR) {
+    g_semitones = within(rsm_long("PitchShifterSemitones", -1));
+    g_a4 = a4_within(rsm_long("PitchShifterA4", A4));
+  }
+  double semitones = rsm_pitch_shifter_semitones();
   if (g_on) atomic_store_explicit(&g_wanted, 1, memory_order_relaxed);
   if (atomic_load_explicit(&g_wanted, memory_order_relaxed)) give_shifters(semitones);
   if (atomic_load_explicit(&g_full, memory_order_relaxed) == 1) {
@@ -155,31 +173,50 @@ static void tick(void) {
   }
   if (semitones != was) {
     if (semitones)
-      rsm_log("pitch shifter: the guitar is shifted by %+d semitones before the game hears it", semitones);
+      rsm_log("pitch shifter: the guitar is shifted by %+.2f semitones before the game hears it (%+d, A%d)", semitones,
+              g_semitones, g_a4);
     else
       rsm_log("pitch shifter: off");
   }
   if (g_on && now - g_changed < SHOW_SECONDS) {
     // What a string tuned to E sounds as
     static const char *const NAMES[] = {"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
-    char txt[64];
+    char txt[64], a4[16] = "";
+    if (g_a4 != A4) snprintf(a4, sizeof a4, ", A%d", g_a4);
     if (g_semitones)
-      snprintf(txt, sizeof txt, "Pitch Shifter: %+d (E plays as %s)", g_semitones, NAMES[((4 + g_semitones) % 12 + 12) % 12]);
+      snprintf(txt, sizeof txt, "Pitch Shifter: %+d%s (E plays as %s%s)", g_semitones, a4,
+               NAMES[((4 + g_semitones) % 12 + 12) % 12], a4);
     else
-      snprintf(txt, sizeof txt, "Pitch Shifter: 0");
+      snprintf(txt, sizeof txt, "Pitch Shifter: 0%s", a4);
     rsm_text(txt, 0.5f, 1.f / 54, 0.04f, RSM_ALIGN_CENTER, 0xffffffff);
   }
 }
 
 static void key(const rsm_key_event *e) {
-  if (e->down || !g_hooked || !rsm_on("PitchShifter")) return;
+  if (!g_hooked || !rsm_on("PitchShifter")) return;
   int by = e->keycode == rsm_key("PitchShifterDownKey") ? -1 : e->keycode == rsm_key("PitchShifterUpKey") ? 1 : 0;
   if (!by) return;
-  char v[8];
-  g_semitones = within(g_semitones + by);
+  // A press acts when the key comes up, and is Control's if Control was down at any time of it: let go of Control
+  // first and the press is still not a plain one, which would drop the hertz just set
+  if (e->down) {
+    if (g_held != e->keycode) g_held = e->keycode, g_fine = 0;
+    if (e->ctrl) g_fine = 1;
+    return;
+  }
+  int fine = e->ctrl || (g_held == e->keycode && g_fine);
+  g_held = -1;
+  if (fine)
+    g_a4 = a4_within(g_a4 + by);
+  else if (g_a4 != A4)
+    g_semitones = within(lround(shift_of(g_semitones, g_a4))), g_a4 = A4;
+  else
+    g_semitones = within(g_semitones + by);
   g_changed = rsm_now();
+  char v[8];
   snprintf(v, sizeof v, "%d", g_semitones);
   rsm_set("Mod Settings", "PitchShifterSemitones", v);
+  snprintf(v, sizeof v, "%d", g_a4);
+  if (fine || rsm_long("PitchShifterA4", A4) != g_a4) rsm_set("Mod Settings", "PitchShifterA4", v);
 }
 
 __attribute__((constructor)) static void init(void) { g_hooked = !rsm_hook("si_io", before_io, NULL); }

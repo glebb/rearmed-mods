@@ -473,6 +473,11 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     without retuning: `-1` plays a song in E flat on a guitar in E, `-2` one in D. The game is given the shifted
     guitar as its input, so note detection, the tuner and the tones follow. It moves the whole guitar: a drop tuning
     still needs its one string retuned.
+  * A song off concert pitch (E Standard at A428, as Castles Made of Sand) is met by `PitchShifterA4`, the A your
+    guitar sounds at in place of its own 440 Hz: the shift is the semitones and that together (A428 is 0.48 of a
+    semitone down). Control with the down or up key moves it a hertz while you play (A439, A438, and so on). A key
+    without Control first drops it again, for the nearest semitone to where the shift stood, and changes the shift by
+    a semitone from the next press on.
   * The shifter (`pitch/splice_shift.c`, with its bench and what it found in [`pitch`](pitch/README.md)) starts a
     note half a millisecond to a millisecond late; while chords and low notes ring on it runs up to 30 ms behind
     and catches up at the next note, and a note from about F3 up that rings alone is kept within 1 to 6 ms.
@@ -483,8 +488,8 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     since it reads the guitar itself; it needs the host of this version.
   * Every guitar input is shifted by the same amount, Player 2's too. The idea is from RocksmithAudioBridge's Drop
     Pedal.
-  * `PitchShifter`, `[Mod Settings] PitchShifterSemitones` (-1; -12 to 12), `[Keybinds] PitchShifterDownKey` (,),
-    `PitchShifterUpKey` (.)
+  * `PitchShifter`, `[Mod Settings] PitchShifterSemitones` (-1; -12 to 12), `PitchShifterA4` (440; 415 to 466),
+    `[Keybinds] PitchShifterDownKey` (,), `PitchShifterUpKey` (.)
   * Needs the hook point `si_io`: the Mac edition has it, Learn & Play from the RS Re-ARMed after 1.17.1 (with an
     older one the mod stays off there). Played with a guitar in the game on 2026-11-19: it works and sounds good. In
     a Learn & Play run a test tone written into the input came out of the game's note detection two semitones lower
@@ -682,7 +687,7 @@ again, archives laid out in the test for a folder without a file and counts the 
 localization and tone edits, a tone key the file has many times, Song Stems' index of the song archives with one that
 only a file provider serves, through RS Re-ARMed's own `rc_file.c`, and without the file layer, a song's names from
 a manifest and from an archive, Discord's activity and a conversation with a socket that answers as Discord does,
-the shifter behind Pitch Shifter: that it shifts by what it is asked, down, up (a high note a long way up too) and from one to the other just after a note
+the shifter behind Pitch Shifter: that it shifts by what it is asked, down, up (a high note a long way up too), by the part of a semitone an A of 428 Hz is, and from one to the other just after a note
 started, takes its lag back at a hammered-on note from a quiet guitar as from a loud one, keeps a high note's lag within
 a few periods when it is alone and not when a quieter note rings under it, lets a note that has stopped be over
 and a gap after a note stay a gap, makes no step at a note's start, a manifest's tones for Tone Host's plan of a song, where a value goes in a preset for a plug-in's engine,

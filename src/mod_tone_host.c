@@ -33,7 +33,7 @@ static size_t g_len, g_last_len;
 static int g_fd = -1, g_frames, g_was_on;
 static void send_plan(void);
 static int g_self;            // our own call is under way
-static int g_shift = 1000;    // the Pitch Shifter shift the host was last told; 1000: none yet
+static double g_shift = 1000;    // the Pitch Shifter shift the host was last told; 1000: none yet
 static float g_fader = -1;    // what the game or a key asked for
 static char g_start[900];     // the host's start script
 static int g_starts;
@@ -155,11 +155,11 @@ static void tick(void) {
     return;
   }
   // The host reads the guitar itself: what Pitch Shifter shifts for the game, the host shifts for the plug-in
-  int shift = rsm_pitch_shifter_semitones();
+  double shift = rsm_pitch_shifter_semitones();
   if (g_fd >= 0 && shift != g_shift) {
     char text[32];
     // told again with the next frame if the FIFO had no room, or the host would shift by another amount than the game
-    if (send_text(text, (size_t)snprintf(text, sizeof text, "shift %d\n", shift))) g_shift = shift;
+    if (send_text(text, (size_t)snprintf(text, sizeof text, "shift %.4f\n", shift))) g_shift = shift;
   }
   g_song_at = rsm_song_time();  // -1 with no song playing, and while one is paused
   if (++g_frames % 2 == 0) send_time();

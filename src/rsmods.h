@@ -160,9 +160,9 @@ extern const rsm_mod rsm_mod_riff_repeater, rsm_mod_looping, rsm_mod_song_previe
 // The guitar fader while ToneHost holds the game's own at 0: 1 and the value; otherwise 0 (mod_tone_host.c)
 int rsm_guitar_fader(float *value);
 
-// The semitones Pitch Shifter shifts the guitar by now; 0 while it is off, or where it can't run
-// (mod_pitch_shifter.c)
-int rsm_pitch_shifter_semitones(void);
+// The semitones Pitch Shifter shifts the guitar by now, a fraction with its A away from 440 Hz; 0 while it is off, or
+// where it can't run (mod_pitch_shifter.c)
+double rsm_pitch_shifter_semitones(void);
 
 // In a song with Sunlight on: the venue goes, as with the loft off (mod_sunlight.c)
 int rsm_sunlight_hides_venue(void);
