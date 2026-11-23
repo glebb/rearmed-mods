@@ -455,6 +455,13 @@ private struct PitchShifterSettings: View {
                     range: -12...12, step: 1, unit: "semitones")
         NumberField(label: "With its A at", value: store.number("PitchShifterA4"),
                     range: 415...466, step: 1, unit: "Hz")
+        Toggle("Set both for each song from its tuning",
+               isOn: store.toggle(ModToggle(label: "", key: "PitchShifterAuto", help: "")))
+        if store.isOn("PitchShifterAuto") {
+            NumberField(label: "My guitar is tuned", value: store.number("PitchShifterGuitarTuning"),
+                        range: -12...12, step: 1, unit: "semitones from standard")
+            Text("0 is a guitar in E (a bass too), -1 one in E flat. The shift and the A are set when a song's preview plays, so the tuner before the song already hears them; the keys still change them for that song. A drop or open tuning counts as the tuning most of its strings are in: its other strings still need retuning.")
+        }
         Text("-1 is E flat on a guitar in E, -2 is D. Above 0 shifts up, which is a little slower to follow your playing. For a song off concert pitch, set the A it is tuned to: 428 for E Standard A428 (440 is none). The keys change the shift by a semitone while you play, Control with a key changes the A by a hertz, and a key without Control goes back to the nearest semitone. With Your Own Plug-in on, its sound is shifted too.")
     }
 }

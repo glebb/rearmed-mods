@@ -11,7 +11,11 @@
 // guessed keys, written to [Nashville Keys] as <SongKey> = <key> ("D", "F#m", "Bb"); Control + the key goes back to
 // the guess. NashvilleMinor = relative counts a minor key from its relative major (Am: C's 6m) and not from 1m.
 // NashvilleDetail = simple (the default) shows a chord as a chart writes it, full as its notes name it.
+//
+// Pitch Shifter asks which arrangement is played, for its tuning (rsm_song_played): the thread reads a loaded song
+// while either wants it.
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,7 +47,10 @@ static struct {
   int nchords;
   sh_chord *harmony;  // the song's
   int nharmony;
+  rsm_arrangement played;  // the arrangement played's manifest,
+  unsigned load;           // of which load of a song (g_loaded then); 0: it wasn't found
 } g_found;
+static atomic_llong g_asked = -100000;  // when another mod last asked for the arrangement played, in ms
 // The loaded song, from the game: its levels' note counts
 static int g_levels, g_level_notes[MAX_LEVELS];
 static unsigned g_loaded, g_done;
@@ -60,7 +67,7 @@ static size_t vector_of(const uint8_t *at, const uint8_t **first) {
 static void song_loaded(rc_mid_frame *f, void *user) {
   (void)user;
   const uint8_t *song = (const uint8_t *)(uintptr_t)rc_mid_get(f, g_song_value), *levels;
-  if (!song || !g_on) return;
+  if (!song || !(g_on || rsm_now() * 1000 - (double)atomic_load(&g_asked) < 2000)) return;
   size_t bytes = vector_of(song + RC_OFF(sng_song_levels), &levels), size = (size_t)RC_OFF(sng_level_size);
   if (!bytes || !size) return;  // the vocals
   pthread_mutex_lock(&g_lock);
@@ -94,7 +101,7 @@ static int read_song(const char *song, const uint8_t key[32], sng_arrangement **
   return 0;
 }
 
-static void find(const char *song, const uint8_t key[32], int levels, const int *level_notes) {
+static void find(const char *song, const uint8_t key[32], unsigned load, int levels, const int *level_notes) {
   sng_arrangement *arr = NULL;
   int n = read_song(song, key, &arr), match = -1;
   sk_stats stats;
@@ -127,8 +134,12 @@ static void find(const char *song, const uint8_t key[32], int levels, const int 
   if (nkeys) sk_key_name(&keys[0], name, sizeof name);
   fprintf(stderr, "[rsmods] nashville numbers: %s: %d arrangements, key %s, %s (%d chords), the song's harmony %d chords\n", song, n,
           name, match >= 0 ? arr[match].name : "the loaded one not found", nchords, nharmony);
+  rsm_arrangement played = {.name = ""};
+  if (match >= 0) played = arr[match].manifest;
   sng_free_all(arr, n);
   pthread_mutex_lock(&g_lock);
+  g_found.played = played;
+  g_found.load = match >= 0 ? load : 0;
   free(g_found.chords);
   free(g_found.harmony);
   g_found.harmony = harmony;
@@ -147,7 +158,7 @@ static void *finder(void *arg) {
   for (int have_key = 0;;) {
     pthread_mutex_lock(&g_lock);
     while (g_done == g_loaded) pthread_cond_wait(&g_wake, &g_lock);
-    g_done = g_loaded;
+    unsigned load = g_done = g_loaded;
     int levels = g_levels, level_notes[MAX_LEVELS];
     memcpy(level_notes, g_level_notes, sizeof level_notes);
     pthread_mutex_unlock(&g_lock);
@@ -161,9 +172,20 @@ static void *finder(void *arg) {
     }
     char song[160];
     snprintf(song, sizeof song, "%s", rsm_song_key());
-    if (*song) find(song, key, levels, level_notes);
+    if (*song) find(song, key, load, levels, level_notes);
   }
   return NULL;
+}
+
+int rsm_song_played(const char *song, rsm_arrangement *out) {
+  atomic_store(&g_asked, (long long)(rsm_now() * 1000));
+  pthread_mutex_lock(&g_lock);
+  // not while a later load is still being read: that may be another arrangement of the song
+  int have = g_found.load && g_found.load == g_loaded && *song && !strcasecmp(g_found.song, song);
+  if (have) *out = g_found.played;
+  unsigned load = g_loaded;
+  pthread_mutex_unlock(&g_lock);
+  return have ? (int)(load & 0x7fffffff) | 1 << 30 : 0;
 }
 
 // The song's key: one set with the key or in [Nashville Keys], else the best guess. 1 if it was set.

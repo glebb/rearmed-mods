@@ -123,6 +123,10 @@ static const char DEFAULT_INI[] =
     "; place of 440 Hz (428 for E Standard A428; 415 to 466): Control + the keys move it a hertz, and a key without\n"
     "; Control goes back to the nearest semitone. In Learn & Play it needs the RS Re-ARMed after 1.17.1.\n"
     "PitchShifter = off\n"
+    "; Pitch Shifter sets both for each song by itself, from the song's tuning and your guitar's own\n"
+    "; (PitchShifterGuitarTuning, semitones from standard: 0 a guitar in E, -1 one in E flat). A drop or open tuning\n"
+    "; still needs its strings retuned. The keys change the shift for the song in play.\n"
+    "PitchShifterAuto = off\n"
     "; Discord shows that you play RS Re-ARMed, and the song, its artist and the game mode while you play one. Needs\n"
     "; the Discord app running on this Mac, with its activity sharing on.\n"
     "DiscordRichPresence = off\n"
@@ -154,6 +158,7 @@ static const char DEFAULT_INI[] =
     "SongStemsCacheMB = 500\n"
     "PitchShifterSemitones = -1\n"
     "PitchShifterA4 = 440\n"
+    "PitchShifterGuitarTuning = 0\n"
     "CheckForNewSongsInterval = 5000\n"
     "OverrideInputVolume = 17\n"
     "CameraZoom = 100\n"
@@ -397,6 +402,8 @@ static const struct {
     {"Toggle Switches", "PitchShifter", "off"},
     {"Mod Settings", "PitchShifterSemitones", "-1"},
     {"Mod Settings", "PitchShifterA4", "440"},
+    {"Toggle Switches", "PitchShifterAuto", "off"},
+    {"Mod Settings", "PitchShifterGuitarTuning", "0"},
     {"Keybinds", "PitchShifterDownKey", "VK_OEM_COMMA"},
     {"Keybinds", "PitchShifterUpKey", "VK_OEM_PERIOD"},
     {"Toggle Switches", "DiscordRichPresence", "off"},

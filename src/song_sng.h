@@ -28,6 +28,7 @@ typedef struct {
 
 typedef struct {
   char name[16];      // the manifest's ArrangementName
+  rsm_arrangement manifest;  // and its tuning (sng_read_song's; nothing from sng_parse)
   int bass;           // a bass arrangement
   int levels;
   int *level_notes;   // each level's notes, all of them: what the loaded song is matched by

@@ -144,6 +144,8 @@ taken back at every note start.
 
 The idea of the mod is from [RocksmithAudioBridge](https://github.com/Cheesewizard/RocksmithAudioBridge)'s Drop
 Pedal (MIT, by Cheesewizard), and that mod's shifter was the benchmark on the bench while this one was written.
+Setting the shift for each song by itself, from the song's tuning and the guitar's own (`PitchShifterAuto`), is an
+idea of its Drop Pedal too.
 
 `pitch_shift.c`, the first design, follows a published low-latency approach (Juillerat, Schubiger-Banz and Müller
 Arisona, 2008): split the guitar into many narrow bands and shift each band's frequency directly, with no seams at

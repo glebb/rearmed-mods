@@ -23,6 +23,7 @@
 #include <string.h>
 
 #include "rc_mod.h"
+#include "rsmods_tuning.h"
 
 // ------------------------------------------------------------------------------------------------
 // Settings (rsmods_ini.c)
@@ -169,6 +170,13 @@ int rsm_sunlight_hides_venue(void);
 
 // The extended range colors are on now (mod_extended_range.c; mod_colors.c applies them)
 int rsm_extended_range(void);
+// The tunings of a song's arrangements, from its archive (mod_extended_range.c): how many, 0 for a song that has none
+// to be found, or -1 while they aren't read yet. Asking has them read: ask every tick while they are wanted.
+int rsm_song_tunings(const char *song_key, rsm_arrangement *out, int max);
+// The arrangement of the song that the game last loaded, as its manifest has it (mod_nashville.c): a number that
+// is another for every load, and it; or 0 while none of this song has been loaded or it isn't known. Asking has
+// loaded songs read: ask every tick while wanted.
+int rsm_song_played(const char *song_key, rsm_arrangement *out);
 // The tone in play is a bass tone (bass gear in the RTPCs the game sets as the tone loads; mod_extended_range.c)
 int rsm_tone_bass(void);
 // Song Stems (mod_song_stems.c): the level of the part it takes out (0-100: 0 the song without it, 100 the song as it

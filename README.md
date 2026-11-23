@@ -478,6 +478,16 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     semitone down). Control with the down or up key moves it a hertz while you play (A439, A438, and so on). A key
     without Control first drops it again, for the nearest semitone to where the shift stood, and changes the shift by
     a semitone from the next press on.
+  * With `PitchShifterAuto` on, the mod sets both for each song by itself, from the song's tuning and your guitar's
+    own (`PitchShifterGuitarTuning`, semitones from standard: 0 a guitar in E, -1 one in E flat): a song in E flat
+    gets `-1` on a guitar in E, and Castles Made of Sand, at 45 cents down, A429. It sets them as the song's preview
+    plays in a song list, so the tuner before the song already hears the shifted guitar, and the keys still change
+    them for that
+    song. A drop or open tuning counts as the tuning most of its strings are in (Eb Drop Db as E flat, DADGAD as E),
+    a bass by its four strings, and with a bass tone it is the bass arrangement's tuning. Where a song's lead and
+    rhythm are tuned apart, it is the lead's in the song list, and the tuning of the arrangement you picked from the
+    moment the tuner before the song opens (that needs RS Re-ARMed 1.13.0, Learn & Play 1.12.0, as Nashville
+    Numbers).
   * The shifter (`pitch/splice_shift.c`, with its bench and what it found in [`pitch`](pitch/README.md)) starts a
     note half a millisecond to a millisecond late; while chords and low notes ring on it runs up to 30 ms behind
     and catches up at the next note, and a note from about F3 up that rings alone is kept within 1 to 6 ms.
@@ -486,14 +496,21 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
   * The down and up keys change the shift by a semitone while you play, and the shift shows for a moment when it
     changes. With Your Own Plug-in (Tone Host) on, the host shifts the guitar for the plug-in by the same amount,
     since it reads the guitar itself; it needs the host of this version.
-  * Every guitar input is shifted by the same amount, Player 2's too. The idea is from RocksmithAudioBridge's Drop
-    Pedal.
-  * `PitchShifter`, `[Mod Settings] PitchShifterSemitones` (-1; -12 to 12), `PitchShifterA4` (440; 415 to 466),
+  * Every guitar input is shifted by the same amount, Player 2's too. The idea is from
+    [RocksmithAudioBridge](https://github.com/Cheesewizard/RocksmithAudioBridge)'s Drop Pedal, and so is following
+    the song's tuning from a guitar tuning you set once: its Drop Pedal does that with its base tuning.
+  * `PitchShifter`, `PitchShifterAuto`, `[Mod Settings] PitchShifterSemitones` (-1; -12 to 12), `PitchShifterA4`
+    (440; 415 to 466), `PitchShifterGuitarTuning` (0; -12 to 12),
     `[Keybinds] PitchShifterDownKey` (,), `PitchShifterUpKey` (.)
   * Needs the hook point `si_io`: the Mac edition has it, Learn & Play from the RS Re-ARMed after 1.17.1 (with an
     older one the mod stays off there). Played with a guitar in the game on 2026-11-19: it works and sounds good. In
     a Learn & Play run a test tone written into the input came out of the game's note detection two semitones lower
-    with the shift at -2.
+    with the shift at -2. Following the song's tuning was run in the game on 2026-11-23 over forty
+    songs' previews, among them songs in E flat and songs off concert pitch, and set what their manifests call for;
+    A song with its lead in E and its rhythm in D went to `-2` as
+    the tuner opened for the rhythm and stayed there into the song, and to `0` for the lead: in Learn & Play (a build
+    of RS Re-ARMed after 1.17.1) with the mod as it is, on the Mac with the mod before its last two changes. It has
+    not been played with a guitar.
 
 * **Discord Rich Presence** (not in RSMods)
   * Discord shows "Playing RS Re-ARMed" on your profile, and while you play a song its title, its artist and the game
@@ -690,7 +707,8 @@ a manifest and from an archive, Discord's activity and a conversation with a soc
 the shifter behind Pitch Shifter: that it shifts by what it is asked, down, up (a high note a long way up too), by the part of a semitone an A of 428 Hz is, and from one to the other just after a note
 started, takes its lag back at a hammered-on note from a quiet guitar as from a loud one, keeps a high note's lag within
 a few periods when it is alone and not when a quieter note rings under it, lets a note that has stopped be over
-and a gap after a note stay a gap, makes no step at a note's start, a manifest's tones for Tone Host's plan of a song, where a value goes in a preset for a plug-in's engine,
+and a gap after a note stay a gap, makes no step at a note's start, the shift Pitch Shifter chooses for a song from its
+tuning, its cents and the guitar's own tuning (drop and open tunings, a bass, which arrangement), a manifest's tones for Tone Host's plan of a song, where a value goes in a preset for a plug-in's engine,
 the guitar Tone Host measures a tone's loudness with and its meter,
 and the move of a Tone Host config into a profile) and the app's
 (`gui/Tests`: settings, a section that is a list, install and update for both editions, the app's profile backups,
@@ -758,7 +776,8 @@ SHA-256 in `STEMS_MODEL_SHA256`. A release build made by hand takes the model fr
 - [Demucs](https://github.com/facebookresearch/demucs) by Alexandre Défossez, Meta AI (MIT): Song Stems' separation, its
   model `htdemucs_6s` and the network `stems/convert` rewrites for the Neural Engine.
 - [RocksmithAudioBridge](https://github.com/Cheesewizard/RocksmithAudioBridge) by Cheesewizard (MIT): the idea of
-  Pitch Shifter is from its Drop Pedal, and its shifter was the benchmark ours was tested against.
+  Pitch Shifter is from its Drop Pedal, as is the shift that follows each song's tuning from the guitar's own
+  (`PitchShifterAuto`), and its shifter was the benchmark ours was tested against. No code of it is here.
 - [Guitar-TECHS](https://zenodo.org/records/14963133) (CC BY 4.0): the recorded guitar the shifter behind Pitch
   Shifter was measured on. Not in this repository.
 

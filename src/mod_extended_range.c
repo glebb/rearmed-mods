@@ -15,6 +15,8 @@
 // loads), and the song's arrangements for that instrument decide; when they differ (a low lead, a standard rhythm) the
 // colors change only if all of them call for it, and the key is there for the rest.
 //
+// Pitch Shifter asks for the tunings too, to follow the song (rsm_song_tunings): they are read while either wants them.
+//
 // The colors themselves are mod_colors.c's (rsm_extended_range): RSMods turns the game's colorblind mode on and writes
 // the colorblind bank; here both banks get the colors, and the notes the colorblind rows.
 #include <dirent.h>
@@ -65,7 +67,18 @@ static atomic_int g_active;        // the extended range colors are on now
 static int g_flip;                 // the key turned it the other way for this song
 static char g_flip_for[128];
 
+static double g_asked = -100;  // when another mod last asked for a song's tunings
+
 int rsm_extended_range(void) { return atomic_load(&g_active); }
+
+int rsm_song_tunings(const char *song, rsm_arrangement *out, int max) {
+  g_asked = rsm_now();
+  pthread_mutex_lock(&g_lock);
+  int n = *song && !strcmp(g_found_for, song) ? (g_narr < max ? g_narr : max) : -1;
+  if (n > 0) memcpy(out, g_arr, (size_t)n * sizeof *out);
+  pthread_mutex_unlock(&g_lock);
+  return n;
+}
 int rsm_tone_bass(void) { return atomic_load(&g_bass); }
 
 static void free_index(void) {
@@ -210,10 +223,10 @@ static int decide(const rsm_arrangement *arr, int n) {
 
 static void tick(void) {
   static int started, shown = -1;
-  int on = rsm_on("ExtendedRange") && read_key();
+  int on = rsm_on("ExtendedRange");
   const char *song = rsm_song_key();
   int active = 0;
-  if (on && *song) {
+  if ((on || rsm_now() - g_asked < 1) && read_key() && *song) {
     if (!started) {
       pthread_t t;
       if (pthread_create(&t, NULL, worker, NULL) == 0) pthread_detach(t);
@@ -225,10 +238,10 @@ static void tick(void) {
       snprintf(g_wanted, sizeof g_wanted, "%s", song);
       pthread_cond_signal(&g_wake);
     }
-    int er = have && decide(g_arr, g_narr);
+    int er = on && have && decide(g_arr, g_narr);
     pthread_mutex_unlock(&g_lock);
     if (strcmp(g_flip_for, song)) g_flip = 0;
-    active = (er != g_flip) && (rsm_menu_in(RSM_SONG_MODES) || rsm_menu_in(PRE_SONG_TUNERS));
+    active = on && (er != g_flip) && (rsm_menu_in(RSM_SONG_MODES) || rsm_menu_in(PRE_SONG_TUNERS));
   }
   atomic_store(&g_active, active);
   if (active != shown) {

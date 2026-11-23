@@ -260,6 +260,7 @@ int sng_read_song(const char *archive, const char *song_key, const uint8_t key[3
     sng_arrangement got;
     if (plain && sng_parse(plain, plain_n, rsm_is_bass(&arr), arr.cents, &got)) {
       snprintf(got.name, sizeof got.name, "%s", arr.name);
+      got.manifest = arr;
       if (n == cap) {
         sng_arrangement *more = realloc(list, (size_t)(cap = cap ? cap * 2 : 4) * sizeof *list);
         if (!more) {

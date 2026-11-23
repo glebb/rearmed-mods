@@ -316,7 +316,7 @@ enum Catalog {
             "LinearRiffRepeater": "off", "ToggleLoft": "off", "ToggleLoftWhen": "manual", "Headstock": "off",
             "RemoveHeadstockWhen": "song", "Lyrics": "off", "RemoveLyricsWhen": "manual",
             "Skyline": "off", "ToggleSkylineWhen": "song", "Fretless": "off", "Inlays": "off", "LaneMarkers": "off",
-            "CameraDirector": "off", "ToneHost": "off", "SongStems": "off", "PitchShifter": "off", "DiscordRichPresence": "off", "Sunlight": "off", "CustomStringColors": "0",
+            "CameraDirector": "off", "ToneHost": "off", "SongStems": "off", "PitchShifter": "off", "PitchShifterAuto": "off", "DiscordRichPresence": "off", "Sunlight": "off", "CustomStringColors": "0",
             "SeparateNoteColors": "off", "RainbowNotes": "off", "RainbowStrings": "off", "ProfileToLoad": "",
             "RemoveFingerprints": "off", "GreenScreenWall": "off", "UseCustomNSPTimer": "off", "SecondaryMonitor": "off",
             "ExtendedRange": "off", "ExtendedRangeDropTuning": "off", "ExtendedRangeFixBassTuning": "off",
@@ -340,7 +340,7 @@ enum Catalog {
             "SeparateNoteColorsMode": "0", "CustomNSPTimeLimit": "10000", "SecondaryMonitorXPosition": "0",
             "SecondaryMonitorYPosition": "0", "ExtendedRangeModeAt": "-5", "NumberOfSongLists": "6",
             "SongStemsGuitarLevel": "0", "SongStemsBassLevel": "0", "SongStemsCacheMB": "500",
-            "PitchShifterSemitones": "-1", "PitchShifterA4": "440", "NashvilleStyle": "roman", "NashvilleMinor": "tonic", "NashvilleDetail": "simple", "NashvilleChords": "song",
+            "PitchShifterSemitones": "-1", "PitchShifterA4": "440", "PitchShifterGuitarTuning": "0", "NashvilleStyle": "roman", "NashvilleMinor": "tonic", "NashvilleDetail": "simple", "NashvilleChords": "song",
         ],
         Section.keybinds: [
             "RRSpeedKey": "R", "LoopStartKey": "Y", "LoopEndKey": "U", "RewindKey": "Z", "ShowSongTimerKey": "I",
