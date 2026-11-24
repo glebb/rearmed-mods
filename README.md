@@ -150,7 +150,8 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     player 1 7, player 2 8, microphone 9, voice-over 0, SFX S, mixer P, mute player 1 X, mute player 2 C,
     change selected volume B
   * Different: the changed channel's volume hides again after 3 seconds. With Song Stems on, its part has a line too
-    (Guitar in Song or Bass in Song, `SongStemVolumeKey`, 4).
+    (Guitar in Song or Bass in Song, `SongStemVolumeKey`, 4). The keys it acts on don't reach the game: in
+    Learn & Play, 4 in a song with stems no longer switches the tone as well (in a song without stems it still does).
 
 * **Remove Song Previews**
   * No previews while you browse the song lists.
