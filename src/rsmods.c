@@ -368,19 +368,30 @@ static int typing(const rsm_key_event *e) {
   return *g_search_menu != 0;
 }
 
+// Keys a mod took (rsm_key_take): the game gets neither the key down nor its key up. The game thread's alone.
+static int g_take;
+static uint8_t g_taken[128];
+
+void rsm_key_take(void) { g_take = 1; }
+
 // The input sink's codes: the shell's event type + 1 (rsp_gfx_event_code): 1 key down, 2 key up, a = virtual key
-// code; 5 button down.
-static void rsmods_input(int code, int a) {
+// code; 5 button down. 1: the game doesn't get the event.
+static int rsmods_input(int code, int a) {
   if (code == 5) {
     rsm_log("button down");
     search_may_open(rsm_menu());
   }
-  if (code != 1 && code != 2) return;
+  if (code != 1 && code != 2) return 0;
   rsm_key_event e = {a, code == 1, rsm_ctrl_down(), rsm_shift_down()};
   if (e.down) rsm_log("key down 0x%x%s%s", a, e.ctrl ? " +ctrl" : "", e.shift ? " +shift" : "");
-  if (typing(&e)) return;
+  int held = a >= 0 && a < (int)sizeof g_taken ? g_taken[a] : 0;
+  if (!e.down && a >= 0 && a < (int)sizeof g_taken) g_taken[a] = 0;
+  if (typing(&e)) return e.down ? 0 : held;
+  g_take = 0;
   for (size_t i = 0; i < NMODS; i++)
     if (MODS[i]->key) MODS[i]->key(&e);
+  if (e.down && g_take && a >= 0 && a < (int)sizeof g_taken) g_taken[a] = 1;
+  return e.down ? g_take : held;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -399,14 +410,15 @@ static void on_frame(rc_ctx *c, void *user) {
   c->r[0] = rax;
 }
 
-// The mods see a key first; the game still gets it.
+// The mods see a key first; the game gets it too, unless a mod took it (rsm_key_take).
 static int on_input(rc_ctx *c, void *user) {
   (void)user;
   OV_ARGS(a, c);
   int code = OV_I32(a);
   int key = OV_I32(a);
-  rsmods_input(code, key);
-  return 0;
+  if (!rsmods_input(code, key)) return 0;
+  ov_ret_void(c);
+  return 1;
 }
 
 static int on_post_event(rc_ctx *c, void *user) {

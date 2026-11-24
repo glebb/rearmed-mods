@@ -84,22 +84,30 @@ static void toggle_mute(int p2) {
   rsm_log("volume: player %d %s", p2 + 1, g_muted[p2] ? "muted" : "unmuted");
 }
 
+// The keys the mod acts on are its own: the game doesn't get them (rsm_key_take). Learn & Play switches tones on 1
+// to 4, and the song stems key is 4: a key the game gets while no song has stems (lines()).
 static void key(const rsm_key_event *e) {
   // muting works with VolumeControl off too, as in RSMods
-  if (!e->down && audio_key(e, "MutePlayer1Key")) toggle_mute(0);
-  if (!e->down && audio_key(e, "MutePlayer2Key")) toggle_mute(1);
+  int mute = audio_key(e, "MutePlayer1Key") ? 0 : audio_key(e, "MutePlayer2Key") ? 1 : -1;
+  if (mute >= 0) {
+    if (e->down) rsm_key_take();
+    else toggle_mute(mute);
+  }
   if (!rsm_on("VolumeControl")) return;
   if (audio_key(e, "DisplayMixerKey")) {
+    if (e->down) rsm_key_take();
     g_mixer = e->down;
     return;
   }
-  if (!e->down && audio_key(e, "ChangedSelectedVolumeKey")) {
-    show(g_current < 0 ? 0 : (g_current + 1) % lines());
+  if (audio_key(e, "ChangedSelectedVolumeKey")) {
+    if (e->down) rsm_key_take();
+    else show(g_current < 0 ? 0 : (g_current + 1) % lines());
     return;
   }
   if (!e->down) return;
   for (int i = 0; i < lines(); i++) {
     if (!audio_key(e, i == STEM ? "SongStemVolumeKey" : CHANNELS[i].key)) continue;
+    rsm_key_take();
     float step = (float)rsm_long("VolumeControlInterval", 5);
     float v = get_volume(i) + (e->ctrl ? -step : step);
     if (v < 0) v = 0;

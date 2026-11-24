@@ -90,6 +90,10 @@ void rsm_scene_each(void (*fn)(uint64_t obj, int kind, const char *cls, void *ct
 // Presses and releases a key, as the shell delivers it (macOS key code, the character it types)
 void rsm_send_key(int keycode, uint16_t ch);
 
+// From a mod's key(): the game doesn't get this key down, nor the key's next key up. For a hotkey on a key the game
+// has a use of its own for (Learn & Play switches tones on 1 to 4)
+void rsm_key_take(void);
+
 // Modifier keys held now
 int rsm_ctrl_down(void);
 int rsm_shift_down(void);
