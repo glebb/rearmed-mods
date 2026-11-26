@@ -594,11 +594,9 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     back to back within five seconds. Parts the Mac can't have are named in the log (`unsupported` in
     RS Re-ARMed's `mids.map`).
   * Songs with more than five arrangements: not this unit's, but RS Re-ARMed's own fix (`RS_MODS_ARRANGEMENTS`): the
-    Learn a Song page of the original game crashes on them, and shows its first four alternate arrangements now.
-    The scrollable "Other arrangements" lists (Learn a Song's and local co-op's) of RS Extended Range aren't ported
-    yet: the window arithmetic is in RS Re-ARMed's `mods_shared.c`, not wired to the pages. Arrow keys and the mouse
-    wheel would scroll; PageUp and PageDown can't on the Mac, which has no window message hook.
-
+    Learn a Song page of the original game crashes on them; with the fix its other arrangements scroll, four at a
+    time (the arrow keys and the mouse wheel; the first and last entry say how many are out of sight), and the co-op
+    page's list shows eight and scrolls the same way. Page Up and Page Down don't scroll. Not played yet.
 * **Plain Packages** (not in RSMods)
   * Unencrypted song archives, as DotCharter writes its 7-string charts, load as the encrypted ones do: an archive
     whose table of contents isn't encrypted, and song files that are compressed but not encrypted. Other archives and
