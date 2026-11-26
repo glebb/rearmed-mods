@@ -27,7 +27,14 @@
 //     calls it on the Mac).
 //   * The inlay dots, authored centred on strings 0-5, move to the centre of the guitar's strings (seven_in1).
 //
-// Guitars built with 6 strings and bass are never touched. Only the game's own setters are used; the locators and the
+// An extended bass (built with 5 or 6 strings, SEVEN_F_BASS) is the same with its own geometry: its stock far string is
+// the G (3), not string 5; the low B is one lane beyond string 0 (like a 7th string) and a 6-string's high C one lane
+// beyond the G, at the bars' other end (seven_span: near lanes, far string, far lanes). The bars keep the end at the
+// G, or reach one spacing past it for the C; the floor moves out on whichever side it lies; the glow, the camera and
+// the inlays (centred on the net lanes: a 6-string bass's stay put) follow. The strings of a bass of 5 or 6 are placed
+// by the strings part's attach points (and spaced by seven_spacing.c's); the stock grid build covers its cells.
+//
+// Guitars built with 6 strings and 4-string basses are never touched. Only the game's own setters are used; the locators and the
 // span data are never written, so gems, highway, fret numbers and wrong-fret effects stay the game's.
 #include <math.h>
 #include <string.h>
@@ -103,28 +110,44 @@ static int *floor_slot(const uint8_t *guitar, int add) {
   return &g_floor[i].moved;
 }
 
-// 1 or 2 on a guitar built with 7 or 8 strings: the strings beyond the stock six; else 0
-static int lanes_of(const uint8_t *guitar) {
+// The strings beyond the stock ones of a guitar, as the bars see them: near = the lanes beyond string 0 (1 or 2 on a
+// guitar built with 7 or 8 strings, 1 on a bass built with 5 or 6 for its low B), far = its stock far string (5; a
+// bass's 3, the G) and far_lanes = the lanes beyond that (1 on a 6-string bass, for the high C). 0 with near 0 for any
+// other guitar (6 strings, a 4-string bass, a bass without SEVEN_F_BASS). rs7string's ExtraLanes, StockFar, FarLanes.
+typedef struct {
+  int near, far, far_lanes;
+} seven_span;
+static seven_span span_of(const uint8_t *guitar) {
+  seven_span sp = {0, 5, 0};
   const int n = guitar ? seven_strings_guitar_count(guitar) : 0;
-  return n == 7 || n == 8 ? n - 6 : 0;
+  if (!n) return sp;
+  const void *info = rc_mod_ptr(guitar + RC_OFF(guitar_info));
+  if (info && seven_strings_info_is_bass(info)) {
+    sp.far = SEVEN_BASS_STOCK - 1;
+    if (seven_feature(SEVEN_F_BASS) && seven_is_ext_bass(n)) sp.near = 1, sp.far_lanes = n == 6;
+  } else if (seven_is_ext_guitar(n)) {
+    sp.near = n - 6;
+  }
+  return sp;
 }
+static int lanes_of(const uint8_t *guitar) { return span_of(guitar).near; }
 
 // --- the floor --------------------------------------------------------------------------------------------------
 // What the floor of this guitar needs (rs7string's FloorOffset): -1 while its geometry is not ready (the strings or
 // fret bars are not loaded, bar 0 is not placed, a degenerate spacing), 0 when the floor stays where the game has it,
-// else the lanes it moves by, with out = lanes * (a0 - a1) (guitar-local, as the attach points are).
+// else the lanes it moves by, with out = lanes * (a0 - a1) towards string 6 (a bass's floor on the far side of its G:
+// lanes * (a1 - a0), away from it; guitar-local, as the attach points are).
 static int floor_offset(const uint8_t *guitar, float out[3]) {
   const int lanes = lanes_of(guitar);
   if (!lanes) return 0;
   const uint8_t *grid = rc_mod_ptr(guitar + RC_OFF(guitar_fretgrid));
-  float a0[3], a1[3], b[3], len2 = 0.0f;
+  float a0[3], a1[3], b[3];
   if (!grid || !attach(guitar, a0, a1)) return -1;
   const uint8_t *b0 = bar((uint8_t *)grid, 0);
   if (!RC_LD(uint8_t, b0 + RC_OFF(fretbar_valid))) return -1;
   ld3(b, b0 + RC_OFF(fretbar_b_local));
-  for (int i = 0; i < 3; i++) len2 += (a0[i] - a1[i]) * (a0[i] - a1[i]);
-  if (!(len2 > 1e-6f) || !(len2 < 1e6f)) return -1;
-  return seven_floor_shift(a0, a1, b, lanes, out) ? lanes : 0;
+  const seven_span sp = span_of(guitar);
+  return seven_floor_move(a0, a1, b, lanes, sp.far, sp.far_lanes, out);
 }
 
 // The game has just written the world bottom ends of the guitar's fret bars (local + the guitar's offset): move
@@ -211,7 +234,7 @@ static void on_f1(rc_mid_frame *f, void *user) {
   f1.floor = 1;
   if (!attach(guitar, f1.a0, f1.a1)) {
     if (once(&g_log_strings))
-      rsm_log("seven-string: frets: a 7-string guitar's strings were not loaded when its fret bars were placed: "
+      rsm_log("seven-string: frets: an extended guitar's (7/8 strings, 5/6-string bass) strings were not loaded when its fret bars were placed: "
               "the bars stay as the game has them until it places them again");
     return;
   }
@@ -232,8 +255,10 @@ static void on_f1(rc_mid_frame *f, void *user) {
     if (len0 > 1e-6f) ratio = sqrtf(len / len0);
   }
   const int spaced = fabsf(ratio - 1.0f) > 1e-3f;
-  if (!(spaced ? seven_spacing_bar(f1.a0, f1.a1, mid, lanes_of(guitar), ratio, SEVEN_HALF_LEN, f1.shift, &f1.k, &f1.d)
-               : seven_bar_extend(f1.a0, f1.a1, mid, lanes_of(guitar), f1.shift, &f1.k, &f1.d))) {
+  const seven_span sp = span_of(guitar);
+  if (!(spaced ? seven_spacing_bar_far(f1.a0, f1.a1, mid, sp.near, sp.far, sp.far_lanes, ratio, SEVEN_HALF_LEN, f1.shift,
+                                       &f1.k, &f1.d)
+               : seven_bar_extend_far(f1.a0, f1.a1, mid, sp.near, sp.far, sp.far_lanes, f1.shift, &f1.k, &f1.d))) {
     if (once(&g_log_degenerate))
       rsm_log("seven-string: frets: the string spacing is degenerate: the bars stay as the game has them");
     return;
@@ -268,8 +293,10 @@ static void on_f1_floor(rc_mid_frame *f, void *user) {
   if (!seven_on || !f1.floor) return;
   f1.floor = 0;
   if (f1.bars && once(&g_log_bars))
-    rsm_log("seven-string: frets: the fret bars of a 7-string guitar span the 7th string: shift (%.4f, %.4f, %.4f), "
-            "scale %.4f, string spacing %.4f", f1.shift[0], f1.shift[1], f1.shift[2], f1.k, f1.d);
+    rsm_log("seven-string: frets: the fret bars of a %d-string %s span all its strings: shift (%.4f, %.4f, %.4f), "
+            "scale %.4f, string spacing %.4f", seven_strings_guitar_count(f1.guitar),
+            seven_strings_info_is_bass(rc_mod_ptr(f1.guitar + RC_OFF(guitar_info))) ? "bass" : "guitar", f1.shift[0],
+            f1.shift[1], f1.shift[2], f1.k, f1.d);
   f1.bars = 0;
   recover_floor(f1.guitar);
 }
@@ -318,7 +345,7 @@ static void on_cam(rc_mid_frame *f, void *user) {
     rc_mid_set(f, idx[i], f_bits(bits_f(rc_mid_get(f, idx[i])) + shift[2]));
   }
   if (once(&g_log_cam))
-    rsm_log("seven-string: frets: the song camera of an inverted 7-string guitar follows its floor: z %+.4f", shift[2]);
+    rsm_log("seven-string: frets: the song camera of an inverted extended guitar follows its floor: z %+.4f", shift[2]);
 }
 
 // --- FRG1 - FRG3: the fret range glow ----------------------------------------------------------------------------
@@ -343,10 +370,11 @@ static void on_frg1(rc_mid_frame *f, void *user) {
   uint8_t *fx = host(SEVEN_GET(f, "fx"));
   const uint8_t *player = host(SEVEN_GET(f, "player"));
   const uint8_t *guitar = player ? rc_mod_ptr(player + RC_OFF(session_guitar)) : NULL;
-  const int lanes = lanes_of(guitar);
+  const seven_span sp = span_of(guitar);
+  const int lanes = sp.near;
   if (!fx || !lanes) return;
   const uint8_t *grid = rc_mod_ptr(guitar + RC_OFF(guitar_fretgrid));
-  float a0[3], a1[3], b[3], off[3], w0[3], w1[3], u[3], unused[3];
+  float a0[3], a1[3], b[3], off[3], w0[3], w1[3], u[3], f0[3], f1[3], unused[3];
   if (!grid || !attach(guitar, a0, a1)) return;
   const uint8_t *b0 = bar((uint8_t *)grid, 0);
   if (!RC_LD(uint8_t, b0)) return;
@@ -356,6 +384,8 @@ static void on_frg1(rc_mid_frame *f, void *user) {
   for (int i = 0; i < 3; i++) {
     w0[i] = a0[i] + off[i];
     w1[i] = a1[i] + off[i];
+    f0[i] = w0[i] + (float)sp.far * (w1[i] - w0[i]);  // the stock far string and its neighbour (world)
+    f1[i] = w0[i] + (float)(sp.far - 1) * (w1[i] - w0[i]);
     u[i] = a0[i] - a1[i];
     len2 += u[i] * u[i];
     pb += (b[i] - a0[i]) * u[i];
@@ -364,6 +394,8 @@ static void on_frg1(rc_mid_frame *f, void *user) {
   // lanes, whether or not the floor has been moved yet. The other side: the ends beyond string 0 move by the lanes.
   const int near_floor = seven_floor_shift(a0, a1, b, lanes, unused);
   const float margin = len2 > 1e-6f ? pb / len2 : 0.0f;  // the stock floor end beyond string 0, in spacings
+  // A far floor (a 6-string bass's high C beyond the G): ends the floor's move already took are not moved twice
+  const int shifted = seven_grid_floor_lanes(guitar) > 0;
   int moved = 0;
   for (int i = 0; i < 4; i++) {  // the low and high fret's two wire ends
     uint8_t *p = fx + RC_OFF(rangefx_end) + 12 * i;
@@ -371,11 +403,13 @@ static void on_frg1(rc_mid_frame *f, void *user) {
     ld3(end, p);
     const int m = near_floor ? margin > 0.0f && seven_glow_end_at(w0, w1, margin + (float)lanes, end)
                              : seven_glow_end(w0, w1, lanes, end);
-    if (m) st3(p, end);
-    moved += m;
+    int m2 = m;
+    if (!shifted || near_floor) m2 += seven_glow_end(f0, f1, sp.far_lanes, end);  // beyond the far string: its lanes
+    if (m2) st3(p, end);
+    moved += m2 > 0;
   }
   const float d = sqrtf(len2);
-  const float k = seven_glow_stretch(5 + lanes, d, margin * d);
+  const float k = seven_glow_stretch(sp.far + lanes + sp.far_lanes, d, margin * d);
   if (k > 1.0f)
     for (int i = 0; i < GLOW_PIECES; i++) {
       const uint8_t *obj = rc_mod_ptr(fx + RC_OFF(rangefx_pieces) + i * rc_guest_ptr_size);
@@ -455,6 +489,11 @@ static void on_in1(rc_mid_frame *f, void *user) {
   uint8_t *guitar = host(SEVEN_GET(f, "guitar")), *head = host(SEVEN_GET(f, "head"));
   uint8_t *inlays = host(SEVEN_GET(f, "inlays"));
   if (!head || !inlays || !wants_seven(guitar)) return;
+  // The centre moves half a spacing per added lane beyond string 0 and back half a spacing per lane beyond the far
+  // string (a 6-string bass: low B and high C, the centre stays; an 8-string guitar: one whole spacing)
+  const seven_span sp = span_of(guitar);
+  const int net = sp.near - sp.far_lanes;
+  if (!net) return;
   uint8_t *entity = rc_mod_ptr(inlays + RC_OFF(inlays_entity));
   uint8_t *frame = rc_mod_ptr(head + RC_OFF(guitar_head_frame));
   uint8_t *root = entity && frame ? entity_root(frame) : NULL;
@@ -463,12 +502,30 @@ static void on_in1(rc_mid_frame *f, void *user) {
   static __thread uint8_t *pos;  // the game's memory for the position it is given
   if (!pos && !(pos = rc_guest_alloc(12))) return;
   ld3(p, root + RC_OFF(ni_world_translate));
-  for (int i = 0; i < 3; i++) p[i] += 0.5f * (float)lanes_of(guitar) * (a0[i] - a1[i]);
+  for (int i = 0; i < 3; i++) p[i] += 0.5f * (float)net * (a0[i] - a1[i]);
   st3(pos, p);
   OV_GUEST(entity_set_translation, arg(entity), arg(pos), 1);  // the Mac's third argument as its callers pass it
   if (once(&g_log_inlays))
-    rsm_log("seven-string: frets: the inlays of a 7-string guitar are at the centre of its strings (%.3f, %.3f, %.3f)",
+    rsm_log("seven-string: frets: the inlays of an extended guitar are at the centre of its strings (%.3f, %.3f, %.3f)",
             p[0], p[1], p[2]);
+}
+
+// --- the chord frame's fit (B2 reads it) ---------------------------------------------------------------------------
+int seven_grid_is_extended(const void *guitar) { return span_of(guitar).near > 0; }
+
+int seven_grid_chord_frame(const void *guitar, seven_frame_fit *out, float b_out[3]) {
+  const seven_span sp = span_of(guitar);
+  if (!sp.near || !out) return 0;
+  const uint8_t *g = guitar;
+  const uint8_t *grid = rc_mod_ptr(g + RC_OFF(guitar_fretgrid));
+  float a0[3], a1[3], b[3];
+  if (!grid || !attach(g, a0, a1)) return 0;
+  const uint8_t *bar0 = bar((uint8_t *)grid, 0);
+  if (!RC_LD(uint8_t, bar0 + RC_OFF(fretbar_valid))) return 0;
+  ld3(b, bar0 + RC_OFF(fretbar_b_local));
+  if (b_out) memcpy(b_out, b, sizeof b);
+  // top: the last string beyond string 0 (a guitar's 6 / 7, a bass's 6); the floor as it was moved (floor_lanes)
+  return seven_frame_fit_for(a0, a1, b, seven_grid_floor_lanes(guitar), 5 + sp.near, sp.far, sp.far_lanes, out);
 }
 
 // --- what the others use (seven_grid.h) -------------------------------------------------------------------------

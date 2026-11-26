@@ -104,5 +104,19 @@ int main(void) {
   CHECK(seven_rebuild_target(SEVEN_ROLE_MODE, 0, 6, 8, 0, 0) == 6);    // a mode entry: back to stock
   CHECK(seven_rebuild_target(SEVEN_ROLE_MODE, 0, 7, 6, 0, 0) == 0);
   CHECK(seven_rebuild_target(SEVEN_ROLE_OTHER, 0, 7, 6, 0, 0) == 0);
+  // a bass (stock far string 3): the centre is the middle of its four strings; the bar keeps the end at the G
+  {
+    const float a0[3] = {0, 0, 0}, a1[3] = {-2.68f, 0, 0}, mid[3] = {0.4f, 0, 0};
+    float c[3], shift[3], scale, len;
+    seven_spacing_centre_far(a0, a1, 3, c);
+    CHECK(fabsf(c[0] + 1.5f * 2.68f) < 1e-3f);
+    seven_spacing_centre_far(a0, a1, 5, c);
+    CHECK(fabsf(c[0] + 2.5f * 2.68f) < 1e-3f);
+    CHECK(seven_spacing_bar_far(a0, a1, mid, 1, 3, 0, 1.0f, SEVEN_HALF_LEN, shift, &scale, &len));
+    CHECK(fabsf(0.4f + shift[0] - scale * SEVEN_HALF_LEN - (0.4f - SEVEN_HALF_LEN)) < 1e-3f);
+    float scale6;
+    CHECK(seven_spacing_bar_far(a0, a1, mid, 1, 3, 1, 1.0f, SEVEN_HALF_LEN, shift, &scale6, &len) && scale6 > scale);
+    CHECK(!seven_spacing_bar_far(a0, a1, mid, 1, 3, 2, 1.0f, SEVEN_HALF_LEN, shift, &scale, &len));
+  }
   return check_done("test_seven_spacing");
 }

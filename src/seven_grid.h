@@ -7,6 +7,7 @@
 // apart; seven_fretgrid_size bytes in all. The next-note grid's time rows: seven_nextgrid_time.
 #ifndef RS_SEVEN_GRID_H
 #define RS_SEVEN_GRID_H
+#include "seven_grid_math.h"
 
 // Cell `string` (0-7) of the fret row `row` (0-25) of a FretGrid (a host pointer to the game's grid): the cell's
 // first byte is its valid flag. NULL for a row or string out of range.
@@ -25,6 +26,16 @@ int seven_grid_fill_extra_cells(void *grid, unsigned frets);
 // retried every frame, seven_grid_frame). rs7string's FloorMoved, which the chord frame (B2: its ChordFrame's
 // floorLanes) reads.
 int seven_grid_floor_lanes(const void *guitar);
+
+// 1 for a guitar (a host pointer to the game's Rnd_Guitar) built with 7 or 8 strings, or a bass built with 5 or 6 (with
+// SEVEN_F_BASS): the instruments whose fret bars, floor, glow and chord frames span more than the stock strings.
+int seven_grid_is_extended(const void *guitar);
+
+// The chord frame's fit on that guitar (seven_grid_math.h, rs7string's Rs7Frets_ChordFrame): the frame spans every string
+// of the instrument (stock far string 5, a bass's 3; lanes beyond both ends), the floor as the highway moved it. 1, with
+// *out (and bar 0's bottom end, guitar-local, in b_out when given), or 0: not an extended guitar, its strings or bars
+// not there yet, or a degenerate geometry (the game's frame then stands). The chord part's B2 uses it.
+int seven_grid_chord_frame(const void *guitar, seven_frame_fit *out, float b_out[3]);
 
 // N5, every frame of a guitar: does the floor's retry. Rebuilding the player's guitar: seven_grid_forget_all.
 void seven_grid_frame(void *guitar);
