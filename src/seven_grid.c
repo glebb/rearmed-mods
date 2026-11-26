@@ -15,8 +15,17 @@
 //     game's Entity_SetScale with k (seven_f1_scale gives k, or 0 for no call).
 //   * The highway floor: the game puts the time axis, the fret numbers, the note stems and the chord frames on the
 //     fret wires' bottom ends. With inverted strings those lie on string 6's side, so seven_f1_floor moves them one
-//     string spacing further out after the game wrote them.
-//   * The inlay dots, authored centred on strings 0-5, move to the centre of seven strings (seven_in1).
+//     string spacing (two on 8 strings) further out after the game wrote them. It is done per run of the function and
+//     per guitar: until the guitar's strings and bars are there it is pending, and the per-frame hook (seven_n5, via
+//     seven_grid_frame) tries again. seven_grid_floor_lanes tells the others how far it moved.
+//   * The song camera (seven_cam): where the guitar sends its camera markers the four z values get the floor's shift,
+//     so the camera stays lined up with the moved floor and the fret numbers stay on screen.
+//   * The fret range glow: the glowing box and bars that show where the hand goes for a chord or note. Where the
+//     game builds one (seven_frg1) its four wire ends move to the floor and past string 6 as the bars did, and its
+//     box and bars are recorded to be scaled to span all strings once their entities exist (seven_frg2, 2b and 3, the
+//     scale by the game's Entity_SetScale: seven_frg*_scale injects the call on Learn & Play, seven_frg*_setscale
+//     calls it on the Mac).
+//   * The inlay dots, authored centred on strings 0-5, move to the centre of the guitar's strings (seven_in1).
 //
 // Guitars built with 6 strings and bass are never touched. Only the game's own setters are used; the locators and the
 // span data are never written, so gems, highway, fret numbers and wrong-fret effects stay the game's.
@@ -24,12 +33,12 @@
 #include <string.h>
 
 #include "seven.h"
+#include "seven_grid_math.h"
 
 // The strings part: the string count the guitar (Rnd_Guitar) was built with, InstrumentInfo +0x0b (4, 6, 7, 8); 0
 // for none
 extern int seven_strings_guitar_count(const void *guitar);
 
-#define HALF_LEN 4.61f  // L: half the length of a fret bar's mesh (its bound radius is 4.638)
 #define MAX_BARS 26     // fret-bar records of a FretGrid
 
 // --- guest memory -----------------------------------------------------------------------------------------------
@@ -42,12 +51,13 @@ static void st3(uint8_t *p, const float v[3]) {
 static uint8_t *host(uint64_t v) { return (uint8_t *)(uintptr_t)v; }
 static uint64_t arg(const void *p) { return (uint64_t)(uintptr_t)p; }
 
+static int g_log_bars, g_log_strings, g_log_degenerate, g_log_floor, g_log_retry, g_log_inlays;
+
+static int lanes_of(const uint8_t *guitar);
+
 static int once(int *flag) { return !__atomic_exchange_n(flag, 1, __ATOMIC_RELAXED); }
 
-static int wants_seven(const uint8_t *guitar) {
-  int n = guitar ? seven_strings_guitar_count(guitar) : 0;
-  return n == 7 || n == 8;
-}
+static int wants_seven(const uint8_t *guitar) { return lanes_of(guitar) > 0; }
 
 // The guitar-local attach points of strings 0 and 1: 0 while its strings are not loaded
 static int attach(const uint8_t *guitar, float a0[3], float a1[3]) {
@@ -70,42 +80,108 @@ static int bar_count(const uint8_t *guitar) {
 
 static uint8_t *bar(uint8_t *grid, int k) { return grid + RC_OFF(fretgrid_bars) + k * RC_OFF(fretbar_size); }
 
-// --- the geometry (rs7string's frets.cpp) -----------------------------------------------------------------------
-// The bars' extension. a0 / a1: the string 0 / 1 attach points, mid: bar 0's middle as the game places it (all
-// guitar-local; only differences count, so a lefty or inverted guitar comes with its attach points). Along u (string
-// 1 -> string 0 -> string 6), from string 0, the game's bar spans c -+ L; the new one keeps its end beyond string 5
-// and reaches beyond string 6 by the wider of the game's margins. 0 for a degenerate spacing.
-static int extend(const float a0[3], const float a1[3], const float mid[3], float shift[3], float *scale, float *d) {
-  float u[3], len2 = 0.0f;
-  for (int i = 0; i < 3; i++) {
-    u[i] = a0[i] - a1[i];
-    len2 += u[i] * u[i];
-  }
-  const float len = sqrtf(len2);
-  if (!(len > 1e-3f) || !(len < 1e3f)) return 0;
-  float c = 0.0f;
-  for (int i = 0; i < 3; i++) c += (mid[i] - a0[i]) * u[i] / len;
-  const float m0 = c + HALF_LEN;                       // margin beyond string 0
-  const float m5 = (c - HALF_LEN) * -1.0f - 5.0f * len;  // margin beyond string 5 (at -5 spacings)
-  const float margin = m0 > m5 ? m0 : m5;              // the wider, now beyond string 6
-  const float top = len + margin, bottom = c - HALF_LEN;
-  const float along = 0.5f * (top + bottom) - c;
-  *scale = 0.5f * (top - bottom) / HALF_LEN;
-  for (int i = 0; i < 3; i++) shift[i] = along * u[i] / len;
-  *d = len;
-  return *scale > 0.0f && isfinite(*scale);
+// --- per-guitar floor state ---------------------------------------------------------------------------------------
+// rs7string's floorMoved: the string spacings the highway floor of a guitar was moved by in the game's last run of
+// Rnd_FretBars_ApplyTransforms (which writes the world ends anew): FLOOR_PENDING until it is done (the strings or
+// bars were not there yet), 0 when the floor needed no move, else the lanes. A run resets it, seven_f1_floor and the
+// per-frame retry set it.
+#define FLOOR_PENDING (-1)
+#define MAX_GUITARS 4  // players with guitars in a song
+static struct {
+  const uint8_t *guitar;
+  int moved;
+} g_floor[MAX_GUITARS];
+static int g_floor_next;
+
+static int *floor_slot(const uint8_t *guitar, int add) {
+  for (int i = 0; i < MAX_GUITARS; i++)
+    if (g_floor[i].guitar == guitar) return &g_floor[i].moved;
+  if (!add) return NULL;
+  int i = g_floor_next++ % MAX_GUITARS;
+  g_floor[i].guitar = guitar;
+  g_floor[i].moved = FLOOR_PENDING;
+  return &g_floor[i].moved;
 }
 
-// The highway floor: b = a fret wire's bottom end (guitar-local). Beyond string 0 on string 6's side (inverted
-// strings) it moves one string spacing further out: 1 and out = a0 - a1; else 0 (the game's floor beyond string 5).
-static int floor_shift(const float a0[3], const float a1[3], const float b[3], float out[3]) {
-  float len2 = 0.0f, side = 0.0f;
-  for (int i = 0; i < 3; i++) {
-    out[i] = a0[i] - a1[i];
-    len2 += out[i] * out[i];
-    side += (b[i] - a0[i]) * out[i];
+// 1 or 2 on a guitar built with 7 or 8 strings: the strings beyond the stock six; else 0
+static int lanes_of(const uint8_t *guitar) {
+  const int n = guitar ? seven_strings_guitar_count(guitar) : 0;
+  return n == 7 || n == 8 ? n - 6 : 0;
+}
+
+// --- the floor --------------------------------------------------------------------------------------------------
+// What the floor of this guitar needs (rs7string's FloorOffset): -1 while its geometry is not ready (the strings or
+// fret bars are not loaded, bar 0 is not placed, a degenerate spacing), 0 when the floor stays where the game has it,
+// else the lanes it moves by, with out = lanes * (a0 - a1) (guitar-local, as the attach points are).
+static int floor_offset(const uint8_t *guitar, float out[3]) {
+  const int lanes = lanes_of(guitar);
+  if (!lanes) return 0;
+  const uint8_t *grid = rc_mod_ptr(guitar + RC_OFF(guitar_fretgrid));
+  float a0[3], a1[3], b[3], len2 = 0.0f;
+  if (!grid || !attach(guitar, a0, a1)) return -1;
+  const uint8_t *b0 = bar((uint8_t *)grid, 0);
+  if (!RC_LD(uint8_t, b0 + RC_OFF(fretbar_valid))) return -1;
+  ld3(b, b0 + RC_OFF(fretbar_b_local));
+  for (int i = 0; i < 3; i++) len2 += (a0[i] - a1[i]) * (a0[i] - a1[i]);
+  if (!(len2 > 1e-6f) || !(len2 < 1e6f)) return -1;
+  return seven_floor_shift(a0, a1, b, lanes, out) ? lanes : 0;
+}
+
+// The game has just written the world bottom ends of the guitar's fret bars (local + the guitar's offset): move
+// them, records 0..n-1 as the game wrote them; record n, which the time axis and the fret numbers read too, is put at
+// its local end by the same offset, so it moves once however often the function runs.
+static void move_floor(uint8_t *guitar, const float u[3], int lanes) {
+  uint8_t *grid = rc_mod_ptr(guitar + RC_OFF(guitar_fretgrid));
+  const int n = bar_count(guitar);
+  float off[3] = {0.0f, 0.0f, 0.0f}, w[3], l[3];
+  for (int k = 0; k < n; k++) {
+    uint8_t *r = bar(grid, k);
+    ld3(w, r + RC_OFF(fretbar_b_world));
+    ld3(l, r + RC_OFF(fretbar_b_local));
+    for (int i = 0; i < 3; i++) {
+      off[i] = w[i] - l[i];
+      w[i] += u[i];
+    }
+    st3(r + RC_OFF(fretbar_b_world), w);
   }
-  return len2 > 1e-6f && len2 < 1e6f && side > 0.0f;
+  int moved = n;
+  if (n > 0 && n < MAX_BARS) {
+    uint8_t *r = bar(grid, n);
+    ld3(l, r + RC_OFF(fretbar_b_local));
+    for (int i = 0; i < 3; i++) w[i] = l[i] + off[i] + u[i];
+    st3(r + RC_OFF(fretbar_b_world), w);
+    moved++;
+  }
+  if (once(&g_log_floor))
+    rsm_log("seven-string: frets: inverted strings: the highway floor (%d fret-wire ends) moves by %d string "
+            "spacing(s), (%.4f, %.4f, %.4f)", moved, lanes, u[0], u[1], u[2]);
+}
+
+// The floor of one guitar, after the game wrote its world ends: moved now, or left pending for the frame hook
+static void recover_floor(uint8_t *guitar) {
+  float u[3];
+  const int moved = floor_offset(guitar, u);
+  if (moved > 0) move_floor(guitar, u, moved);
+  int *slot = floor_slot(guitar, 1);
+  *slot = moved < 0 ? FLOOR_PENDING : moved;
+}
+
+// N5, every frame of a guitar (seven_strings.c): a floor that was not ready when the bars were placed is done as soon
+// as it is (rs7string's RsxrFrets_Frame)
+void seven_grid_frame(void *guitar) {
+  if (!seven_on || !guitar) return;
+  const int *slot = floor_slot(guitar, 0);
+  if (slot && *slot == FLOOR_PENDING && wants_seven(guitar)) {
+    recover_floor(guitar);
+    if (*slot != FLOOR_PENDING && once(&g_log_retry))
+      rsm_log("seven-string: frets: the highway floor of a 7-string guitar found its place after its fret bars were "
+              "placed");
+  }
+}
+
+int seven_grid_floor_lanes(const void *guitar) {
+  const int *slot = floor_slot(guitar, 0);
+  return slot && *slot > 0 ? *slot : 0;
 }
 
 // --- F1: Rnd_FretBars_ApplyTransforms ---------------------------------------------------------------------------
@@ -113,12 +189,11 @@ static int floor_shift(const float a0[3], const float a1[3], const float b[3], f
 static __thread struct {
   uint8_t *grid, *guitar;
   int bars;          // the bars move and scale
-  int floor;         // a 7/8-string guitar with its strings loaded: the floor may move
+  int floor;         // a 7/8-string guitar: the floor is done at the function's end
   float a0[3], a1[3];
   float shift[3], k, d;
   uint32_t k_bits;
 } f1;
-static int g_log_bars, g_log_strings, g_log_degenerate, g_log_floor, g_log_inlays;
 
 // After the bars' world ends are written, before their translations are set
 static void on_f1(rc_mid_frame *f, void *user) {
@@ -128,20 +203,23 @@ static void on_f1(rc_mid_frame *f, void *user) {
   uint8_t *grid = host(SEVEN_GET(f, "grid"));
   uint8_t *guitar = grid ? rc_mod_ptr(grid + RC_OFF(fretgrid_guitar)) : NULL;
   if (!wants_seven(guitar)) return;
+  // The game has written the world ends anew: the floor is the game's again until seven_f1_floor (or the frame hook)
+  // moves it
+  *floor_slot(guitar, 1) = FLOOR_PENDING;
+  f1.grid = grid;
+  f1.guitar = guitar;
+  f1.floor = 1;
   if (!attach(guitar, f1.a0, f1.a1)) {
     if (once(&g_log_strings))
       rsm_log("seven-string: frets: a 7-string guitar's strings were not loaded when its fret bars were placed: "
               "the bars stay as the game has them until it places them again");
     return;
   }
-  f1.grid = grid;
-  f1.guitar = guitar;
-  f1.floor = 1;
   float a[3], b[3], mid[3];
   ld3(a, bar(grid, 0) + RC_OFF(fretbar_a_local));
   ld3(b, bar(grid, 0) + RC_OFF(fretbar_b_local));
   for (int i = 0; i < 3; i++) mid[i] = 0.5f * (a[i] + b[i]);
-  if (!extend(f1.a0, f1.a1, mid, f1.shift, &f1.k, &f1.d)) {
+  if (!seven_bar_extend(f1.a0, f1.a1, mid, lanes_of(guitar), f1.shift, &f1.k, &f1.d)) {
     if (once(&g_log_degenerate))
       rsm_log("seven-string: frets: the string spacing is degenerate: the bars stay as the game has them");
     return;
@@ -169,9 +247,7 @@ static void on_f1_scale(rc_mid_frame *f, void *user) {
   SEVEN_SET(f, "scale_bits", f1.bars && SEVEN_GET(f, "entity") ? f1.k_bits : 0);
 }
 
-// At the function's end: the floor. The game has just written the bottom ends of records 0..n-1 (local + the guitar's
-// offset); record n, which the time axis and the fret numbers read too, is put at its local end by the same offset,
-// so it moves once however often the function runs.
+// At the function's end: the floor
 static void on_f1_floor(rc_mid_frame *f, void *user) {
   (void)f;
   (void)user;
@@ -181,33 +257,7 @@ static void on_f1_floor(rc_mid_frame *f, void *user) {
     rsm_log("seven-string: frets: the fret bars of a 7-string guitar span the 7th string: shift (%.4f, %.4f, %.4f), "
             "scale %.4f, string spacing %.4f", f1.shift[0], f1.shift[1], f1.shift[2], f1.k, f1.d);
   f1.bars = 0;
-  uint8_t *b0 = bar(f1.grid, 0);
-  float b[3], u[3];
-  ld3(b, b0 + RC_OFF(fretbar_b_local));
-  if (!RC_LD(uint8_t, b0 + RC_OFF(fretbar_valid)) || !floor_shift(f1.a0, f1.a1, b, u)) return;
-  const int n = bar_count(f1.guitar);
-  float off[3] = {0.0f, 0.0f, 0.0f}, w[3], l[3];
-  for (int k = 0; k < n; k++) {
-    uint8_t *r = bar(f1.grid, k);
-    ld3(w, r + RC_OFF(fretbar_b_world));
-    ld3(l, r + RC_OFF(fretbar_b_local));
-    for (int i = 0; i < 3; i++) {
-      off[i] = w[i] - l[i];
-      w[i] += u[i];
-    }
-    st3(r + RC_OFF(fretbar_b_world), w);
-  }
-  int moved = n;
-  if (n > 0 && n < MAX_BARS) {
-    uint8_t *r = bar(f1.grid, n);
-    ld3(l, r + RC_OFF(fretbar_b_local));
-    for (int i = 0; i < 3; i++) w[i] = l[i] + off[i] + u[i];
-    st3(r + RC_OFF(fretbar_b_world), w);
-    moved++;
-  }
-  if (once(&g_log_floor))
-    rsm_log("seven-string: frets: inverted strings: the highway floor (%d fret-wire ends) moves by (%.4f, %.4f, %.4f)",
-            moved, u[0], u[1], u[2]);
+  recover_floor(f1.guitar);
 }
 
 // After it, where the game lets the C call Entity_SetScale (the Mac: seven_f1_scale is none there, and this point
@@ -218,6 +268,156 @@ static void on_f1_setscale(rc_mid_frame *f, void *user) {
   const uint64_t entity = SEVEN_GET(f, "entity");
   if (!entity) return;
   const uint64_t a[3] = {entity, 1, f1.k_bits};  // (entity, 1 as the game's own setters pass it, scale)
+  rc_call_name_f("entity_set_scale", a, 3, 1u << 2);
+}
+
+// --- SC1: the song camera ---------------------------------------------------------------------------------------
+// Rnd_Guitar_SendCameraMarkers builds four vectors for the song camera (three from the guitar's camera data, the
+// fourth the guitar's own offset) and sends them. Their z values (three in memory on the stack, the fourth the
+// guitar's offset z in a register, as float bits) get the floor's shift, so the camera follows the moved floor and
+// the fret numbers stay on screen. Not the guitar's data itself: every send starts from fresh stock values.
+static int g_cam_on;  // every point of the fix is taken
+static int g_log_cam;
+
+static float bits_f(uint64_t v) {
+  float x;
+  const uint32_t b = (uint32_t)v;
+  memcpy(&x, &b, sizeof x);
+  return x;
+}
+static uint64_t f_bits(float x) {
+  uint32_t b;
+  memcpy(&b, &x, sizeof b);
+  return b;
+}
+
+static void on_cam(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on || !g_cam_on) return;
+  const uint8_t *guitar = host(SEVEN_GET(f, "guitar"));
+  float shift[3];
+  if (!guitar || floor_offset(guitar, shift) <= 0 || shift[2] == 0.0f) return;
+  static const char *const names[4] = {"z_a", "z_b", "z_c", "z_guitar"};
+  static int idx[4] = {-2, -2, -2, -2};
+  for (int i = 0; i < 4; i++) {
+    if (idx[i] == -2) idx[i] = rc_mid_value(f->point, names[i]);
+    rc_mid_set(f, idx[i], f_bits(bits_f(rc_mid_get(f, idx[i])) + shift[2]));
+  }
+  if (once(&g_log_cam))
+    rsm_log("seven-string: frets: the song camera of an inverted 7-string guitar follows its floor: z %+.4f", shift[2]);
+}
+
+// --- FRG1 - FRG3: the fret range glow ----------------------------------------------------------------------------
+// The glow that lights the fret wires at both ends of a hand position, and the box between them, are built for six
+// strings: the wire ends the game reads (the effect's four, world) stop at the stock floor and string 0, and its
+// box and four bars are fixed-size models. FRG1 (the end of the effect's setup) moves the ends like the extended
+// bars, and records the five pieces with the uniform scale that makes each span all strings; the scale is the
+// game's Entity_SetScale, called once a piece's entity exists: where the game places a bar (FRG2, and FRG2B on its
+// other path) or the box (FRG3). The game derives the glow's centres from the ends afterwards.
+#define GLOW_PIECES 5   // the box, then four bars
+#define GLOW_PENDING 20  // pieces waiting for their entity (a few glows at once)
+static struct {
+  const uint8_t *obj;
+  float k;
+} g_glow[GLOW_PENDING];
+static int g_glow_next, g_glow_on;
+static int g_log_glow, g_log_glow_piece;
+
+static void on_frg1(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on || !g_glow_on) return;
+  uint8_t *fx = host(SEVEN_GET(f, "fx"));
+  const uint8_t *player = host(SEVEN_GET(f, "player"));
+  const uint8_t *guitar = player ? rc_mod_ptr(player + RC_OFF(session_guitar)) : NULL;
+  const int lanes = lanes_of(guitar);
+  if (!fx || !lanes) return;
+  const uint8_t *grid = rc_mod_ptr(guitar + RC_OFF(guitar_fretgrid));
+  float a0[3], a1[3], b[3], off[3], w0[3], w1[3], u[3], unused[3];
+  if (!grid || !attach(guitar, a0, a1)) return;
+  const uint8_t *b0 = bar((uint8_t *)grid, 0);
+  if (!RC_LD(uint8_t, b0)) return;
+  ld3(b, b0 + RC_OFF(fretbar_b_local));
+  ld3(off, guitar + RC_OFF(guitar_offset));  // world = local + the guitar's offset
+  float len2 = 0.0f, pb = 0.0f;
+  for (int i = 0; i < 3; i++) {
+    w0[i] = a0[i] + off[i];
+    w1[i] = a1[i] + off[i];
+    u[i] = a0[i] - a1[i];
+    len2 += u[i] * u[i];
+    pb += (b[i] - a0[i]) * u[i];
+  }
+  // The floor's side (inverted strings): the end goes exactly to the floor, the stock margin beyond string 0 plus the
+  // lanes, whether or not the floor has been moved yet. The other side: the ends beyond string 0 move by the lanes.
+  const int near_floor = seven_floor_shift(a0, a1, b, lanes, unused);
+  const float margin = len2 > 1e-6f ? pb / len2 : 0.0f;  // the stock floor end beyond string 0, in spacings
+  int moved = 0;
+  for (int i = 0; i < 4; i++) {  // the low and high fret's two wire ends
+    uint8_t *p = fx + RC_OFF(rangefx_end) + 12 * i;
+    float end[3];
+    ld3(end, p);
+    const int m = near_floor ? margin > 0.0f && seven_glow_end_at(w0, w1, margin + (float)lanes, end)
+                             : seven_glow_end(w0, w1, lanes, end);
+    if (m) st3(p, end);
+    moved += m;
+  }
+  const float d = sqrtf(len2);
+  const float k = seven_glow_stretch(5 + lanes, d, margin * d);
+  if (k > 1.0f)
+    for (int i = 0; i < GLOW_PIECES; i++) {
+      const uint8_t *obj = rc_mod_ptr(fx + RC_OFF(rangefx_pieces) + i * rc_guest_ptr_size);
+      if (!obj) continue;
+      g_glow[g_glow_next].obj = obj;
+      g_glow[g_glow_next].k = k;
+      g_glow_next = (g_glow_next + 1) % GLOW_PENDING;
+    }
+  if (once(&g_log_glow))
+    rsm_log("seven-string: frets: fret range glow %p of guitar %p: %d of 4 wire ends moved, pieces x%.3f",
+            (void *)fx, (void *)guitar, moved, (double)k);
+}
+
+// A guitar was rebuilt: nothing of the old one carries over (its floor state, glow pieces not yet scaled)
+void seven_grid_forget_all(void) {
+  memset(g_floor, 0, sizeof g_floor);
+  memset(g_glow, 0, sizeof g_glow);
+}
+
+// The scale a glow piece waits for, once its entity exists (0: none): the piece is dropped from the list either way
+static uint64_t glow_piece_scale(const uint8_t *obj, uint8_t **entity) {
+  *entity = NULL;
+  if (!obj) return 0;
+  for (int i = 0; i < GLOW_PENDING; i++) {
+    if (g_glow[i].obj != obj) continue;
+    const float k = g_glow[i].k;
+    g_glow[i].obj = NULL;
+    const uint32_t hash = RC_LD(uint32_t, obj + RC_OFF(fxpiece_hash));
+    uint8_t *e = rc_mod_ptr(obj + RC_OFF(fxpiece_entity));
+    // The glow's two bar effects and its box
+    if (!e || (hash != 0xAF25DCE0u && hash != 0x68058637u && hash != 0xFA400094u)) return 0;
+    if (once(&g_log_glow_piece))
+      rsm_log("seven-string: frets: a fret range glow piece (effect %08X) is scaled x%.3f", hash, (double)k);
+    *entity = e;
+    return f_bits(k);
+  }
+  return 0;
+}
+
+// Learn & Play: the edit after the point calls Entity_SetScale(entity, ecx) when ecx (scale_bits) is not 0
+static void on_frg_scale(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on) return;
+  uint8_t *entity;
+  const uint64_t bits = g_glow_on ? glow_piece_scale(host(SEVEN_GET(f, "obj")), &entity) : 0;
+  SEVEN_SET(f, "scale_bits", bits);
+}
+
+// The Mac: the C calls the game's Entity_SetScale(entity, 1, scale) itself
+static void on_frg_setscale(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on || !g_glow_on) return;
+  uint8_t *entity;
+  const uint64_t bits = glow_piece_scale(host(SEVEN_GET(f, "obj")), &entity);
+  if (!bits) return;
+  const uint64_t a[3] = {arg(entity), 1, bits};
   rc_call_name_f("entity_set_scale", a, 3, 1u << 2);
 }
 
@@ -234,7 +434,7 @@ static uint8_t *entity_root(uint8_t *entity) {
 }
 
 // The game has put the inlay entity where the guitar's frame is; on a guitar built with 7/8 strings it moves half a
-// string spacing towards string 6, either string order (the attach points say which way)
+// string spacing per string beyond six towards string 6, either string order (the attach points say which way)
 static void on_in1(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
@@ -249,7 +449,7 @@ static void on_in1(rc_mid_frame *f, void *user) {
   static __thread uint8_t *pos;  // the game's memory for the position it is given
   if (!pos && !(pos = rc_guest_alloc(12))) return;
   ld3(p, root + RC_OFF(ni_world_translate));
-  for (int i = 0; i < 3; i++) p[i] += 0.5f * (a0[i] - a1[i]);
+  for (int i = 0; i < 3; i++) p[i] += 0.5f * (float)lanes_of(guitar) * (a0[i] - a1[i]);
   st3(pos, p);
   OV_GUEST(entity_set_translation, arg(entity), arg(pos), 1);  // the Mac's third argument as its callers pass it
   if (once(&g_log_inlays))
@@ -367,5 +567,23 @@ int seven_grid_init(void) {
       seven_mid("seven_grid_wirerow_reset", on_wirerow_reset) || seven_mid("seven_grid_wirerow_mark", on_wirerow_mark) ||
       seven_mid("seven_grid_wirerow_flush", on_wirerow_flush) || seven_mid("seven_grid_wires_dtor", on_wires_dtor))
     return -1;
+  // The fixes of rs7string 1.0.0-beta.4, after the unit first shipped: each runs only when all its points are taken
+  g_cam_on = seven_mid_optional("seven_cam", on_cam, "the song camera following the highway floor");
+  static const struct {
+    const char *name;
+    rc_mid_fn fn;
+  } glow[] = {
+      {"seven_frg1", on_frg1},
+      {"seven_frg2_scale", on_frg_scale},
+      {"seven_frg2b_scale", on_frg_scale},
+      {"seven_frg3_scale", on_frg_scale},
+      {"seven_frg2_setscale", on_frg_setscale},
+      {"seven_frg2b_setscale", on_frg_setscale},
+      {"seven_frg3_setscale", on_frg_setscale},
+  };
+  int taken = 0;
+  for (size_t i = 0; i < sizeof glow / sizeof *glow; i++)
+    taken += seven_mid_optional(glow[i].name, glow[i].fn, "the fret range glow reaching all strings");
+  g_glow_on = taken == (int)(sizeof glow / sizeof *glow);
   return 0;
 }

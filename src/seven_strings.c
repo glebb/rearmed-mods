@@ -274,7 +274,10 @@ static void on_gkt(rc_mid_frame *f, void *user) {
   OV_GUEST(guitar_rebuild_player0, 0);  // player 0 (the Mac's takes it; Learn & Play's ignores it)
   int after = seven_strings_guitar_count(player_guitar(0));
   // A new build: no wait deadline or failed neck of the old guitar carries over (the pitch part's PUBGB records)
-  if (after != before) seven_pitch_grid_forget_all();
+  if (after != before) {
+    seven_pitch_grid_forget_all();
+    seven_grid_forget_all();  // and the fret grid part's floor state and glow pieces
+  }
   slog("player 0's guitar %s: %d strings", after != before ? "rebuilt" : "kept", after);
 }
 
@@ -567,11 +570,13 @@ static void on_psd_tail(rc_mid_frame *f, void *user) {
 }
 
 // ---- the 7th string's look
-// N5, every frame of a guitar: the tuner colours its PegSet slots cached (0x111d360 copies a named colour into a
+// N5, every frame of a guitar: the fret grid part retries a highway floor that was not ready (seven_grid_frame; rs7string's
+// RsxrFrets_Frame), and the tuner colours its PegSet slots cached (0x111d360 copies a named colour into a
 // slot) follow the colour manager, so a palette change (RSMods.ini, colourblind mode) reaches a selected peg and its
 // glow; names 0/1 the reset and success colours, 2-9 the strings' tuner colours (rs7string's pegcolour Refresh)
 static void on_n5(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
+  seven_grid_frame(PTR(f, "guitar"));  // the highway floor, when it was not ready as the bars were placed
   uint8_t *pegs = pegs_of(PTR(f, "guitar"));
   const uint8_t *mgr = pegs && U8(pegs, pegs_loaded) ? seven_colours_manager() : NULL;
   if (!mgr) return;
