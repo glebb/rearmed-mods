@@ -119,7 +119,7 @@ static void test_swap(int ptr_size) {
   static uint8_t pb[2 * KINDS * COLS * 8], ub[2 * KINDS * COLS * 4], orig_p[sizeof pb], orig_u[sizeof ub];
   seven_swap_tables t;
   seven_swap s;
-  int owner;
+  int owner = 0;
   memset(&s, 0, sizeof s);
   fill(&t, pb, ub, ptr_size);
   memcpy(orig_p, pb, sizeof pb), memcpy(orig_u, ub, sizeof ub);
@@ -162,7 +162,7 @@ static void test_swap(int ptr_size) {
 
   // Another manager (its column 4 is its own): the old swap is forgotten, nothing is written
   fill(&t, pb, ub, ptr_size);
-  int other;
+  int other = 0;
   seven_swap_apply(&s, &t, &owner, UV_KINDS, 3);
   fill(&t, pb, ub, ptr_size);  // a new manager at the same place: the game filled it afresh
   seven_swap_restore(&s, &t, &other);
