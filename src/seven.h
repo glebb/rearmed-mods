@@ -36,6 +36,10 @@ extern int seven_on;
 
 // Registers fn on the mid point `name`, and remembers it (seven_values). 0, or -1 with a log line: the mod stays off.
 int seven_mid(const char *name, rc_mid_fn fn);
+// The same for a point added after the unit first shipped (an older RS Re-ARMed lacks it): 1 when it is taken, 0 when
+// this RS Re-ARMed has no such point (a log line names `what`, the fix it belongs to, as off). The unit stays on; a fix
+// that needs several points checks them all and stays off unless every one is taken.
+int seven_mid_optional(const char *name, rc_mid_fn fn, const char *what);
 // The index of a point's value / continuation by name, looked up once per place (a point's index is f->point)
 #define SEVEN_VAL(f, name) ({ static int v_ = -2; if (v_ == -2) v_ = rc_mid_value((f)->point, name); v_; })
 #define SEVEN_CONT(f, name) ({ static int k_ = -2; if (k_ == -2) k_ = rc_mid_cont((f)->point, name); k_; })

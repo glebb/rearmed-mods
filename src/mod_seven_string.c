@@ -42,6 +42,15 @@ int seven_mid(const char *name, rc_mid_fn fn) {
   return 0;
 }
 
+int seven_mid_optional(const char *name, rc_mid_fn fn, const char *what) {
+  if (rc_mid_add_name(name, fn, NULL) >= 0) {
+    g_points++;
+    return 1;
+  }
+  rsm_log("seven-string: %s off: this RS Re-ARMed has no mid point %s", what, name);
+  return 0;
+}
+
 __attribute__((constructor)) static void seven_init(void) {
   rsm_ini_poll();
   if (!rsm_on("SevenString")) return;
