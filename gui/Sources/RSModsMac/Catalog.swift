@@ -259,6 +259,26 @@ enum Catalog {
     static let defaultColorblindColors = ["C12A2A", "A3F400", "1DACF9", "DB7F41", "00C68E", "7648A8"]
     // Seven-String Guitar's low B while [Seven String] string6_N is empty (DEFAULT_RGB in seven_colours.c)
     static let lowBColor = "C8C8C8"
+    // The string 7 (an 8-string's low F#) while [Seven String] string7_N is empty (DEFAULT_RGB in seven_colours.c)
+    static let lowF7Color = "FF66CC"
+
+    // [Seven String]'s spacing_* keys: empty is the game's own spacing, otherwise 0.5 to 4.0 (seven_parse_spacing).
+    // The slider runs 0 to 4; below 0.5 it means "Standard".
+    static let spacingKeys: [(label: String, key: String)] = [
+        ("7-string guitar", "spacing_guitar7"), ("8-string guitar", "spacing_guitar8"),
+        ("5-string bass", "spacing_bass5"), ("6-string bass", "spacing_bass6"),
+    ]
+    // The defaults of wave 2's keys. Not in `defaults`, which mirrors the library's DEFAULTS table (rsmods_ini.c): the
+    // library reads these keys through seven_settings_parse, which has its own defaults, and doesn't write them.
+    static let sevenExtraDefaults = [
+        "spacing_guitar7": "", "spacing_guitar8": "", "spacing_bass5": "", "spacing_bass6": "",
+        "string7_line": "1", "diagrams7": "1", "lowrange": "1", "string7_N": "", "string7_CB": "",
+    ]
+    static func spacingText(slider: Double) -> String { slider < 0.5 ? "" : String(format: "%.1f", min(slider, 4)) }
+    static func spacingSlider(text: String) -> Double {
+        guard let v = Double(text.trimmingCharacters(in: .whitespaces)), v >= 0.5, v <= 4 else { return 0 }
+        return v
+    }
 
     static let highwayColors: [(label: String, key: String)] = [
         ("Numbered Lanes", "CustomHighwayNumbered"),

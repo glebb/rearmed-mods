@@ -92,3 +92,36 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(s.home.standardizedFileURL.path, home.standardizedFileURL.path)
     }
 }
+
+@MainActor
+final class SevenStringKeysTests: XCTestCase {
+    func testSpacingSliderMapsBelowHalfToStock() {
+        XCTAssertEqual(Catalog.spacingText(slider: 0), "")
+        XCTAssertEqual(Catalog.spacingText(slider: 0.4), "")
+        XCTAssertEqual(Catalog.spacingText(slider: 0.5), "0.5")
+        XCTAssertEqual(Catalog.spacingText(slider: 1.25), "1.2")
+        XCTAssertEqual(Catalog.spacingText(slider: 9), "4.0")
+        XCTAssertEqual(Catalog.spacingSlider(text: ""), 0)
+        XCTAssertEqual(Catalog.spacingSlider(text: "2.5"), 2.5)
+        XCTAssertEqual(Catalog.spacingSlider(text: "0.2"), 0, "the game takes only 0.5 to 4.0")
+        XCTAssertEqual(Catalog.spacingSlider(text: "x"), 0)
+    }
+
+    func testNewKeysRoundTripThroughTheIni() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try "".write(to: folder.appendingPathComponent("RSMods.ini"), atomically: true, encoding: .utf8)
+        let s = SettingsStore(gameFolder: folder)
+        XCTAssertNil(s.ini.value(Section.sevenString, "lowrange"), "absent: the library's default, on")
+        XCTAssertEqual(Catalog.sevenExtraDefaults["lowrange"], "1")
+        XCTAssertNil(s.colorValue(Section.sevenString, "string7_N"))
+        s.set(Section.sevenString, "spacing_bass5", "1.5")
+        s.set(Section.sevenString, "diagrams7", "0")
+        s.color(Section.sevenString, "string7_N", fallback: Catalog.lowF7Color).wrappedValue = Color(hex: "112233")
+        let again = SettingsStore(gameFolder: folder)
+        XCTAssertEqual(again.value(Section.sevenString, "spacing_bass5"), "1.5")
+        XCTAssertEqual(again.value(Section.sevenString, "diagrams7"), "0")
+        XCTAssertEqual(again.colorValue(Section.sevenString, "string7_N"), "112233")
+    }
+}
