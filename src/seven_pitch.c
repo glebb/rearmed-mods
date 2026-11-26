@@ -2,6 +2,12 @@
 // storage, the song's 7-string mode and its publication ports (github.com/SomeeName/rs7string, MIT, by SomeeName:
 // src/features/pitch, src/features/publish).
 //
+// An extended bass (5/6 strings, seven_bass.h): its strings 4 / 5 (the low B, base 23, and the high C, base 48) are the
+// game's own six slots, so the detection's tuning vector has them and only what the game cannot know is added here: the
+// detection's open notes of those strings and its lowest open note (every SetTuning, the reset), the song's setup per
+// detector (seven_s4), the expected pitch of those strings (the PE0 edits of seven_string for a vector, seven_s1 for a
+// matcher's or detection's tuning), and the inverse (seven_i1).
+//
 // The detection (the game's pitch detection, rs7string's "detector") and the matcher grow by the edits of seven_string
 // (PA1 0x13b8 -> 0x13e0 bytes, PA2 0x58 -> 0x6c): Play_DetectInput_Init is the only place either is made, and the edits
 // are on before the game runs, so every one has room for the tails (rs7string asked _msize for objects made before
@@ -200,18 +206,33 @@ static void put8(uint8_t *dst, const int16_t t[8]) {
   for (int i = 0; i < 8; i++) RC_ST(int16_t, dst + 2 * i, t[i]);
 }
 
+// The extended bass of a detection: its string count (5 or 6) when the song set it up as one, else 0 (and always 0 without
+// SEVEN_F_BASS)
+static unsigned bass_strings(const uint8_t *det) {
+  return det && seven_feature(SEVEN_F_BASS) ? (unsigned)seven_bass_strings_of(det) : 0;
+}
+
+// The base of bass string s of an extended bass song (any player's), SEVEN_BASS_NO_BASE for any other
+static int bass_base(uint32_t s) {
+  return seven_feature(SEVEN_F_BASS) ? seven_bass_extra_base(s, (unsigned)seven_bass_max_strings()) : SEVEN_BASS_NO_BASE;
+}
+
 // The open notes as the game's unrolled writers make them, for eight strings (16-bit wrap as their `add dx, imm`); a
-// bass's strings past 3 keep the raw offset, as the game's do
-static void fill_open(const int16_t t[8], int is_bass, int16_t out[8]) {
+// bass's strings past 3 keep the raw offset, as the game's do, unless the song is an extended bass's (`strings`: its
+// strings 4 / 5 are the base + the offset)
+static void fill_open(const int16_t t[8], int is_bass, unsigned strings, int16_t out[8]) {
   for (int i = 0; i < 8; i++) {
-    const int base = is_bass ? (i < 4 ? g_bbase[i] : 0) : g_gbase[i];
+    int base = is_bass ? (i < 4 ? g_bbase[i] : 0) : g_gbase[i];
+    if (is_bass && i >= 4 && seven_bass_extra_base((unsigned)i, strings) != SEVEN_BASS_NO_BASE)
+      base = seven_bass_extra_base((unsigned)i, strings);
     out[i] = (int16_t)(uint16_t)((uint16_t)t[i] + (uint16_t)base);
   }
 }
 
-// The lowest open note after SetTuning: the game's (string 0's) lowered to that of strings 6..n-1, never raised
-static int lowest(int game, const int16_t t[8], size_t n, int is_bass) {
-  if (is_bass) return game;
+// The lowest open note after SetTuning: the game's (string 0's) lowered to that of strings 6..n-1, never raised; a bass's
+// to that of its extended strings 4 / 5
+static int lowest(int game, const int16_t t[8], size_t n, int is_bass, unsigned bass_n) {
+  if (is_bass) return seven_bass_lowest(game, t, bass_n);
   int low = game;
   for (size_t s = 6; s < (n < 8 ? n : 8); s++)
     if (g_gbase[s] + t[s] < low) low = g_gbase[s] + t[s];
@@ -260,7 +281,7 @@ void seven_pitch_det_floor(void *detection, int reset) {
 static void write_det(uint8_t *det, const int16_t t[8]) {
   int16_t open[8];
   const int b = bass(det);
-  fill_open(t, b, open);
+  fill_open(t, b, b ? bass_strings(det) : 0, open);
   put8(det + RC_OFF(seven_detection_tuning8), t);
   put8(det + RC_OFF(seven_detection_open8), open);
   const unsigned song = b ? 0 : song_count(det);  // a song's 7/8 (seven_s4) outlives the SetTuning after it
@@ -273,6 +294,10 @@ static void det_reset(uint8_t *det) {
   set_song_count(det, 0);
   const int16_t zero[8] = {0};
   write_det(det, zero);  // the game's reset zeroes tuning[6] and makes the open notes from it
+  if (bass_strings(det)) {  // an extended bass's lowest open note (zero tuning), as its SetTuning makes it
+    uint8_t *low = det + RC_OFF(detection_lowest_open);
+    RC_ST(int32_t, low, lowest(RC_LD(int32_t, low), zero, 6, 1, bass_strings(det)));
+  }
 }
 
 static void det_tuned(uint8_t *det, const int16_t *e, size_t n, int apply) {
@@ -283,7 +308,7 @@ static void det_tuned(uint8_t *det, const int16_t *e, size_t n, int apply) {
   n = keep_song(det, RC_LD(uint32_t, det + RC_OFF(seven_detection_magic)) == MAGIC ? before : t, t, n, apply);
   write_det(det, t);
   uint8_t *low = det + RC_OFF(detection_lowest_open);
-  RC_ST(int32_t, low, lowest(RC_LD(int32_t, low), t, n, bass(det)));
+  RC_ST(int32_t, low, lowest(RC_LD(int32_t, low), t, n, bass(det), bass(det) ? bass_strings(det) : 0));
   seven_pitch_det_floor(det, 0);
 }
 
@@ -509,6 +534,7 @@ static void song_note(const char *what, unsigned a, unsigned b) {
 }
 
 static void song_setup(uint8_t *det, const uint8_t *tuning, uint8_t *session) {
+  if (det && tuning) seven_bass_on_song(det, tuning, RC_LD(int32_t, det + RC_OFF(detection_instrument)));
   const int16_t *e = NULL;
   const size_t n = vec(tuning, &e);
   if (!det || !session || !e || n > 8) return;
@@ -564,6 +590,14 @@ static void on_s1(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
   const uint32_t s = (uint32_t)SEVEN_GET(f, "string");
+  // Learn & Play's join is also the bass branch's: strings 4 / 5 of an extended bass, base + the tuning's entry (the Mac's
+  // bass branch has its own points, seven_bass.c; there edi is the guitar path's string, not an instrument)
+  if (rc_guest_ptr_size == 4 && !(uint32_t)SEVEN_GET(f, "instrument2")) {
+    const int base = bass_base(s);
+    const uint8_t *tuning = P(SEVEN_GET(f, "tuning"));
+    if (base != SEVEN_BASS_NO_BASE && tuning) SEVEN_SET(f, "pitch", (uint32_t)(base + RC_LD(int16_t, tuning + 2 * s)));
+    return;
+  }
   if ((s != 6 && s != 7) || !(uint32_t)SEVEN_GET(f, "instrument2")) return;
   int16_t t;
   if (tail_entry(P(SEVEN_GET(f, "tuning")), s, &t)) SEVEN_SET(f, "pitch", (uint32_t)(g_gbase[s] + t));
@@ -575,7 +609,17 @@ static void on_i1(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
   const uint32_t s = (uint32_t)SEVEN_GET(f, "string");
-  if ((s != 6 && s != 7) || (uint32_t)SEVEN_GET(f, "instrument") == 2) return;
+  if ((uint32_t)SEVEN_GET(f, "instrument") == 2) {  // a bass: strings 4 / 5 of an extended bass (the game's table has four)
+    const int base = bass_base(s);
+    const uint8_t *tuning = P(SEVEN_GET(f, "tuning"));
+    if (base == SEVEN_BASS_NO_BASE || !tuning) return;
+    const uint32_t fret = (uint32_t)SEVEN_GET(f, "midi") - (uint32_t)base - (uint32_t)(int32_t)RC_LD(int16_t, tuning + 2 * s);
+    SEVEN_SET(f, "midi", fret);
+    SEVEN_SET(f, "fret", fret);
+    f->go = SEVEN_CONT(f, "done");
+    return;
+  }
+  if (s != 6 && s != 7) return;
   const uint8_t *tuning = P(SEVEN_GET(f, "tuning"));
   int16_t t = 0;
   if (tuning && !tail_entry(tuning, s, &t)) return;

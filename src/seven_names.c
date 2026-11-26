@@ -12,14 +12,16 @@
 //     it returns), its return names them.
 //   the arrangement one (TU, TUT): the pages that have an arrangement's id. TUT is where it has found the
 //     arrangement's Tuning and Attributes (CentOffset); its return names them. Its output is localized text.
-//   the tuner's (TN): an offset array the tuner part's TK has read Rs7String6 for (seven_tuner_seven_for). Its
+//   the tuner's (TN): an offset array the tuner part's TK has read an extended instrument's keys for (seven_tuner_strings_for). Its
 //     output is localized text without the CentOffset.
 // A known 7-string tuning gets its name (the families below, in the game's spelling: flats, upper case, its accidental
 // glyphs) with the mark ([Seven String] TuningNameSuffix, default 7Str, and TuningNamePrefix); any other tuning of a
 // 7-string arrangement keeps the game's name, the mark added. English only, as rs7string: the names are plain text,
 // which the game's localization passes as it is. A 6-string guitar's or a bass's arrangement keeps the game's name,
 // the custom tunings' (mod_cache.c) too: nothing here runs without the key. An 8-string arrangement (Rs7String7 as
-// well) gets the 8-string names with the mark's 7 made 8, as rs7string's; the tuner's has the 7-string ones.
+// well) gets the 8-string names with the mark's 7 made 8, as rs7string's, the tuner's too (a session's TK keys). A
+// 5/6-string bass (the keys Rs7String4, and Rs7String5 for six) is named by its low B: "B Standard 5Str" for BEADG
+// and BEADGC (rs7string's NameBass, SuffixN), the six stock offsets of its Tuning carrying all its strings.
 //
 // A call's entry and its return are tied by the stack pointer, which is the same at both (TU's frame pointer is 4
 // below it): a few calls a thread, which the game's threads don't share. The texts are written into the game's
@@ -39,19 +41,7 @@
 #define TEXT_MAX 1024  // a game string read or written here, in bytes
 #define AFFIX_MAX 31   // the mark's prefix and suffix, ASCII
 
-// ---- the names (values in and out): seven_tuning_names.h
-// The 8-string mark from the 7-string one: its first 7 made 8 ("7Str" -> "8Str", "7-String" -> "8-String"); a suffix
-// without a 7, or none, gives "8Str"
-static void suffix8(char *out, size_t n, const char *suffix7) {
-  const char *seven = suffix7 ? strchr(suffix7, '7') : NULL;
-  if (!seven) {
-    snprintf(out, n, "8Str");
-    return;
-  }
-  snprintf(out, n, "%s", suffix7);
-  if ((size_t)(seven - suffix7) < n) out[seven - suffix7] = '8';
-}
-
+// ---- the names (values in and out): seven_tuning_names.h (name7, name8, name_bass, suffix_n)
 // "prefix base suffix", an empty part and its blank left out
 static void compose(char *out, size_t n, const char *base, const char *prefix, const char *suffix) {
   snprintf(out, n, "%s%s%s%s%s", prefix && *prefix ? prefix : "", prefix && *prefix ? " " : "", base ? base : "",
@@ -123,18 +113,19 @@ typedef struct {
 } names_config;
 static names_config g_cfg = {1, "", "7Str"};
 
-// The display text of a known tuning of a 7-string (eight: 8-string) arrangement, decorated for its CentOffset when
-// `decorate`: 1; 0 when the tuning has no name here (out is "")
-static int known_display(char *out, size_t n, const int t[8], int eight, const names_config *c, int cents,
+// The display text of a known tuning of an arrangement of `count` strings (7 or 8 a guitar's, 5 or 6 a bass's), decorated
+// for its CentOffset when `decorate`: 1; 0 when the tuning has no name here (out is ""). The mark is the configured one
+// with its 7 made the count (a 7-string guitar's as set).
+static int known_display(char *out, size_t n, const int t[8], int count, const names_config *c, int cents,
                          int decorate) {
-  const char *name = eight ? name8(t) : name7(t);
+  const char *name = count <= 6 ? name_bass(t, count) : count == 8 ? name8(t) : name7(t);
   if (n) out[0] = 0;
   if (!c->on || !name) return 0;
   char suffix[AFFIX_MAX + 2], composed[TEXT_MAX], deco[24] = "";
-  if (eight)
-    suffix8(suffix, sizeof suffix, c->suffix);
-  else
+  if (count == 7)
     snprintf(suffix, sizeof suffix, "%s", c->suffix);
+  else
+    suffix_n(suffix, sizeof suffix, c->suffix, count);
   compose(composed, sizeof composed, name, c->prefix, suffix);
   display(out, n, composed);
   if (decorate) decoration(deco, sizeof deco, cents);
@@ -278,7 +269,7 @@ static void localize(char *out, size_t n, const char *text) {
 
 // ---- the arrangement's Tuning: numbers of a JSON object, through the game's JSON vtable (as the tuner part reads
 // them); the keys in the game's memory
-enum { KEY_7, KEY_8, KEY_CENTS, KEY_STRING0 };  // Rs7String6, Rs7String7, CentOffset, string0..string5
+enum { KEY_7, KEY_8, KEY_BASS4, KEY_BASS5, KEY_CENTS, KEY_STRING0 };  // Rs7String6, Rs7String7, Rs7String4, Rs7String5, CentOffset, string0..string5
 static const char *g_keys[KEY_STRING0 + 6];
 
 // A guest pointer a game function returned, to its width (a 32-bit guest's upper half is not the pointer's)
@@ -302,15 +293,22 @@ static int json_offset(void *obj, const char *key, int *out) {
   return 1;
 }
 
-// A Tuning with Rs7String6 and all of string0..5: t[0..6] (and t[7], *eight, with Rs7String7). 0: not a 7-string one.
-// It calls the game: eax, ecx and edx change.
-static int read_seven(void *tuning, int t[8], int *eight) {
-  *eight = 0;
-  if (!json_offset(tuning, g_keys[KEY_7], &t[6])) return 0;
+// A Tuning of an extended instrument with all of string0..5: its string count (7 with Rs7String6, 8 with Rs7String7 as
+// well: t[0..7]; a bass 5 with Rs7String4, 6 with Rs7String5 as well: t[0..5]), else 0 (a stock instrument). The keys are
+// asked first (a song list is named again and again). It calls the game: eax, ecx and edx change.
+static int read_extended(void *tuning, int t[8]) {
+  int key = 0, count;
+  if (json_offset(tuning, g_keys[KEY_7], &t[6]))
+    count = 7;
+  else if (json_offset(tuning, g_keys[KEY_BASS4], &key))
+    count = 5;
+  else
+    return 0;
   for (int s = 0; s < 6; s++)
     if (!json_offset(tuning, g_keys[KEY_STRING0 + s], &t[s])) return 0;
-  *eight = json_offset(tuning, g_keys[KEY_8], &t[7]);
-  return 1;
+  if (count == 7)
+    return json_offset(tuning, g_keys[KEY_8], &t[7]) ? 8 : 7;
+  return json_offset(tuning, g_keys[KEY_BASS5], &key) ? 6 : 5;
 }
 
 // ---- the calls under way, a thread's: from an entry (or TUT) to the return with the same stack pointer
@@ -318,7 +316,7 @@ typedef struct {
   uint64_t sp;     // 0: free (the guest's stack pointer, or a frame pointer the target's table ties it with)
   uint8_t *raw;    // TJ's outputs; TU's output in disp
   uint8_t *disp;
-  int cents, eight;
+  int cents, count;  // count: 7 / 8 a guitar's strings, 5 / 6 a bass's
   int t[8];
 } name_call;
 #define CALLS 4
@@ -352,14 +350,20 @@ static int take(name_call *calls, uint64_t sp, name_call *out) {
   return 0;
 }
 
-static void offsets_text(char *out, size_t n, const int t[8], int eight) {
+static void offsets_text(char *out, size_t n, const int t[8], int count) {
+  if (count <= 6) {
+    int k = snprintf(out, n, "%d %d %d %d | low B %d", t[0], t[1], t[2], t[3], t[4]);
+    if (count == 6 && k > 0 && (size_t)k < n) snprintf(out + k, n - (size_t)k, " high C %d", t[5]);
+    return;
+  }
   int k = snprintf(out, n, "%d %d %d %d %d %d | 7th %d", t[0], t[1], t[2], t[3], t[4], t[5], t[6]);
-  if (eight && k > 0 && (size_t)k < n) snprintf(out + k, n - (size_t)k, " 8th %d", t[7]);
+  if (count == 8 && k > 0 && (size_t)k < n) snprintf(out + k, n - (size_t)k, " 8th %d", t[7]);
 }
 
-static const char *suffix_of(int eight, char *buf, size_t n) {
-  if (!eight) return g_cfg.suffix;
-  suffix8(buf, n, g_cfg.suffix);
+// The configured mark for an arrangement of `count` strings (the 7-string guitar's as set)
+static const char *suffix_of(int count, char *buf, size_t n) {
+  if (count == 7) return g_cfg.suffix;
+  suffix_n(buf, n, g_cfg.suffix, count);
   return buf;
 }
 
@@ -374,15 +378,15 @@ static void on_tj(rc_mid_frame *f, void *user) {
   uint8_t *raw = PTR(f, "raw"), *disp = PTR(f, "display"), *tuning = PTR(f, "tuning");
   forget(t_tj, sp);
   if (!tuning || !raw || !disp) return;
-  int t[8] = {0}, eight = 0, seven = read_seven(tuning, t, &eight);
+  int t[8] = {0}, count = read_extended(tuning, t);
   SEVEN_SET(f, "raw", (uintptr_t)raw);
   SEVEN_SET(f, "display", (uintptr_t)disp);
-  if (!seven) return;
+  if (!count) return;
   name_call *c = open_call(t_tj, &t_tj_next, sp);
   c->raw = raw;
   c->disp = disp;
   c->cents = (int32_t)SEVEN_GET(f, "cents");
-  c->eight = eight;
+  c->count = count;
   memcpy(c->t, t, sizeof t);
 }
 
@@ -396,17 +400,17 @@ static void on_tj_ret(rc_mid_frame *f, void *user) {
       offs[96];
   read_text(c.raw, raw0, sizeof raw0);
   read_text(c.disp, disp0, sizeof disp0);
-  if (known_display(raw, sizeof raw, c.t, c.eight, &g_cfg, 0, 0)) {
+  if (known_display(raw, sizeof raw, c.t, c.count, &g_cfg, 0, 0)) {
     decoration(deco, sizeof deco, c.cents);
     snprintf(disp, sizeof disp, "%s%s", raw, deco);
     put_text(c.raw, raw);
   } else {
     snprintf(raw, sizeof raw, "%s", raw0);
     localize(loc, sizeof loc, disp0);
-    mark_stock(disp, sizeof disp, loc, g_cfg.prefix, suffix_of(c.eight, s8, sizeof s8));
+    mark_stock(disp, sizeof disp, loc, g_cfg.prefix, suffix_of(c.count, s8, sizeof s8));
   }
   put_text(c.disp, disp);
-  offsets_text(offs, sizeof offs, c.t, c.eight);
+  offsets_text(offs, sizeof offs, c.t, c.count);
   nlog("the song list / song pages: %s, CentOffset %d: \"%s\" / \"%s\" -> \"%s\" / \"%s\"", offs, c.cents, raw0, disp0,
        raw, disp);
 }
@@ -419,13 +423,13 @@ static void on_tut(rc_mid_frame *f, void *user) {
   uint64_t sp = SEVEN_GET(f, "frame") + (uint64_t)rc_guest_ptr_size;  // the entry's stack pointer, the return's
   uint8_t *tuning = PTR(f, "tuning"), *attributes = PTR(f, "attributes"), *out = PTR(f, "out");
   forget(t_tu, sp);
-  int t[8] = {0}, eight = 0;
-  if (!tuning || !out || !read_seven(tuning, t, &eight)) return;
+  int t[8] = {0}, count;
+  if (!tuning || !out || !(count = read_extended(tuning, t))) return;
   double cents = 0;
   name_call *c = open_call(t_tu, &t_tu_next, sp);
   c->disp = out;  // the return's too: paths without TUT reach it
   c->cents = json_number(attributes, g_keys[KEY_CENTS], &cents) && cents > -1200.0 && cents < 1200.0 ? (int)cents : 0;
-  c->eight = eight;
+  c->count = count;
   memcpy(c->t, t, sizeof t);
 }
 
@@ -437,34 +441,39 @@ static void on_tu_ret(rc_mid_frame *f, void *user) {
   if (!take(t_tu, SEVEN_GET(f, "sp"), &c) || !out || c.disp != out) return;
   char stock[TEXT_MAX], text[TEXT_MAX], loc[TEXT_MAX], s8[AFFIX_MAX + 2], offs[96];
   read_text(out, stock, sizeof stock);
-  if (!known_display(text, sizeof text, c.t, c.eight, &g_cfg, c.cents, 1)) {
+  if (!known_display(text, sizeof text, c.t, c.count, &g_cfg, c.cents, 1)) {
     localize(loc, sizeof loc, stock);
-    mark_stock(text, sizeof text, loc, g_cfg.prefix, suffix_of(c.eight, s8, sizeof s8));
+    mark_stock(text, sizeof text, loc, g_cfg.prefix, suffix_of(c.count, s8, sizeof s8));
   }
   put_text(out, text);
   SEVEN_SET(f, "out", (uintptr_t)out);
-  offsets_text(offs, sizeof offs, c.t, c.eight);
+  offsets_text(offs, sizeof offs, c.t, c.count);
   nlog("an arrangement's page: %s, CentOffset %d: \"%s\" -> \"%s\"", offs, c.cents, stock, text);
 }
 
 // ---- TN: the tuner's resolver, at its two returns (its arguments are still above the return address): the output
-// named for an offset array TK read Rs7String6 for, or the game's name marked; eax (the output) back after the
-// game's calls. The tuner's names are 7-string ones, as rs7string's.
+// named for an offset array the tuner part's TK read an extended instrument's keys for (seven_tuner_strings_for: 7 / 8
+// a guitar's, 5 / 6 a bass's), or the game's name marked; eax (the output) back after the game's calls.
 static void tn_rename(rc_mid_frame *f, int vout, int voffsets) {
   uint8_t *out = (uint8_t *)(uintptr_t)rc_mid_get(f, vout);
   const uint8_t *offsets = (const uint8_t *)(uintptr_t)rc_mid_get(f, voffsets);
-  int t[8] = {0};
-  if (!out || !offsets || !seven_tuner_seven_for(offsets, &t[6])) return;
+  int t[8] = {0}, instrument = 0, count;
+  int16_t extra[2] = {0, 0};
+  if (!out || !offsets || !(count = seven_tuner_strings_for(offsets, extra, &instrument))) return;
   for (int s = 0; s < 6; s++) t[s] = RC_LD(int32_t, offsets + 4 * s);
-  char stock[TEXT_MAX], text[TEXT_MAX], loc[TEXT_MAX], offs[96];
+  if (count >= 7) {  // the guitar's 7th and 8th strings come from the keys
+    t[6] = extra[0];
+    t[7] = extra[1];
+  }
+  char stock[TEXT_MAX], text[TEXT_MAX], loc[TEXT_MAX], offs[96], s8[AFFIX_MAX + 2];
   read_text(out, stock, sizeof stock);
-  if (!known_display(text, sizeof text, t, 0, &g_cfg, 0, 0)) {
+  if (!known_display(text, sizeof text, t, count, &g_cfg, 0, 0)) {
     localize(loc, sizeof loc, stock);
-    mark_stock(text, sizeof text, loc, g_cfg.prefix, g_cfg.suffix);
+    mark_stock(text, sizeof text, loc, g_cfg.prefix, suffix_of(count, s8, sizeof s8));
   }
   put_text(out, text);
   rc_mid_set(f, vout, (uintptr_t)out);
-  offsets_text(offs, sizeof offs, t, 0);
+  offsets_text(offs, sizeof offs, t, count);
   nlog("the tuner: %s: \"%s\" -> \"%s\"", offs, stock, text);
 }
 
@@ -490,7 +499,7 @@ int seven_names_init(void) {
   for (size_t k = 0; k < sizeof points / sizeof *points; k++)
     if (seven_mid(points[k].name, points[k].fn)) return -1;
 
-  static const char keys[] = "Rs7String6\0Rs7String7\0CentOffset\0string0\0string1\0string2\0string3\0string4\0string5";
+  static const char keys[] = "Rs7String6\0Rs7String7\0Rs7String4\0Rs7String5\0CentOffset\0string0\0string1\0string2\0string3\0string4\0string5";
   char *mem = rc_guest_alloc(sizeof keys);
   if (!mem) {
     rsm_log("seven-string: names: no memory in the game for its keys");
