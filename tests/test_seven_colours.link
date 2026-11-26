@@ -1,0 +1,3 @@
+-lm
+src/seven_colours_calc.c
+src/seven_colours_swap.c

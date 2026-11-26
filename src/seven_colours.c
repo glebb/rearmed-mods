@@ -14,7 +14,8 @@
 // their ends (seven_cminit, seven_cmbuild) the columns of strings 6 and 7 are filled in, and the first six copied into
 // the stock tables. String 6 gets its own colour and the kinds made from it as string 0's are from its colour (dimmed
 // to the other strings' dimmed brightness, the glow at full brightness, other kinds as bright as string 0's); kinds the
-// strings share keep string 0's. String 7 (an eighth string) has a placeholder colour. Two places of the table's build
+// strings share keep string 0's. String 7 (an eighth string) has its own, [Seven String] string7_N / string7_CB (default FF66CC, pink, as rs7string's),
+// made into kinds as string 6's is. Two places of the table's build
 // write a kind for all columns at once (seven_cmuv, seven_cmix), and a function that gives a string's colour as
 // 0xRRGGBB from six on its stack (seven_cmfall) gets strings 6 and 7.
 //
@@ -23,9 +24,15 @@
 // takes it (00C68E, or string0_CB with CustomStringColors = 2). A change of these is published on the game thread.
 //
 // A note's colour comes from a ramp texture (seven_colours.h): string 6's V samples lines of the grey row no row is
-// sampled at (V6, rs7string's), so string 6 is grey with the game's own ramp. With the render API, mod_colors.c draws
-// a ramp with string 6's colour on those lines (seven_colours_game_ramp, seven_colours_ramp): rs7string repaints the
-// same lines in a copy of the Direct3D texture.
+// sampled at (V6, rs7string's), so string 6 is grey with the game's own ramp; string 7's lines are V7 (rs7string's
+// V7 band, next to V6 in the same grey rows). With the render API, mod_colors.c draws a ramp with both colours on those
+// lines (seven_colours_game_ramp, seven_colours_ramp): rs7string repaints the same lines in a copy of the Direct3D
+// texture. String 7 samples V7 only from the first ramp drawn (without one it borrows string 5's row, not grey).
+//
+// The low B of an extended bass (seven_colours_swap.h): with a five or six string bass in the song and no guitar, column
+// 4 of every kind shows string 6's columns (a grey low B, as rs7string's SetBassLowB); the six-column tables RSMods
+// writes through keep the game's column 4. It follows seven_bass_serial() every frame, and is made again after each build
+// of the manager.
 //
 // What rs7string has and this part hasn't: the check that the game built no manager before the edits (they are on
 // before the game runs here), the D3D ramp copies and their self-check (the render API replaces the texture whole, and
@@ -41,6 +48,8 @@
 
 #include "rsmods_tuning.h"
 #include "seven.h"
+#include "seven_colours_calc.h"
+#include "seven_colours_swap.h"
 
 #define SECTION "Seven String"
 
@@ -51,18 +60,26 @@ enum { EXTRA = COLUMNS - STOCK_COLUMNS };  // strings 6 and 7
 // (ExtendedRangeMode.hpp: colorsNormal[0], 0, 0.7764706, 0.5568628)
 #define DEFAULT_RGB 0xC8C8C8u
 #define RSMODS_LOW_B 0x00C68Eu
-// String 7's placeholder until it has its own: teal, colourblind orange (rs7string's)
-static const uint32_t PLACEHOLDER[MODES] = {0x00D6B2, 0xFF8C00};
+// String 7's colour without settings: pink in both modes (rs7string's string7_color, kRsxrDefaultColour7)
+#define DEFAULT_RGB7 0xFF66CCu
 
 // The kinds whose V samples the note ramp (16 rows), and the ones with a V of a six-row texture (11) or an index (14)
 static const int RAMP_KINDS[] = {15, 17, 21};
 static const int COPIED_KINDS[] = {11, 14};
 // String 6's V in the ramp: lines 56 and 57 of 128, and 120 and 121, in the grey rows 7 and 15, where no row's V is
-static const float V6[MODES] = {57.0f / 128.0f, 121.0f / 128.0f};
+static const float V6[MODES] = {SEVEN_RAMP_V6_0, SEVEN_RAMP_V6_1};
+// String 7's: lines 61 and 62, and 125 and 126 (rs7string's kRsxrV7: 62/128 and 126/128), also in the grey rows
+static const float V7[MODES] = {SEVEN_RAMP_V7_0, SEVEN_RAMP_V7_1};
 
 static float g_rgb[MODES][3];   // string 6's colour
 static uint32_t g_rgb_hex[MODES];
+static float g_rgb7[MODES][3];  // string 7's colour
+static uint32_t g_rgb7_hex[MODES];
 static uint32_t g_fallback;     // seven_cmfall's string 6, 0xRRGGBB
+static uint32_t g_fallback7;    // and string 7
+static atomic_int g_bands;      // a ramp with string 7's lines was drawn (then its notes sample them, else string 5's row)
+static seven_swap g_swap;       // the low B swap of the manager g_swap.owner (seven_colours_swap.h)
+static unsigned g_bass_serial;  // seven_bass_serial() as the manager last showed it
 static float *g_own;            // strings 6 and 7's colours, [mode][kind][extra][3]: the game's memory, the manager's
 static uint8_t *g_built;        // the manager the last seven_cmbuild finished
 static pthread_t g_build_thread;
@@ -76,16 +93,6 @@ static unsigned g_serial;       // string 6's ramp lines changed
 static float brightest(const float c[3]) {
   float m = c[0] > c[1] ? c[0] : c[1];
   return m > c[2] ? m : c[2];
-}
-
-void seven_colours_dim(const float rgb[3], float dim, float out[3]) {
-  float m = brightest(rgb), k = m > 0.0f ? dim / m : 0.0f;
-  for (int i = 0; i < 3; i++) out[i] = rgb[i] * k;
-}
-
-void seven_colours_glow(const float rgb[3], float out[3]) {
-  float m = brightest(rgb), k = m > 0.0f ? 1.0f / m : 0.0f;
-  for (int i = 0; i < 3; i++) out[i] = rgb[i] * k;
 }
 
 static void to_floats(uint32_t rgb, float out[3]) {
@@ -159,7 +166,21 @@ static int update_colours(void) {
   return 1;
 }
 
+// String 7's colour in both modes ([Seven String] string7_N / string7_CB; the settings default them to FF66CC)
+static int update_colours7(void) {
+  const seven_settings *st = seven_settings_get();
+  uint32_t rgb[MODES] = {st->string7_rgb[0] & 0xffffff, st->string7_rgb[1] & 0xffffff};
+  if (!memcmp(rgb, g_rgb7_hex, sizeof rgb)) return 0;
+  memcpy(g_rgb7_hex, rgb, sizeof rgb);
+  for (int m = 0; m < MODES; m++) to_floats(rgb[m], g_rgb7[m]);
+  g_fallback7 = rgb[0];
+  g_serial++;
+  rsm_log("seven-string: string 7's colour %06X, colourblind %06X", rgb[0], rgb[1]);
+  return 1;
+}
+
 const float *seven_colours_rgb(int mode) { return g_rgb[mode == 1]; }
+const float *seven_colours_rgb7(int mode) { return g_rgb7[mode == 1]; }
 
 // ------------------------------------------------------------------------------------------------
 // The manager
@@ -237,7 +258,7 @@ static void extra_colour(const uint8_t *mgr, int mode, int kind, int extra, floa
   if (extra == 0)
     memcpy(lit, g_rgb[mode], sizeof lit);
   else
-    to_floats(PLACEHOLDER[mode], lit);
+    memcpy(lit, g_rgb7[mode], sizeof lit);
   memcpy(out, lit, sizeof lit);
   float baseline = brightest(base);
   if (kind == SEVEN_KIND_DIM)
@@ -251,6 +272,12 @@ static void extra_colour(const uint8_t *mgr, int mode, int kind, int extra, floa
 // Strings 6 and 7 into a manager the game has filled, and its first six columns into the stock tables
 static void publish(uint8_t *mgr) {
   if (!mgr) return;
+  // The low B swap of the last publish: put back before the stock tables are read (they and RSMods keep the game's
+  // column 4). An entry the game's build wrote since is left as it is.
+  {
+    seven_swap_tables t = {mgr + RC_OFF(seven_color_table), mgr + RC_OFF(seven_color_uv), (int)rc_guest_ptr_size};
+    seven_swap_restore(&g_swap, &t, mgr);
+  }
   if (!g_own && !(g_own = rc_guest_alloc((size_t)MODES * KINDS * EXTRA * 3 * sizeof(float)))) {
     static int told;
     if (!told++) rsm_log("seven-string: no game memory for string 6's colours");
@@ -271,16 +298,28 @@ static void publish(uint8_t *mgr) {
         for (int i = 0; i < 3; i++) RC_ST(float, &own(m, k, e)[i], c[i]);
         put_pointer(pointer_at(mgr, 0, m, k, STOCK_COLUMNS + e), own(m, k, e));
       }
-    // String 6 samples the note ramp at V6, string 7 at string 5's row until it has its own; kinds 11 and 14 as
-    // strings 0 and 5
+    // String 6 samples the note ramp at V6, string 7 at V7 once a ramp with its lines is drawn (else at string 5's
+    // row); kinds 11 and 14 as strings 0 and 5
     for (size_t i = 0; i < sizeof RAMP_KINDS / sizeof *RAMP_KINDS; i++) {
       RC_ST(float, v_at(mgr, 0, m, RAMP_KINDS[i], 6), V6[m]);
-      RC_ST(uint32_t, v_at(mgr, 0, m, RAMP_KINDS[i], 7), RC_LD(uint32_t, v_at(mgr, 0, m, RAMP_KINDS[i], 5)));
+      if (atomic_load(&g_bands))
+        RC_ST(float, v_at(mgr, 0, m, RAMP_KINDS[i], 7), V7[m]);
+      else
+        RC_ST(uint32_t, v_at(mgr, 0, m, RAMP_KINDS[i], 7), RC_LD(uint32_t, v_at(mgr, 0, m, RAMP_KINDS[i], 5)));
     }
     for (size_t i = 0; i < sizeof COPIED_KINDS / sizeof *COPIED_KINDS; i++) {
       RC_ST(uint32_t, v_at(mgr, 0, m, COPIED_KINDS[i], 6), RC_LD(uint32_t, v_at(mgr, 0, m, COPIED_KINDS[i], 0)));
       RC_ST(uint32_t, v_at(mgr, 0, m, COPIED_KINDS[i], 7), RC_LD(uint32_t, v_at(mgr, 0, m, COPIED_KINDS[i], 5)));
     }
+  }
+  // An extended bass without a guitar: its low B (native string 4) shows string 6's colours. Done last, so that the
+  // stock tables above keep the game's column 4.
+  g_bass_serial = seven_bass_serial();
+  if (seven_swap_wanted(seven_bass_max_strings(), seven_bass_any_guitar())) {
+    seven_swap_tables t = {mgr + RC_OFF(seven_color_table), mgr + RC_OFF(seven_color_uv), (int)rc_guest_ptr_size};
+    seven_swap_apply(&g_swap, &t, mgr, RAMP_KINDS, (int)(sizeof RAMP_KINDS / sizeof *RAMP_KINDS));
+    static int told;
+    if (!told++) rsm_log("seven-string: the bass's low B shows string 6's colours");
   }
 }
 
@@ -303,6 +342,7 @@ static void cminit(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   uint8_t *mgr = (uint8_t *)(uintptr_t)SEVEN_GET(f, "manager");
   g_built = NULL;
+  memset(&g_swap, 0, sizeof g_swap);  // a new manager (maybe at the old one's address): its column 4 is the game's
   publish(mgr);
 }
 
@@ -349,7 +389,7 @@ static void cmfall(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   uint32_t s = (uint32_t)SEVEN_GET(f, "string");
   if (s < STOCK_COLUMNS) return;
-  SEVEN_SET(f, "rgb", s == 6 ? g_fallback : s == 7 ? PLACEHOLDER[0] : 0);
+  SEVEN_SET(f, "rgb", s == 6 ? g_fallback : s == 7 ? g_fallback7 : 0);
   f->go = SEVEN_CONT(f, "skip");
 }
 
@@ -363,32 +403,11 @@ enum { RAMP_W = 256, RAMP_H = 128, RAMP_ROWS = 16 };
 #define RAMP_HASH_LEARN_PLAY 0x1c62a63a0c96a903ull
 #define RAMP_HASH_MAC 0x43f3a5e256055935ull
 
-// A channel of the grey line g recoloured to c around its anchor a, the grey's value where a row has its colour
-// (rs7string's Rs7_Recolor): black to c up to a, c to white above
-static uint8_t recolour(uint8_t g, uint8_t a, uint8_t c) {
-  if (a == 0) return g == 0 ? 0 : (uint8_t)(c + ((255 - c) * g + 127) / 255);
-  if (g <= a) return (uint8_t)((c * g + a / 2) / a);
-  if (a == 255) return c;
-  return (uint8_t)(c + ((255 - c) * (g - a) + (255 - a) / 2) / (255 - a));
-}
-
 int seven_colours_ramp(uint8_t *rgba, int w, int h) {
   if (!seven_on || !rgba || w < 8 || h != RAMP_H) return 0;
-  size_t line = (size_t)w * 4;
-  int knee = w * 2 / 5;  // 40% across: where the game's rows (and mod_colors.c's) have their colour
-  for (int m = 0; m < MODES; m++) {
-    int row = m ? 15 : 7, from = row * (h / RAMP_ROWS) + h / (2 * RAMP_ROWS);
-    int to = (int)(V6[m] * (float)h) - 1;  // the two lines around V6
-    uint8_t c[3] = {(uint8_t)(g_rgb[m][0] * 255.0f + 0.5f), (uint8_t)(g_rgb[m][1] * 255.0f + 0.5f),
-                    (uint8_t)(g_rgb[m][2] * 255.0f + 0.5f)};
-    const uint8_t *src = rgba + (size_t)from * line, *anchor = src + knee * 4;
-    uint8_t *out = rgba + (size_t)to * line;
-    for (int x = 0; x < w; x++) {
-      for (int k = 0; k < 3; k++) out[x * 4 + k] = recolour(src[x * 4 + k], anchor[k], c[k]);
-      out[x * 4 + 3] = src[x * 4 + 3];
-    }
-    memcpy(out + line, out, line);
-  }
+  seven_ramp_paint(rgba, w, h, g_rgb, g_rgb7);
+  // From now on a manager's string 7 samples V7 (its next publish)
+  if (!atomic_exchange(&g_bands, 1)) atomic_store(&g_dirty, 1);
   return 1;
 }
 
@@ -474,10 +493,13 @@ unsigned seven_colours_ramp_serial(void) { return g_serial; }
 static void frame(rc_ctx *c, void *user) {
   static double next;
   if (!seven_on) return;
+  // The song's bass changed (a low B to show, or not): every frame, it is one load
+  if (seven_bass_serial() != g_bass_serial) atomic_store(&g_dirty, 1);
   double now = rsm_now();
-  if (now < next) return;
-  next = now + 0.5;
-  if (update_colours()) atomic_store(&g_dirty, 1);
+  if (now >= next) {
+    next = now + 0.5;
+    if (update_colours() | update_colours7()) atomic_store(&g_dirty, 1);
+  }
   seven_colours_drain();
 }
 
@@ -493,6 +515,7 @@ int seven_colours_init(void) {
   for (size_t i = 0; i < sizeof points / sizeof *points; i++)
     if (seven_mid(points[i].name, points[i].fn)) return -1;
   update_colours();
+  update_colours7();
   if (rc_hook_add_name("game_frame", NULL, frame, NULL))
     rsm_log("seven-string: no frame hook: a change of string 6's colour needs a restart");
   return 0;
