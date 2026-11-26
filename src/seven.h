@@ -44,6 +44,8 @@ int seven_mid_optional(const char *name, rc_mid_fn fn, const char *what);
 // after the unit's own group, and only while *on is set then. A target whose tables have no such group (the Mac,
 // where the fix's other points call the game themselves) needs none, so its failure leaves *on as it is.
 void seven_edits_after(const char *group, const int *on);
+// Plain Packages (mod_plain_packages.c) switched on, once, whatever its own switch says: 0 when it is on
+int plain_packages_start(const char *by);
 // The index of a point's value / continuation by name, looked up once per place (a point's index is f->point)
 #define SEVEN_VAL(f, name) ({ static int v_ = -2; if (v_ == -2) v_ = rc_mid_value((f)->point, name); v_; })
 #define SEVEN_CONT(f, name) ({ static int k_ = -2; if (k_ == -2) k_ = rc_mid_cont((f)->point, name); k_; })

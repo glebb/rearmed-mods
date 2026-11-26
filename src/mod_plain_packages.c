@@ -59,12 +59,15 @@ static void sng_decrypt(rc_mid_frame *f, void *user) {
   f->go = g_done;
 }
 
-__attribute__((constructor)) static void plain_init(void) {
-  rsm_ini_poll();
-  if (!rsm_on("PlainPackages")) return;
+// Switches Plain Packages on, once: from its own switch, or from Seven-String Guitar's native charts (plain archives
+// by definition), whichever constructor runs first. 0 when it is on.
+int plain_packages_start(const char *by) {
+  static int tried, result = -1;
+  if (tried) return result;
+  tried = 1;
   if (!dlsym(RTLD_DEFAULT, "rc_mid_add_name") || !dlsym(RTLD_DEFAULT, "rc_edit_enable")) {
     rsm_log("plain packages: this RS Re-ARMed has no edits and mid points: unencrypted packages don't load");
-    return;
+    return -1;
   }
   // The point first: the edits let plain song files through to the decrypt, which only the point skips
   int p = rc_mid_add_name(PLAIN_POINT, sng_decrypt, NULL);
@@ -72,16 +75,23 @@ __attribute__((constructor)) static void plain_init(void) {
       (g_out = rc_mid_value(p, "out")) < 0 || (g_out_len = rc_mid_value(p, "out_len")) < 0 ||
       (g_ok = rc_mid_value(p, "ok")) < 0 || (g_done = rc_mid_cont(p, "done")) < 0) {
     rsm_log("plain packages: no mid point %s on %s: unencrypted packages don't load", PLAIN_POINT, rc_target());
-    return;
+    return -1;
   }
   if (rc_edit_enable(PLAIN_GROUP)) {
     rsm_log("plain packages: no edits of %s on %s: unencrypted packages don't load", PLAIN_GROUP, rc_target());
-    return;
+    return -1;
   }
   g_on = 1;
+  result = 0;
   const char *bypass = getenv("RS_MODS_BYPASS");
   if (bypass && bypass[0] && strchr("0nNfF", bypass[0]))
     rsm_log("plain packages: on, but RS_MODS_BYPASS=%s checks song files' signatures: plain ones are refused", bypass);
   else
-    rsm_log("plain packages: on");
+    rsm_log("plain packages: on%s%s", by ? " for " : "", by ? by : "");
+  return 0;
+}
+
+__attribute__((constructor)) static void plain_init(void) {
+  rsm_ini_poll();
+  if (rsm_on("PlainPackages")) plain_packages_start(NULL);
 }

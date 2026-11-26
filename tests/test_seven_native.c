@@ -23,6 +23,10 @@ static size_t window_used = 0x100;
 int seven_on = 1;
 
 void rsm_log(const char *fmt, ...) { (void)fmt; }
+int plain_packages_start(const char *by) {
+  (void)by;
+  return 0;
+}
 void *rc_guest_alloc(size_t n) {
   void *p = window + window_used;
   window_used += (n + 15) & ~(size_t)15;
