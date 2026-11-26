@@ -1113,6 +1113,8 @@ static struct {
   unsigned seen;
 } g_width[WIDTHS];
 
+static int g_width_ok;  // the offset of the frame root's rotation is known
+
 static void head_width(uint8_t *guitar, int extended) {
   int at = -1, free_at = -1, old = 0;
   for (int i = 0; i < WIDTHS; i++) {
@@ -1153,7 +1155,7 @@ static void head_width(uint8_t *guitar, int extended) {
 
 // N5's per-frame width entry (the strings part's hook is the foundation's; this is ours): the pegs follow the frame
 void seven_headstock_frame(void *guitar) {
-  if (!seven_on || !g_on || !seven_feature(SEVEN_F_SPACING) || !guitar) return;
+  if (!seven_on || !g_on || !g_width_ok || !seven_feature(SEVEN_F_SPACING) || !guitar) return;
   const uint8_t *info = ptr_at(guitar, RC_OFF(guitar_info));
   int count = info ? seven_strings_info_count(info) : 0;
   head_width(guitar, seven_strings_info_is_bass(info) ? count >= 5 : count >= 7);
@@ -1293,7 +1295,10 @@ int seven_headstock_init(void) {
   // so an older RS Re-ARMed has the guitar's seven-peg headstock without them. The bass's fix is on only when its hook on
   // PSL1 (another callback of the point the strings part has) is taken; the strings part's own peg word is the other half
   // of it (it sets the bass's count to 5 or 6)
-  g_bass_ok = seven_mid_optional("seven_psl1", on_psl1_bass, "the extended bass's headstock");
+  // (and the offsets of the newer RS Re-ARMed it reads: a name it lacks gives RC_NO_OFF, which would be written to)
+  g_bass_ok = RC_HAS_OFF(headstock_seg_loaded) && seven_mid_optional("seven_psl1", on_psl1_bass, "the extended bass's headstock");
+  g_width_ok = RC_HAS_OFF(ni_local_rotate);
+  if (!g_width_ok) hlog("this RS Re-ARMed has no ni_local_rotate: the headstock keeps its width");
   seven_mid_optional("seven_gshc_loaded", on_gshc_loaded, "the eight-string guitar's headstock segment colour");
   seven_mid_optional("seven_gshc_segment", on_gshc_segment, "the eight-string guitar's headstock segment colour");
   return 0;
