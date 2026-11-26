@@ -3,10 +3,15 @@
 //
 // It needs an RS Re-ARMed with edits and mid points (rc_mid.h) and the tables of this game; without them, or when a
 // part lacks one of its points here, the game is as before and the log says why.
+//
+// The native N-string charts of rs7string 1.0.0-beta.5 (*_rsxr_p.psarc, PSXR) are read by the native charts part
+// (seven_native.c), which turns them into the form the other parts read; its points are optional (an older RS Re-ARMed
+// lacks them: the unit stays on, native charts are not listed).
 #include <dlfcn.h>
 #include <string.h>
 
 #include "seven.h"
+#include "seven_native.h"
 
 int seven_on;
 static int g_points, g_none;
@@ -65,7 +70,8 @@ __attribute__((constructor)) static void seven_init(void) {
                {"pitch", seven_pitch_init},     {"tuner", seven_tuner_init},     {"chords", seven_chords_init},
                {"chord detection", seven_chdetect_init}, {"chord drawing", seven_chdraw_init},
                {"chord diagrams", seven_diagrams_init}, {"tuning names", seven_names_init},
-               {"headstock", seven_headstock_init}};
+               {"headstock", seven_headstock_init},
+               {"native charts", seven_native_init}};
   for (size_t i = 0; i < sizeof parts / sizeof *parts; i++)
     if (parts[i].init()) {
       rsm_log("seven-string: the %s part has no mid points on %s: the guitar keeps six strings", parts[i].name,

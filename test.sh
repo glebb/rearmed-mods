@@ -30,6 +30,8 @@ $cc "$here/tests/test_song_info.c" "$here/src/song_info.c" "$here/src/rsmods_fil
 $cc "$here/tests/test_discord.c" "$here/src/discord_ipc.c" -o "$out/test_discord"
 $cc "$here/tests/test_song_plan.c" "$here/src/song_plan.c" -o "$out/test_song_plan"
 $cc "$here/tests/test_song_key.c" "$here/src/song_harmony.c" "$here/src/song_key.c" "$here/src/song_sng.c" "$here/src/rsmods_tuning.c" -lz -o "$out/test_song_key"
+$cc "$here/tests/test_seven_native.c" -o "$out/test_seven_native"
+$cc -DGUEST32 "$here/tests/test_seven_native.c" -o "$out/test_seven_native32"
 "$out/test_ini"
 "$out/test_colors"
 "$out/test_gate"
@@ -53,6 +55,8 @@ $cc "$here/tests/test_song_key.c" "$here/src/song_harmony.c" "$here/src/song_key
 "$out/test_discord"
 "$out/test_song_plan"
 "$out/test_song_key"
+"$out/test_seven_native"
+"$out/test_seven_native32"
 "$here/tests/test_tonehost_migrate.sh"
 
 cd "$here/gui"
