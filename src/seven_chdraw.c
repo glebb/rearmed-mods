@@ -171,8 +171,9 @@ static void on_b1(rc_mid_frame *f, void *user) {
   const uint8_t *geom = PTR(f, "geom"), *chord = PTR(f, "chord"), *session = PTR(f, "session");
   const uint8_t *guitar = geom && chord ? ptr_at(session, RC_OFF(session_guitar)) : NULL;
   const int count = seven_count(guitar);
-  if (!count) return;
-  const int top = frame_top(count);
+  // a 5/6-string bass (the grid part's fit, top 0 marks it): its frame spans its low B / high C too
+  if (!count && !(guitar && seven_grid_is_extended(guitar))) return;
+  const int top = count ? frame_top(count) : 0;
   lock();
   for (int i = 0; i < MARKS; i++)
     if (g_marks[i].geom == geom) {  // a geometry made again at the same address: its new mark only
@@ -213,7 +214,14 @@ static void on_b2(rc_mid_frame *f, void *user) {
   if (!guitar || !scale || !trans) return;
   frame_fit fit;
   float b[3];
-  if (!guitar_frame(guitar, top, &fit, b)) {
+  if (!top) {  // an extended bass: the grid part's fit over every string (seven_grid.h)
+    seven_frame_fit g;
+    if (!seven_grid_chord_frame(guitar, &g, b)) {
+      clog("chord frame of an extended bass: no lane geometry on it: the game's frame");
+      return;
+    }
+    fit = (frame_fit){g.scale, g.shift, g.origin, g.margin, g.spacing};
+  } else if (!guitar_frame(guitar, top, &fit, b)) {
     clog("chord frame up to string %d: no lane geometry on its guitar: the game's frame", top);
     return;
   }
