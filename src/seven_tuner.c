@@ -12,6 +12,11 @@
 // is what the game's loops and steps do; 7 or 8 with the low strings first for a 7/8-string target. The count is the
 // session's, never InstrumentInfo +0Bh.
 //
+// An extended bass (5/6 strings, the strings part's build count) is a session of 5 or 6 whose order starts at the low B,
+// slot 4: 4,0,1,2,3 (and 5), seven_slot_of's order (seven_model.h). Its open notes come from the game's own table of
+// bass open notes, whose slots 4 / 5 hold 23 / 48 (seven_bass.c writes them), so the peg letters, the targets and the
+// tolerance of those strings are right; its manifest keys Rs7String4 / Rs7String5 are read by TK for the tuning's name.
+//
 // What the mid points do (rs7string's site ids in their names):
 //   the tail          TU8INIT (a new session), TS8RS (the standard tuning), seven_ts8bind (the guitar is bound),
 //                     TS (ApplyTuning: the targets, and a 7/8-string target from TK's manifest key), TK
@@ -59,33 +64,68 @@ static int open_of(const uint8_t *s, int k) { return RC_LD(int32_t, FIELD(s, sev
 
 // The count, the order (0..n-1; with more than six strings the strings above 6 lowest first, then 0..5) and the
 // camera's reference string: the edge opposite string 0, which is string 5 when strings 6 / 7 lie beyond string 0
-static void put_count(uint8_t *s, int n) {
+static void put_count(uint8_t *s, int n, int bass) {
   if (n < 1 || n > 8) n = 6;
+  if (bass && n != 5 && n != 6) bass = 0;
   uint8_t *order = FIELD(s, seven_tuner_order);
   for (int k = 0; k < 8; k++) RC_ST(uint8_t, order + k, k);
-  if (n > 6) {
+  if (bass) {  // the low B first (slot 4), then 0..3, the high C last
+    for (int k = 0; k < n; k++) RC_ST(uint8_t, order + k, seven_slot_of(SEVEN_BASS, n, k));
+  } else if (n > 6) {
     int k = 0;
     for (int t = n - 1; t >= 6; t--) RC_ST(uint8_t, order + k++, t);
     for (int t = 0; t < 6; t++) RC_ST(uint8_t, order + k++, t);
   }
   RC_ST(uint8_t, FIELD(s, seven_tuner_count), n);
-  RC_ST(uint8_t, FIELD(s, seven_tuner_edge), (n > 6 ? 6 : n) - 1);
+  // the far edge from string 0: a bass's G (slot 3) or its high C (slot 5), not the low B
+  RC_ST(uint8_t, FIELD(s, seven_tuner_edge), bass ? (n == 6 ? 5 : 3) : (n > 6 ? 6 : n) - 1);
 }
 
-// The count from the session's target (7 / 8) or its guitar (4 / 6; six on a guitar built with more: a 6-string
-// target tunes six strings, as rs7string's)
+// An extended bass's session (the order starts at the low B)
+static int is_bass(const uint8_t *s) {
+  int n = count_of(s);
+  return (n == 5 || n == 6) && first_of(s) == 4;
+}
+
+// The detection of the session's input (Learn & Play has a function for it, play_get_detection; the Mac game has it
+// inlined everywhere, so there the input's Play_DetectInput is asked for, which is the detector too): the detection, and
+// in *holder the Play_DetectInput on the Mac (NULL on Learn & Play). It calls the game.
+static uint8_t *detection_of(const uint8_t *s, uint8_t **holder) {
+  uint32_t input = RC_LD(uint32_t, FIELD(s, player_tuner_input));
+  *holder = NULL;
+  if (RC_ADDR(play_get_detection)) return RC_HOST(OV_GUEST(play_get_detection, input));
+  *holder = RC_HOST(OV_GUEST(play_detect_input, input));
+  return *holder ? rc_mod_ptr(FIELD(*holder, detector_detection)) : NULL;
+}
+
+// Whether a session of n strings plays an extended bass: only a bass is built with five, and a six is a guitar's unless
+// the detection of its input says bass
+static int session_is_bass(const uint8_t *s, int n) {
+  if (!seven_feature(SEVEN_F_BASS)) return 0;
+  if (n == 5) return 1;
+  if (n != 6) return 0;
+  uint8_t *holder;
+  uint8_t *det = detection_of(s, &holder);
+  return det && RC_LD(int32_t, FIELD(det, detection_instrument)) == 2;
+}
+
+// The count from the session's target (7 / 8) or its guitar (4 / 5 / 6 / 7 / 8; six on a guitar built with more than
+// six when the target has six strings: a 6-string target tunes six strings, as rs7string's)
 static void refresh_count(uint8_t *s) {
-  int target = RC_LD(uint8_t, FIELD(s, seven_tuner_target)), n = count_of(s);
+  int target = RC_LD(uint8_t, FIELD(s, seven_tuner_target)), n = count_of(s), bass = 0;
   if (target >= 7) {
     n = target;
   } else {
     void *guitar = rc_mod_ptr(FIELD(s, player_tuner_guitar));
     int built = guitar ? seven_strings_count(guitar) : 0;
     if (built > 0) n = built;
-    if (n > 6) n = 6;
+    if (built == 5 || built == 6) bass = session_is_bass(s, built);
+    else if (n > 6) n = 6;
   }
-  if (n != count_of(s)) tlog("session %p: %d strings, first string %d", (void *)s, n, n > 6 ? n - 1 : 0);
-  put_count(s, n);
+  if (n != count_of(s) || bass != is_bass(s))
+    tlog("session %p: %d strings%s, first string %d", (void *)s, n, bass ? " (bass)" : "",
+         bass ? seven_slot_of(SEVEN_BASS, n, 0) : n > 6 ? n - 1 : 0);
+  put_count(s, n, bass);
 }
 
 static int lowest_open(const uint8_t *s) {
@@ -110,10 +150,11 @@ static int step(const uint8_t *s, int dir) {
 // ---- the manifest keys per offset array (TK), which TS reads
 typedef struct {
   const void *offsets;
-  int found, t6, found7, t7;
+  int found, t6, found7, t7;  // Rs7String6 (the guitar's 7th string), Rs7String7
+  int bass4, bass5;           // Rs7String4 (a 5-string bass's low B), Rs7String5 (a 6-string bass's high C)
 } tuner_key;
 static tuner_key g_keys[4];
-static char *g_key6, *g_key7;   // "Rs7String6", "Rs7String7" in the game's memory
+static char *g_key6, *g_key7, *g_key4, *g_key5;  // "Rs7String6", "Rs7String7", "Rs7String4", "Rs7String5" in the game's memory
 static const char *g_notes[12]; // the note names the precision tuner shows for strings 6 / 7, in the game's memory
 
 static const tuner_key *key_of(const void *offsets) {
@@ -127,6 +168,23 @@ int seven_tuner_seven_for(const void *offsets, int *t6) {
   if (!k || !k->found) return 0;
   *t6 = k->t6;
   return 1;
+}
+
+int seven_tuner_strings_for(const void *offsets, int16_t extra[2], int *instrument) {
+  const tuner_key *k = offsets ? key_of(offsets) : NULL;
+  extra[0] = extra[1] = 0;
+  *instrument = SEVEN_GUITAR;
+  if (!k) return 0;
+  if (k->found) {
+    extra[0] = (int16_t)k->t6;
+    extra[1] = (int16_t)(k->found7 ? k->t7 : 0);
+    return k->found7 ? 8 : 7;
+  }
+  if (k->bass4) {
+    *instrument = SEVEN_BASS;
+    return k->bass5 ? 6 : 5;
+  }
+  return 0;
 }
 
 // A number member of a JSON object, through the game's JSON vtable (as Play_Tuning_ReadStringOffsets reads the six)
@@ -159,9 +217,11 @@ static void on_tk(rc_mid_frame *f, void *user) {
   if (!offsets) return;
   uint64_t eax = SEVEN_GET(f, "eax"), edx = SEVEN_GET(f, "edx");
   void *json = holder ? rc_mod_ptr(holder) : NULL;
-  tuner_key k = {offsets, 0, 0, 0, 0};
+  tuner_key k = {offsets, 0, 0, 0, 0, 0, 0};
+  int ignored;  // the bass keys' values are markers: its low B and high C offsets are string4 and string5 of the array
   k.found = json_offset(json, g_key6, &k.t6);
   if (k.found) k.found7 = json_offset(json, g_key7, &k.t7);
+  else if ((k.bass4 = json_offset(json, g_key4, &ignored))) k.bass5 = json_offset(json, g_key5, &ignored);
   SEVEN_SET(f, "offsets", (uintptr_t)offsets);
   SEVEN_SET(f, "eax", eax);
   SEVEN_SET(f, "edx", edx);
@@ -172,11 +232,13 @@ static void on_tk(rc_mid_frame *f, void *user) {
     if (!g_keys[i].offsets) slot = &g_keys[i];
   if (!slot) slot = &g_keys[0];
   if (slot->offsets != k.offsets || slot->found != k.found || slot->t6 != k.t6 || slot->found7 != k.found7 ||
-      slot->t7 != k.t7)
+      slot->t7 != k.t7 || slot->bass4 != k.bass4 || slot->bass5 != k.bass5)
     tlog("target tuning read into %p: %s", (void *)offsets,
-         k.found7  ? "Rs7String6 and Rs7String7 (8 strings)"
-         : k.found ? "Rs7String6 (7 strings)"
-                   : "no Rs7String6 (6 strings)");
+         k.found7   ? "Rs7String6 and Rs7String7 (8 strings)"
+         : k.found  ? "Rs7String6 (7 strings)"
+         : k.bass5  ? "Rs7String4 and Rs7String5 (6-string bass)"
+         : k.bass4  ? "Rs7String4 (5-string bass)"
+                    : "no Rs7String6 (6 strings)");
   *slot = k;
 }
 
@@ -189,7 +251,7 @@ static void on_tu8init(rc_mid_frame *f, void *user) {
   if (!s) return;
   memset(FIELD(s, seven_tuner_tail), 0, (size_t)(RC_OFF(seven_tuner_size) - RC_OFF(seven_tuner_tail)));
   for (int k = 0; k < 8; k++) RC_ST(int32_t, FIELD(s, seven_tuner_last_pick) + 4 * k, -2);
-  put_count(s, 6);
+  put_count(s, 6, 0);
 }
 
 // TU8DT (the Mac's): the destructor releases the game's six pick and letter slots, unrolled, so there is no count to
@@ -338,13 +400,16 @@ static void on_ts8fin_letter(rc_mid_frame *f, void *user) {
   f->go = SEVEN_CONT(f, "done");
 }
 
-// TS8NTI: the precision tuner's label of a string. The game's table has strings 0-5; strings 6 / 7 show the name of
-// their open note.
+// TS8NTI: the precision tuner's label of a string. The game's table has strings 0-5 (a guitar's); strings 6 / 7, and
+// strings 4 / 5 of an extended bass, show the name of their open note.
 static void nti_label(rc_mid_frame *f, int vstring, int vlabel, int vnote_tuner, int kdone) {
   uint32_t str = (uint32_t)rc_mid_get(f, vstring);
   uint8_t *nt = (uint8_t *)(uintptr_t)rc_mid_get(f, vnote_tuner);
-  if (str < 6 || str >= 8 || !nt) return;
-  int midi = open_of(nt - RC_OFF(player_tuner_note_tuner), (int)str);
+  if (str >= 8 || !nt) return;
+  const uint8_t *session = nt - RC_OFF(player_tuner_note_tuner);
+  // strings 6 / 7; and an extended bass's strings 4 / 5, whose labels (the game's table is a guitar's) are their notes
+  if (str < 6 && !(str >= 4 && is_bass(session))) return;
+  int midi = open_of(session, (int)str);
   rc_mid_set(f, vlabel, (uintptr_t)g_notes[((midi % 12) + 12) % 12]);
   f->go = kdone;
 }
@@ -379,25 +444,20 @@ static void on_ts8sn2(rc_mid_frame *f, void *user) {
   f->go = SEVEN_CONT(f, "done");
 }
 
-// ---- low range (7/8 strings): the wrong-instrument check and the detector's lowest open note follow the lowest string
-// TS8SEL: a selected string of a 7/8-string session lowers the guitar detection's lowest open note to the session's
-// lowest (never raises it). The game's call uses eax / ecx / edx: they get their values back.
+// ---- low range (7/8 strings, an extended bass): the wrong-instrument check and the detector's lowest open note follow the
+// lowest string ([Seven String] lowrange, rs7string's [tuner] lowrange: default on)
+// TS8SEL: a selected string of a 7/8-string (or 5/6-string bass) session lowers the detection's lowest open note to the
+// session's lowest (never raises it). The game's call uses eax / ecx / edx: they get their values back.
 static void on_ts8sel(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   uint8_t *s = PTR(f, "session");
-  if (!s || count_of(s) < 7) return;
+  if (!s) return;
+  const int bass = is_bass(s);
+  if (count_of(s) < 7 && !bass) return;
+  if (!seven_settings_get()->lowrange) return;
   int low = lowest_open(s), str = (int)(uint32_t)SEVEN_GET(f, "string");
   uint64_t eax = SEVEN_GET(f, "eax"), ecx = SEVEN_GET(f, "ecx"), edx = SEVEN_GET(f, "edx");
-  uint32_t input = RC_LD(uint32_t, FIELD(s, player_tuner_input));
-  // The detection of the session's input: Learn & Play has a function for it (play_get_detection); the Mac game has
-  // it inlined everywhere, so there the input's Play_DetectInput is asked for, which is the detector too
-  uint8_t *holder = NULL, *det;
-  if (RC_ADDR(play_get_detection)) {
-    det = RC_HOST(OV_GUEST(play_get_detection, input));
-  } else {
-    holder = RC_HOST(OV_GUEST(play_detect_input, input));
-    det = holder ? rc_mod_ptr(FIELD(holder, detector_detection)) : NULL;
-  }
+  uint8_t *holder, *det = detection_of(s, &holder);
   SEVEN_SET(f, "eax", eax);
   SEVEN_SET(f, "ecx", ecx);
   SEVEN_SET(f, "edx", edx);
@@ -406,7 +466,8 @@ static void on_ts8sel(rc_mid_frame *f, void *user) {
   uint8_t *detector = holder ? holder : rc_mod_ptr(FIELD(det, detection_detector));
   uint8_t *matcher = detector ? rc_mod_ptr(FIELD(detector, detector_matcher)) : NULL;
   if (!matcher || rc_mod_ptr(FIELD(matcher, matcher_detection)) != det) return;  // a detection with its matcher
-  if (RC_LD(int32_t, FIELD(det, detection_instrument)) == 2) return;             // not a bass's
+  const int det_bass = RC_LD(int32_t, FIELD(det, detection_instrument)) == 2;
+  if (det_bass != bass) return;  // a guitar's session on a bass's detection or the other way round: not this
   int cur = RC_LD(int32_t, FIELD(det, detection_lowest_open));
   if (low >= cur) return;
   tlog("low range: detection %p lowest open note %d -> %d", (void *)det, cur, low);
@@ -420,7 +481,7 @@ static void on_ts8sel(rc_mid_frame *f, void *user) {
 static void on_w(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   const uint8_t *s = PTR(f, "session");
-  if (!s || count_of(s) < 7) return;
+  if (!s || count_of(s) < 7 || !seven_settings_get()->lowrange) return;
   double limit = RC_LD(float, (const void *)(uintptr_t)RC_GA(player_tuner_low_note_limit));
   double thr = lowest_open(s) - 1, mean = SEVEN_GETF(f, "mean");
   if (thr >= limit || mean != mean) return;  // the game's limit, or a NaN (unordered either way)
@@ -463,7 +524,7 @@ static void on_tf2(rc_mid_frame *f, void *user) {
 }
 
 int seven_tuner_init(void) {
-  static const char keys[] = "Rs7String6\0Rs7String7";
+  static const char keys[] = "Rs7String6\0Rs7String7\0Rs7String4\0Rs7String5";
   static const char *const names[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
   char *mem = rc_guest_alloc(sizeof keys + 12 * 3);
   if (!mem) {
@@ -472,7 +533,9 @@ int seven_tuner_init(void) {
   }
   memcpy(mem, keys, sizeof keys);
   g_key6 = mem;
-  g_key7 = mem + strlen(keys) + 1;
+  g_key7 = g_key6 + strlen(g_key6) + 1;
+  g_key4 = g_key7 + strlen(g_key7) + 1;
+  g_key5 = g_key4 + strlen(g_key4) + 1;
   char *p = mem + sizeof keys;
   for (int k = 0; k < 12; k++, p += 3) {
     memcpy(p, names[k], strlen(names[k]) + 1);

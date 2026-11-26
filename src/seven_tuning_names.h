@@ -101,6 +101,30 @@ static const char *name8(const int t[8]) {
   return family_name(1, t, 8);
 }
 
+// The name of a 5/6-string bass (rs7string's NameBass): t[0..5] = string0..5 of the Tuning (the six stock offsets carry
+// all strings, the low B at 4 and the high C at 5), strings = 5 or 6. Every played string but the low B at one offset k;
+// the low B names it as the 7-string guitar's 7th string does ("B Standard" for BEADG and BEADGC, "Drop A" with the low
+// B two lower, "A Drop F#"); anything else, and a 4-string bass, NULL
+static const char *name_bass(const int t[6], int strings) {
+  if (strings < 5 || strings > 6) return NULL;
+  const int k = t[0];
+  for (int s = 1; s < strings; s++)
+    if (s != 4 && t[s] != k) return NULL;
+  const int seven[7] = {k, k, k, k, k, k, t[4]};
+  return name7(seven);
+}
+
+// The mark for an instrument of `count` strings from the 7-string one: its first 7 made the count ("7Str" -> "5Str",
+// "7-String" -> "8-String"); a suffix without a 7, or none, gives "<count>Str" (rs7string's SuffixN)
+static void suffix_n(char *out, size_t n, const char *suffix7, int count) {
+  const char *seven = suffix7 ? strchr(suffix7, '7') : NULL;
+  if (!seven) {
+    snprintf(out, n, "%dStr", count);
+    return;
+  }
+  snprintf(out, n, "%s", suffix7);
+  if ((size_t)(seven - suffix7) < n) out[seven - suffix7] = (char)('0' + count);
+}
 
 static void seven_names_build(void) { build_deep(); }
 

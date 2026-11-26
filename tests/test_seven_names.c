@@ -54,5 +54,35 @@ int main(void) {
   CHECK(is(n8(-2, -5), "E Drop Db"));
   CHECK(n8(0, -6) == NULL);
   { const int t[8] = {0, 0, 0, 0, 0, 1, 0, 0}; CHECK(name8(t) == NULL); }
+  // 5/6-string bass (rs7string's NameBass): the low B (string 4) names it, every other played string at one offset
+  {
+    const int beadg[6] = {0, 0, 0, 0, 0, 0}, down[6] = {-1, -1, -1, -1, -1, 0}, drop_a[6] = {0, 0, 0, 0, -2, 0};
+    const int drop_g[6] = {0, 0, 0, 0, -4, 0}, a_drop_fs[6] = {-2, -2, -2, -2, -5, -2}, too_low[6] = {0, 0, 0, 0, -6, 0};
+    const int up[6] = {0, 0, 0, 0, 1, 0}, third[6] = {0, 0, 1, 0, 0, 0};
+    CHECK(is(name_bass(beadg, 5), "B Standard"));
+    CHECK(is(name_bass(beadg, 6), "B Standard"));
+    CHECK(is(name_bass(down, 5), "Bb Standard"));  // [5] is not played on 5 strings
+    CHECK(name_bass(down, 6) == NULL);
+    CHECK(is(name_bass(drop_a, 5), "Drop A"));  // the low B two below the others
+    CHECK(is(name_bass(drop_a, 6), "Drop A"));
+    CHECK(name_bass(beadg, 4) == NULL);
+    CHECK(name_bass(beadg, 7) == NULL);
+    CHECK(is(name_bass(drop_g, 5), "Drop G"));
+    CHECK(is(name_bass(a_drop_fs, 6), "A Drop F#"));
+    CHECK(name_bass(too_low, 5) == NULL);  // 6 below: no name
+    CHECK(name_bass(up, 5) == NULL);       // the low B above the others
+    CHECK(name_bass(third, 5) == NULL);    // another string off
+  }
+  // the mark's count
+  {
+    char out[32];
+    suffix_n(out, sizeof out, "7Str", 8); CHECK(is(out, "8Str"));
+    suffix_n(out, sizeof out, "7Str", 5); CHECK(is(out, "5Str"));
+    suffix_n(out, sizeof out, "7Str", 6); CHECK(is(out, "6Str"));
+    suffix_n(out, sizeof out, "7-String", 8); CHECK(is(out, "8-String"));
+    suffix_n(out, sizeof out, "", 5); CHECK(is(out, "5Str"));
+    suffix_n(out, sizeof out, "Ext", 6); CHECK(is(out, "6Str"));
+    suffix_n(out, sizeof out, NULL, 8); CHECK(is(out, "8Str"));
+  }
   return check_done("seven_names");
 }
