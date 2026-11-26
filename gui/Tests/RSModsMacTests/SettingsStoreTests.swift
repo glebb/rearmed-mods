@@ -114,7 +114,7 @@ final class SevenStringKeysTests: XCTestCase {
         try "".write(to: folder.appendingPathComponent("RSMods.ini"), atomically: true, encoding: .utf8)
         let s = SettingsStore(gameFolder: folder)
         XCTAssertNil(s.ini.value(Section.sevenString, "lowrange"), "absent: the library's default, on")
-        XCTAssertEqual(Catalog.sevenExtraDefaults["lowrange"], "1")
+        XCTAssertEqual(Catalog.defaults[Section.sevenString]?["lowrange"], "1")
         XCTAssertNil(s.colorValue(Section.sevenString, "string7_N"))
         s.set(Section.sevenString, "spacing_bass5", "1.5")
         s.set(Section.sevenString, "diagrams7", "0")

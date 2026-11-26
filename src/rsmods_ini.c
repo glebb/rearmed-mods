@@ -274,6 +274,20 @@ static const char DEFAULT_INI[] =
     "; its wood (0.05 to 1)\n"
     "Headstock7 = on\n"
     "Headstock7Wood = 0.6\n"
+    "; The eighth string's color (an 8-string guitar), RRGGBB, normal and colorblind (empty: pink FF66CC)\n"
+    "string7_N = \n"
+    "string7_CB = \n"
+    "; The distance between the strings of a 7- or 8-string guitar and a 5- or 6-string bass on the neck (empty: the\n"
+    "; game's own, 1.608 for a guitar; 0.5 to 4)\n"
+    "spacing_guitar7 = \n"
+    "spacing_guitar8 = \n"
+    "spacing_bass5 = \n"
+    "spacing_bass6 = \n"
+    "; The extra strings' line in the sections (1), the 7- and 8-row chord diagrams (1, read at the start), and in the\n"
+    "; tuner the low range: no wrong-instrument warning in a low 7-string tuning (1)\n"
+    "string7_line = 1\n"
+    "diagrams7 = 1\n"
+    "lowrange = 1\n"
     "\n"
     "[GUI Settings]\n"
     "; Back up the profiles to Profile_AutoBackups in the game folder while the game runs (when they changed, at most\n"
@@ -503,6 +517,15 @@ static const struct {
     {"Seven String", "TuningNameSuffix", "7Str"},
     {"Seven String", "Headstock7", "on"},
     {"Seven String", "Headstock7Wood", "0.6"},
+    {"Seven String", "string7_N", ""},
+    {"Seven String", "string7_CB", ""},
+    {"Seven String", "spacing_guitar7", ""},
+    {"Seven String", "spacing_guitar8", ""},
+    {"Seven String", "spacing_bass5", ""},
+    {"Seven String", "spacing_bass6", ""},
+    {"Seven String", "string7_line", "1"},
+    {"Seven String", "diagrams7", "1"},
+    {"Seven String", "lowrange", "1"},
 };
 
 char *rsm_trim(char *s) {

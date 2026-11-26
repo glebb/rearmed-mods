@@ -270,10 +270,6 @@ enum Catalog {
     ]
     // The defaults of wave 2's keys. Not in `defaults`, which mirrors the library's DEFAULTS table (rsmods_ini.c): the
     // library reads these keys through seven_settings_parse, which has its own defaults, and doesn't write them.
-    static let sevenExtraDefaults = [
-        "spacing_guitar7": "", "spacing_guitar8": "", "spacing_bass5": "", "spacing_bass6": "",
-        "string7_line": "1", "diagrams7": "1", "lowrange": "1", "string7_N": "", "string7_CB": "",
-    ]
     static func spacingText(slider: Double) -> String { slider < 0.5 ? "" : String(format: "%.1f", min(slider, 4)) }
     static func spacingSlider(text: String) -> Double {
         guard let v = Double(text.trimmingCharacters(in: .whitespaces)), v >= 0.5, v <= 4 else { return 0 }
@@ -347,6 +343,8 @@ enum Catalog {
         Section.sevenString: [
             "string6_N": "", "string6_CB": "", "ExtendedRangeColor": "on", "ChordWideMisses": "2", "TuningNames": "on",
             "TuningNamePrefix": "", "TuningNameSuffix": "7Str", "Headstock7": "on", "Headstock7Wood": "0.6",
+            "string7_N": "", "string7_CB": "", "spacing_guitar7": "", "spacing_guitar8": "", "spacing_bass5": "",
+            "spacing_bass6": "", "string7_line": "1", "diagrams7": "1", "lowrange": "1",
         ],
         Section.defaultTones: [
             "Rhythm": "", "Lead": "", "Bass": "", "TempleOfBends": "", "ScaleWarriors": "", "StringSkipSaloon": "",
