@@ -219,7 +219,21 @@ static void on_f1(rc_mid_frame *f, void *user) {
   ld3(a, bar(grid, 0) + RC_OFF(fretbar_a_local));
   ld3(b, bar(grid, 0) + RC_OFF(fretbar_b_local));
   for (int i = 0; i < 3; i++) mid[i] = 0.5f * (a[i] + b[i]);
-  if (!seven_bar_extend(f1.a0, f1.a1, mid, lanes_of(guitar), f1.shift, &f1.k, &f1.d)) {
+  // A spaced guitar (seven_spacing.h): its strings' spacing over the stock's, from the attach points the strings were
+  // loaded with; the bars follow the spaced strings, not the stock locators
+  float ratio = 1.0f;
+  if (seven_feature(SEVEN_F_SPACING)) {
+    float s0[3], s1[3], len0 = 0.0f, len = 0.0f;
+    if (seven_spacing_stock(rc_mod_ptr(guitar + RC_OFF(guitar_info)), s0, s1))
+      for (int i = 0; i < 3; i++) {
+        len0 += (s0[i] - s1[i]) * (s0[i] - s1[i]);
+        len += (f1.a0[i] - f1.a1[i]) * (f1.a0[i] - f1.a1[i]);
+      }
+    if (len0 > 1e-6f) ratio = sqrtf(len / len0);
+  }
+  const int spaced = fabsf(ratio - 1.0f) > 1e-3f;
+  if (!(spaced ? seven_spacing_bar(f1.a0, f1.a1, mid, lanes_of(guitar), ratio, SEVEN_HALF_LEN, f1.shift, &f1.k, &f1.d)
+               : seven_bar_extend(f1.a0, f1.a1, mid, lanes_of(guitar), f1.shift, &f1.k, &f1.d))) {
     if (once(&g_log_degenerate))
       rsm_log("seven-string: frets: the string spacing is degenerate: the bars stay as the game has them");
     return;
