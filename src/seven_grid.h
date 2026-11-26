@@ -19,6 +19,17 @@ void *seven_grid_cell(void *grid, unsigned row, unsigned string);
 // exit (PUBGB) calls for a guitar built with 7 or 8 strings once the strings are loaded.
 int seven_grid_fill_extra_cells(void *grid, unsigned frets);
 
+// The highway floor of a guitar (a host pointer to the game's Rnd_Guitar): how many string spacings it was moved by in
+// the game's last run of Rnd_FretBars_ApplyTransforms (1 on a 7-string guitar, 2 on 8; only with inverted strings,
+// else the floor is the game's); 0 when it was not moved, or not yet (the strings or bars were not ready: it is
+// retried every frame, seven_grid_frame). rs7string's FloorMoved, which the chord frame (B2: its ChordFrame's
+// floorLanes) reads.
+int seven_grid_floor_lanes(const void *guitar);
+
+// N5, every frame of a guitar: does the floor's retry. Rebuilding the player's guitar: seven_grid_forget_all.
+void seven_grid_frame(void *guitar);
+void seven_grid_forget_all(void);
+
 // 1 when the game has a render-world getter (render_world); else the parts find an entity's root through
 // entity_model_root
 int seven_has_render_world(void);
