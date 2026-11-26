@@ -29,7 +29,7 @@
 // header that says the block's size: the game's own way to free efd memory by size, as the tuning names part does),
 // not the process heap; the block lives with the song's entry (rs7string kept the last eight blocks apart); the TP/CP
 // points let the game's instructions run when the vector has no array (rs7string computed the same stock record);
-// TP2 without an array places the record so that DM1's eight-slot read is the game's frets; no SEH: the vectors are
+// TP2 and TP12 (play time) without an array read one empty T8, as rs7string's kEmptyRecords; no SEH: the vectors are
 // the game's own. 8-string arrangements fill slots 6 and 7 (rs7string with its chord diagrams on, its default); the
 // gameplay loops cover seven.
 #include <pthread.h>
@@ -999,38 +999,51 @@ static void on_tp7(rc_mid_frame *f, void *user) {
   if (REDIRECT(f, "template", 0)) SEVEN_SET(f, "zero", 0);
 }
 
-// What a site that hands out `record + at` gives on a vector without a T8 array: the game's record of template `id`
-// moved back so that the T8's frets[8] (+0x48), which the loops the edits widen read (TP2's DM1, TP12's PL1), are the
-// game's frets (+0x4): they read the game's six, and fingers[0] where a T8 has frets[6], not the next template's bytes
-static uintptr_t as_if_t8(const uint8_t *templates, uint32_t id, int64_t at) {
-  const int64_t back = RC_OFF(seven_t8_frets) - RC_OFF(sng_template_frets);
-  return (uintptr_t)(templates + (size_t)id * (size_t)RC_OFF(sng_template_size) + at - back);
+// What the play-time sites that read the T8's eight-slot arrays (TP2's DM1, TP12's PL1) get on a vector without a T8
+// array (the build failed): one empty T8, in the game's memory (rs7string's kEmptyRecords): frets, fingers and MIDI -1
+// for all eight strings, six slots. The song then plays without those chords' dimming and plucks, and string 6 reads
+// -1, not the game's fingers[0] that the game's record shifted back would give there. Made once; never written again.
+static uint8_t *empty_t8(void) {
+  static uint8_t *volatile record;
+  uint8_t *r = __atomic_load_n(&record, __ATOMIC_ACQUIRE);
+  if (r) return r;
+  r = rc_guest_alloc((size_t)RC_OFF(seven_t8_size));
+  if (!r) return NULL;
+  memset(r, 0, (size_t)RC_OFF(seven_t8_size));
+  memset(AT(r, seven_t8_frets), 0xff, SEVEN_CHORD_SLOTS);
+  memset(AT(r, seven_t8_fingers), 0xff, SEVEN_CHORD_SLOTS);
+  for (int s = 0; s < SEVEN_CHORD_SLOTS; s++) RC_ST(int32_t, AT(r, seven_t8_midi) + 4 * s, -1);
+  *AT(r, seven_t8_slots) = 6;
+  uint8_t *expected = NULL;
+  if (!__atomic_compare_exchange_n(&record, &expected, r, 0, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE)) return expected;
+  return r;
 }
 
 // TP12 the chord pluck: edi = the record's frets (the game's six at +0x4; its loop, widened to seven by the chord
-// drawing part's PL1 edits, reads each fret at +0x44 past it: T8 frets[8]). Without a T8 array, as TP2.
+// drawing part's PL1 edits, reads each fret at +0x44 past it: T8 frets[8]). Without a T8 array, the empty T8's.
 static void on_tp12(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   if (REDIRECT(f, "frets", RC_OFF(sng_template_frets))) return;
   const uint8_t *templates = PTR(f, "templates");
-  if (!templates) return;
+  uint8_t *empty = templates ? empty_t8() : NULL;
+  if (!empty) return;
   const uint32_t id = (uint32_t)SEVEN_GET(f, "chord");
   SEVEN_SET(f, "chord9", id * (uint32_t)(RC_OFF(sng_template_size) / 8));
-  SEVEN_SET(f, "frets", as_if_t8(templates, id, RC_OFF(sng_template_frets)));
+  SEVEN_SET(f, "frets", (uintptr_t)(empty + RC_OFF(sng_template_frets)));
   f->go = SEVEN_CONT(f, "done");
 }
 
 // TP2 the section dimming (Rnd_GuitarStrings_UpdateSectionDimming): its loop over the guitar's strings reads frets[s]
-// of the record at +0x48 (DM1). Without a T8 array the record is placed so that read is the game's frets at +0x4 (the
-// loop is the only reader of edi), not the next template's bytes.
+// of the record at +0x48 (DM1). Without a T8 array that record is the empty T8 (the loop is the only reader of edi).
 static void on_tp2(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   if (REDIRECT(f, "template", 0)) return;
   const uint8_t *templates = PTR(f, "templates");
-  if (!templates) return;
+  uint8_t *empty = templates ? empty_t8() : NULL;
+  if (!empty) return;
   const uint32_t id = (uint32_t)SEVEN_GET(f, "chord");
   SEVEN_SET(f, "chord9", id * (uint32_t)(RC_OFF(sng_template_size) / 8));
-  SEVEN_SET(f, "template", as_if_t8(templates, id, 0));
+  SEVEN_SET(f, "template", (uintptr_t)empty);
   f->go = SEVEN_CONT(f, "done");
 }
 

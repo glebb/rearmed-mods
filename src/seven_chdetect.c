@@ -8,7 +8,8 @@
 // the tails the chords part keeps in it (seven_chords.h: seven_eval_*). Here:
 //   seven_md1        the matcher's entry: up to six targets go to the game's own body (compacted into an int32[6] when
 //                    strings 6/7 have one), seven or eight are judged by the game's algorithm ported to n targets, with
-//                    the game's sort and subharmonic table, and [Seven String] ChordWideMisses
+//                    the game's sort and subharmonic table, and [Seven String] ChordWideMisses; so is a chord of two or
+//                    three notes with one below E1 (the lowest may match on its octave too)
 //   seven_am1        the mistake analysis's shifted chord: its six targets and the T8's strings 6/7, shifted
 //   seven_ch3        a chord's string 6 gets a child eval (the edits CC, CN, CH, BF1 widen its notes to string 6); its slot
 //                    is a byte of the parent eval (+0xc1e), which seven_rl1/rl2 release with the parent
@@ -25,6 +26,7 @@
 #include <string.h>
 
 #include "seven.h"
+#include "seven_chmatch.h"
 
 // The chords part (seven_chords.h): `record` itself when it is a T8 record of a loaded song, else NULL; a T8's string
 // s (0-7): its expected MIDI note, -1 none
@@ -199,7 +201,7 @@ static score_t score(const uint8_t *v, const uint8_t *const *row, const int32_t 
     if (!(0.0f < s) && s == s) break;  // the game goes on while 0 < s, or s is NaN
     int hit = 0;
     for (int i = 0; i < n; i++) {
-      if (!row[i] && !(loc[i] > -1)) continue;
+      if (!row[i]) continue;  // no target, or one with no row
       for (int k = 0; k < STOCK; k++)
         if (RC_LD(int32_t, row[i] + 4 * k) == bin(c)) {
           if (k == 0) r.fund++;
@@ -260,14 +262,22 @@ static int match_n(const uint8_t *m, const int32_t *in, int n, int tol, int hist
   const int active = dedupe(in, n, loc);
   const int32_t low = special_target(loc, n, active);
   int32_t special[STOCK] = {0};
-  if (low > 0 && low < 65) special[0] = low;
+  if (low > 0 && low < 65) {
+    special[0] = low;
+    // a chord of two or three notes with one below E1 (28): that lowest note also matches on its octave
+    if (low < SEVEN_LOW_OCTAVE && seven_low_chord(in, n)) special[1] = low + 12;
+  }
   const uint8_t *table = (const uint8_t *)(uintptr_t)RC_GA(matcher_subharmonics);  // rows of six notes per note
   const uint8_t *row[TARGETS] = {0};
   for (int i = 0; i < n; i++) {
     cnt[i] = -1;
     if (loc[i] > -1) {
-      row[i] = loc[i] == low ? (const uint8_t *)special : table + (int64_t)loc[i] * STOCK * 4;
-      cnt[i] = 0;
+      // the table has rows for MIDI 22-93 only: a target outside has no row and is never found (the game's code reads
+      // past the table, rs7string's TableRow fails closed)
+      row[i] = loc[i] == low ? (const uint8_t *)special
+               : seven_table_has_row(loc[i]) ? table + (int64_t)loc[i] * STOCK * 4
+                                             : NULL;
+      cnt[i] = row[i] ? 0 : -1;
     }
   }
   float bins[MIDI_NOTES] = {0};
@@ -309,12 +319,18 @@ static void on_md1(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   const int32_t *in = (const int32_t *)P(SEVEN_GET(f, "targets"));
   const uint8_t *m = P(SEVEN_GET(f, "matcher"));
-  if (!in || !m || (RC_LD(int32_t, in + STOCK) < 0 && RC_LD(int32_t, in + STOCK + 1) < 0)) return;
+  if (!in || !m) return;
+  int32_t t[TARGETS];
+  for (int i = 0; i < TARGETS; i++) t[i] = RC_LD(int32_t, in + i);
+  // a chord of two or three notes with one below E1 is judged here whatever its strings: its lowest note may also
+  // match on its octave (rs7string's LowChord, 1.0.0-beta.5)
+  const int low_chord = seven_low_chord(t, TARGETS);
+  if (!low_chord && t[STOCK] < 0 && t[STOCK + 1] < 0) return;
   scratch_t *s = scratch();
   if (!s) return;
   int k = 0;
-  for (int i = 0; i < TARGETS; i++) k += RC_LD(int32_t, in + i) >= 0;
-  if (k <= STOCK) {
+  for (int i = 0; i < TARGETS; i++) k += t[i] >= 0;
+  if (k <= STOCK && !low_chord) {
     k = 0;
     for (int i = 0; i < TARGETS; i++)
       if (RC_LD(int32_t, in + i) >= 0) RC_ST(int32_t, s->six + k++, RC_LD(int32_t, in + i));
@@ -322,8 +338,6 @@ static void on_md1(rc_mid_frame *f, void *user) {
     SEVEN_SET(f, "targets", arg(s->six));
     return;
   }
-  int32_t t[TARGETS];
-  for (int i = 0; i < TARGETS; i++) t[i] = RC_LD(int32_t, in + i);
   const int lenient = rc_guest_ptr_size == 8 && (uint8_t)SEVEN_GET(f, "lenient");
   const int ok = match_n(m, t, TARGETS, (int)(int32_t)SEVEN_GET(f, "tolerance"), (int)(int32_t)SEVEN_GET(f, "history"),
                          lenient, s->cand);
