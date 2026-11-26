@@ -209,6 +209,15 @@ int main(void) {
   CHECK(rsm_extended_range_rule(&drop_a, -5, 0, 0));
   CHECK(rsm_extended_range_rule(&bass_a220, -5, 0, 0) && !rsm_extended_range_rule(&bass_e, -5, 0, 0));
   CHECK(rsm_extended_range_rule(&b_std, -4, 0, 0) && !rsm_extended_range_rule(&b_std, -6, 0, 0));
+  // an extended bass (Rs7String4): its slots 4 / 5 are the low B / high C at their own standard (0), so a 5-string
+  // in standard is not low, and its four stock strings decide
+  rsm_arrangement bass5 = arr("Bass", 0, 0, 0, 0, 0, 0, 0), bass5_low = arr("Bass", -5, -5, -5, -5, 0, 0, 0);
+  bass5.extra = bass5_low.extra = 1;
+  CHECK(!rsm_extended_range_rule(&bass5, -5, 0, 0) && rsm_extended_range_rule(&bass5_low, -5, 0, 0));
+  rsm_arrangement parsed;
+  CHECK(rsm_manifest_arrangement("{\"Entries\":{\"x\":{\"Attributes\":{\"ArrangementName\":\"Bass\",\"Tuning\":"
+                                 "{\"string0\":0,\"string1\":0,\"string2\":0,\"string3\":0,\"string4\":0,"
+                                 "\"string5\":0,\"Rs7String4\":0}}}}}", &parsed) && parsed.extra == 1);
   // a bass with its top strings left at E: not a drop tuning, unless they are fixed to the G string's
   CHECK(rsm_extended_range_rule(&bass_open, -7, 0, 0));      // lowest -7, not a drop: counts at -7
   CHECK(!rsm_extended_range_rule(&bass_open, -6, 0, 1));     // fixed: a drop, so it needs -6 - 2

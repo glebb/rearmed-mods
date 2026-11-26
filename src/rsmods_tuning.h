@@ -37,6 +37,9 @@ typedef struct {
   char name[16];   // ArrangementName: Lead, Rhythm, Combo, Bass (Vocals and others have no tuning)
   int tuning[6];   // semitones from E standard, low string first
   double cents;    // CentOffset: the true tuning is 440 * 2^(cents / 1200)
+  int extra;       // strings beyond the stock ones (Seven-String Guitar's Rs7String keys): a guitar's 7th / 8th
+                   // (Rs7String6 / 7, not in tuning[]), a bass's low B / high C (Rs7String4 / 5: tuning[4] / [5],
+                   // from B0 / C3 then, not from E)
 } rsm_arrangement;
 
 // 1 if the manifest has an arrangement with a tuning

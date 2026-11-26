@@ -269,6 +269,13 @@ int rsm_manifest_arrangement(const char *json, rsm_arrangement *out) {
     if (after == v || x < -48 || x > 48) return 0;
     out->tuning[i] = (int)x;
   }
+  out->extra = 0;
+  for (int i = 4; i < 8; i++) {
+    char key[16];
+    snprintf(key, sizeof key, "Rs7String%d", i);
+    const char *v = value_of(t, key);
+    if (v && v < end) out->extra++;
+  }
   const char *c = value_of(json, "CentOffset");
   out->cents = c ? strtod(c, NULL) : 0;
   if (!isfinite(out->cents) || fabs(out->cents) > 2400) out->cents = 0;
@@ -293,11 +300,14 @@ int rsm_is_bass(const rsm_arrangement *a) { return !strncasecmp(a->name, "Bass",
 int rsm_extended_range_rule(const rsm_arrangement *a, long at, int drop_tunings, int fix_bass) {
   int t[6];
   memcpy(t, a->tuning, sizeof t);
-  int strings = fix_bass && (t[4] == 0 || t[4] == 12) && (t[5] == 0 || t[5] == 12) ? 4 : 6;
+  // an extended bass (Rs7String4 / 5) has its low B / high C in slots 4 / 5, not offsets from E: its four stock
+  // strings decide, as the game's own Extended Range judges a bass
+  const int ext_bass = rsm_is_bass(a) && a->extra;
+  int strings = ext_bass || (fix_bass && (t[4] == 0 || t[4] == 12) && (t[5] == 0 || t[5] == 12)) ? 4 : 6;
   int lowest = t[0];
   for (int i = 1; i < strings; i++)
     if (t[i] < lowest) lowest = t[i];
-  if (fix_bass) t[4] = t[5] = t[3];  // a bass charted with the top two strings left blank
+  if (fix_bass || ext_bass) t[4] = t[5] = t[3];  // a bass charted with the top two strings left blank
   int drop = 1;
   for (int i = 1; i < 6; i++) drop &= t[i] == t[0] + 2;
   if (floor(440.0 * pow(2.0, a->cents / 1200.0)) <= 260) lowest -= 12;  // a bass an octave down (A220)
