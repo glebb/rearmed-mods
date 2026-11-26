@@ -110,7 +110,8 @@ typedef struct {
 } rs7x_tech;
 
 typedef struct {
-  int strings;                    // STRS: the instrument's strings (7, 8, ... 16)
+  int instrument;                 // STRS: 0 a guitar, 1 an extended bass (5 or 6 strings, no columns)
+  int strings;                    // STRS: the instrument's strings (7, 8, ... 16; a bass 5 or 6)
   int columns;                    // the extended strings: 6, 7, ... in this order
   int has_templates, has_notes;   // CHDT, CHNT present (absent: every column -1, no techniques)
   int skipped;                    // unknown non-critical sections
@@ -161,12 +162,22 @@ static int fail(const parse_ctx *x, int status, const char *fmt, ...) {
   return status;
 }
 
-// STRS: instrument 0 (guitar), 7..16 strings as many as the MetaData tuning has, columns 6, 7, ... in order
+// STRS: instrument 0 (guitar), 7..16 strings as many as the MetaData tuning has, columns 6, 7, ... in order; instrument 1
+// (an extended bass): 5 or 6 strings, six tuning entries, no columns (its low B and high C are the stock slots 4 and 5,
+// so the block only marks the arrangement: CHDT and CHNT, rejected for want of columns, are not in it)
 static int parse_strs(const parse_ctx *x, cursor *c) {
   uint8_t h[4];
   if (!take(c, h, 4)) return fail(x, RS7X_INVALID, "STRS too short");
   rs7x *b = x->out;
   b->strings = h[1];
+  b->instrument = h[0];
+  if (h[0] == 1) {
+    if (b->strings != 5 && b->strings != 6) return fail(x, RS7X_INVALID, "a bass of %d strings", b->strings);
+    if (x->tuning != 6) return fail(x, RS7X_INVALID, "a bass with %u tuning entries", x->tuning);
+    if (h[2] != 0) return fail(x, RS7X_INVALID, "%u columns for a bass", h[2]);
+    b->columns = 0;
+    return RS7X_OK;
+  }
   if (h[0] != 0) return fail(x, RS7X_UNSUPPORTED, "instrument %d", h[0]);
   if (b->strings < 7 || b->strings > RS7X_MAX_STRINGS) return fail(x, RS7X_INVALID, "%d strings", b->strings);
   if ((uint32_t)b->strings != x->tuning)
@@ -699,10 +710,10 @@ static rs7x *read_block(const void *song, const song_view *v, const uint8_t *bod
       const rs7x_tech *x = &b->tech[i];
       techs += x->mask || x->slide_to != -1 || x->slide_unpitch_to != -1 || x->vibrato || x->bends;
     }
-    chlog("SNG %p: body %u bytes, stock sections end at %u, RS7X v%u block %u bytes: guitar, %d strings, %d extended "
+    chlog("SNG %p: body %u bytes, stock sections end at %u, RS7X v%u block %u bytes: %s, %d strings, %d extended "
           "column(s), CHDT %s (%u templates, %d with a string-6 column), CHNT %s (%u records, %d extended technique "
           "entries), %d unknown section(s) skipped -> the chord records read the block",
-          song, size, pos, RS7X_VERSION, n, b->strings, b->columns, b->has_templates ? "yes" : "no", v->templates, ext6,
+          song, size, pos, RS7X_VERSION, n, b->instrument ? "extended bass" : "guitar", b->strings, b->columns, b->has_templates ? "yes" : "no", v->templates, ext6,
           b->has_notes ? "yes" : "no", v->notes, techs, b->skipped);
     return b;
   }
@@ -896,6 +907,14 @@ int seven_chords_block_strings(const void *song) {
   return n;
 }
 
+int seven_chords_block_instrument(const void *song) {
+  pthread_mutex_lock(&g_lock);
+  entry *e = song ? find(song) : NULL;
+  const int i = e && e->block ? (e->block->instrument ? SEVEN_BASS : SEVEN_GUITAR) : -1;
+  pthread_mutex_unlock(&g_lock);
+  return i;
+}
+
 static int slot(int s) { return s >= 0 && s < SEVEN_CHORD_SLOTS; }
 
 int seven_chords_t8_slots(const uint8_t *t8) { return t8 ? *AT(t8, seven_t8_slots) : 6; }
@@ -1068,20 +1087,21 @@ static void on_cp2(rc_mid_frame *f, void *user) {
 }
 
 // DS1 SNG_Song_PostProcessNotes' double-stop count (a chord note with exactly two strings gets DOUBLE_STOP): over the
-// T8's frets of seven strings, so one stock string and the seventh is a double stop (rs7string's DoubleStopSpan)
+// T8's frets of seven or eight strings, so one stock string and the extra one is a double stop (rs7string's
+// DoubleStopSpan)
 static void on_ds1(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   uint8_t *t8 = seven_chords_template(PTR(f, "templates"), (uint32_t)SEVEN_GET(f, "chord"));
   if (!t8) return;
   SEVEN_SET(f, "frets", (uintptr_t)AT(t8, seven_t8_frets));
-  SEVEN_SET(f, "count", SEVEN_CHORD_NATIVE);
+  SEVEN_SET(f, "count", seven_chord_native());
   SEVEN_SET(f, "played", 0);
   f->go = SEVEN_CONT(f, "done");
 }
 
 // DS1's count where the game counts a chord's played strings in a function of its own (the Mac: the post-processing
 // calls it with the record and compares its answer with 2): `played` is that answer, made the count over the T8's
-// frets of seven strings. Learn & Play counts in line (DS1) and has no such point.
+// frets of seven or eight strings. Learn & Play counts in line (DS1) and has no such point.
 static void on_ds1_count(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   const uint8_t *song = PTR(f, "song");
@@ -1090,7 +1110,7 @@ static void on_ds1_count(rc_mid_frame *f, void *user) {
   uint8_t *t8 = seven_chords_template(templates, (uint32_t)SEVEN_GET(f, "chord"));
   if (!t8) return;
   uint32_t n = 0;
-  for (int s = 0; s < SEVEN_CHORD_NATIVE; s++) n += AT(t8, seven_t8_frets)[s] != 0xff;
+  for (int s = 0; s < seven_chord_native(); s++) n += AT(t8, seven_t8_frets)[s] != 0xff;
   SEVEN_SET(f, "played", n);
 }
 
@@ -1122,6 +1142,14 @@ static void on_cs1_ctor(rc_mid_frame *f, void *user) {
 static void on_cs1_build(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   clear_state(PTR(f, "eval"));
+}
+
+// E8: the marker. Its callback does nothing; that this RS Re-ARMed has the point says its tables are wave-2's: the chord
+// loops (the E8 rows of rs7string's nslot, NR2 .. PL1) run over eight strings, and the section mask's and the Mac's own
+// steps do strings 6 and 7 (seven_chord_native). Without it the unit keeps building guitars of at most seven strings.
+static void on_e8(rc_mid_frame *f, void *user) {
+  (void)f;
+  (void)user;
 }
 
 int seven_chords_init(void) {
@@ -1160,5 +1188,6 @@ int seven_chords_init(void) {
   };
   for (size_t i = 0; i < sizeof points / sizeof *points; i++)
     if (seven_mid(points[i].name, points[i].fn)) return -1;
+  seven_feature_set(SEVEN_F_EIGHT, seven_mid_optional("seven_e8", on_e8, "eight-string chords"));
   return 0;
 }

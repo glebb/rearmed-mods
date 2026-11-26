@@ -1,7 +1,8 @@
 // Seven-String Guitar's native format reader (src/seven_native.c): the chart converter, the manifest rewriter and the
 // three callbacks, with the game's runtime stubbed. The vectors are those of rs7string's tests/model/test_nativesng.cpp
 // and test_nativemanifest.cpp (github.com/SomeeName/rs7string, MIT, by SomeeName), with the expectations of this unit's
-// form: the RS7X block, Rs7String6 / Rs7String7, no extended bass. Built twice: the Mac's pointers (8 bytes) and, with
+// form: the RS7X block, Rs7String6 / Rs7String7, and the extended bass (5 and 6 strings: the six stock slots, an RS7X
+// block with STRS only, Rs7String4 / Rs7String5; the vectors of upstream's bass tests, as this unit reads them). Built twice: the Mac's pointers (8 bytes) and, with
 // -DGUEST32, Learn & Play's (4-byte pointers in a guest window).
 #include <stdarg.h>
 #include <stdlib.h>
@@ -21,6 +22,8 @@ uint64_t rc_slide;
 static _Alignas(16) uint8_t window[1 << 22];
 static size_t window_used = 0x100;
 int seven_on = 1;
+static int g_bass_feature = 1;  // SEVEN_F_BASS
+int seven_feature(enum seven_feature f) { return f == SEVEN_F_BASS ? g_bass_feature : 0; }
 
 void rsm_log(const char *fmt, ...) { (void)fmt; }
 int plain_packages_start(const char *by) {
@@ -116,7 +119,11 @@ typedef struct {
 // how many chord templates and ChordNotes records a song has (tests change them)
 static int g_templates = 2, g_chordnotes = 2;
 
-static int slot_of(const song *s, int i) { return s->instrument ? i : k_guitar_slots[i + 8 - s->n]; }
+// a bass keeps its strings in the stock six slots: a 5- or 6-string's low B is slot 4, E A D G slots 0-3, a high C slot 5
+static int slot_of(const song *s, int i) {
+  if (s->instrument) return s->n == 4 ? i : i == 0 ? 4 : i <= 4 ? i - 1 : 5;
+  return k_guitar_slots[i + 8 - s->n];
+}
 static int t_native_of(const song *s, int slot) {
   for (int i = 0; i < s->n; i++)
     if (slot_of(s, i) == slot) return i;
@@ -279,23 +286,29 @@ static int all_zero(const uint8_t *p, size_t k) {
 
 // The RS7X block behind the stock body: the rules of docs/release/RS7X-SPEC.md, and the cells of the synthetic song
 static void check_block(const song *s, const uint8_t *out, size_t size) {
-  const size_t tail = s->stock.n, cols = (size_t)s->n - 6;
-  if (s->n <= 6) {
-    CHECK(all_zero(out + tail, size - tail));  // no block for a six-string guitar
+  const size_t tail = s->stock.n, cols = s->instrument ? 0 : (size_t)s->n - 6;
+  if (s->instrument ? s->n == 4 : s->n <= 6) {
+    CHECK(all_zero(out + tail, size - tail));  // no block for a six-string guitar or a four-string bass
     return;
   }
   const uint8_t *b = out + tail;
   const size_t n = size - tail;
   CHECK(!memcmp(b, "RS7X", 4) && rd16(b + 4) == 1 && rd16(b + 6) == 16);
   CHECK(rd32(b + 8) == n);  // the block's size: everything after MetaData
-  CHECK(rd32(b + 12) == 4);
+  CHECK(rd32(b + 12) == (s->instrument ? 2u : 4u));  // an extended bass: STRS and PAD0
   size_t at = 16;
   // STRS: critical, instrument 0, the string count, its columns, 6, 7, ...
   CHECK(!memcmp(b + at, "STRS", 4) && rd16(b + at + 4) == 1 && rd16(b + at + 6) == 1);
   CHECK(rd32(b + at + 8) == 4 + cols);
-  CHECK(b[at + 12] == 0 && b[at + 13] == s->n && b[at + 14] == cols && b[at + 15] == 0);
+  CHECK(b[at + 12] == s->instrument && b[at + 13] == s->n && b[at + 14] == cols && b[at + 15] == 0);
   for (size_t c = 0; c < cols; c++) CHECK(b[at + 16 + c] == 6 + c);
   at += 12 + rd32(b + at + 8);
+  if (s->instrument) {  // a bass: no CHDT, no CHNT; PAD0 is the rest
+    CHECK(!memcmp(b + at, "PAD0", 4) && rd16(b + at + 4) == 1 && rd16(b + at + 6) == 0);
+    CHECK(at + 12 + rd32(b + at + 8) == n);
+    CHECK(all_zero(b + at + 12, n - at - 12));
+    return;
+  }
   // CHDT: critical, one { fret, finger } a column of each template
   CHECK(!memcmp(b + at, "CHDT", 4) && rd16(b + at + 4) == 1 && rd16(b + at + 6) == 1);
   CHECK(rd32(b + at + 8) == 4 + 2 * (size_t)g_templates * cols && rd32(b + at + 12) == (uint32_t)g_templates);
@@ -366,7 +379,33 @@ static void test_guitar_columns_and_tail(void) {
   check_song(1, 4, 0);
 }
 
-static void test_extended_bass_is_refused(void) {
+// The extended bass: every template and technique column of the six stock slots (the low B slot 4, a high C slot 5, the
+// unused one of a five-string empty: fret, finger, note -1, mask 0), the notes' strings, the section masks and the six
+// tuning entries, then a block with STRS only
+static void test_extended_bass_columns_and_tail(void) {
+  for (int n = 5; n <= 6; n++)
+    for (int vocals = 0; vocals < 2; vocals++) check_song(1, n, vocals);
+  // upstream's example (its block of 32 bytes: the header and STRS), here with PAD0 after it
+  song s;
+  make_song(&s, 1, 5, 0, 0);
+  bytes more = {0};
+  b_add(&more, s.native.p, s.native.n);
+  b_zero(&more, 44 + 400 + 6 * 2 + 396 * 2 + 2);
+  uint8_t *out = malloc(more.n);
+  char why[180];
+  CHECK(convert(&more, out, why, sizeof why) == SEVEN_NATIVE_OK);
+  const uint8_t *b = out + s.stock.n;
+  CHECK(!memcmp(b, "RS7X\1\0\x10\0", 8) && rd32(b + 8) == more.n - s.stock.n && rd32(b + 12) == 2);
+  CHECK(!memcmp(b + 16, "STRS\1\0\1\0\4\0\0\0\1\5\0\0", 16));
+  CHECK(!memcmp(b + 32, "PAD0", 4));
+  b_free(&more);
+  free(out);
+  song_free(&s);
+}
+
+// While the unit cannot build an extended bass it is refused, as before wave 2
+static void test_extended_bass_is_refused_while_off(void) {
+  seven_native_allow_bass(0);
   for (int n = 5; n <= 6; n++) {
     song s;
     make_song(&s, 1, n, 1, 4096);
@@ -374,6 +413,71 @@ static void test_extended_bass_is_refused(void) {
     char why[180];
     CHECK(convert(&s.native, out, why, sizeof why) == SEVEN_NATIVE_UNSUPPORTED);
     CHECK(strstr(why, "bass") && strstr(why, "not supported"));
+    free(out);
+    song_free(&s);
+  }
+  song s;  // a four-string bass and the guitars are not affected
+  make_song(&s, 1, 4, 1, 4096);
+  uint8_t *out = malloc(s.native.n);
+  CHECK(convert(&s.native, out, NULL, 0) == SEVEN_NATIVE_OK);
+  free(out);
+  song_free(&s);
+  seven_native_allow_bass(1);
+}
+
+// A bass of 4, 5 and 6 strings needs padding for the six stock slots and the block (the format's rule: 256 + (6 - N) *
+// (6 templates + 396 ChordNotes + 2), N < 6; 256 for six): the exact missing amount converts, one less does not
+static void test_extended_bass_padding(void) {
+  const int saved_t = g_templates, saved_c = g_chordnotes;
+  for (int n = 5; n <= 6; n++)
+    for (int bare = 0; bare < 2; bare++) {
+      g_templates = bare ? 0 : 2;
+      g_chordnotes = bare ? 0 : 2;
+      song s;
+      make_song(&s, 1, n, 0, 0);
+      char why[180];
+      uint8_t *out = malloc(s.native.n + 8192);
+      unsigned long long missing = 0;
+      CHECK(convert(&s.native, out, why, sizeof why) == SEVEN_NATIVE_TOO_SMALL);
+      CHECK(sscanf(why, "missing %llu bytes", &missing) == 1 && missing > 0);
+      const unsigned long long rule = 256 + (unsigned long long)(6 - n) * (6u * (unsigned)g_templates + 396u * (unsigned)g_chordnotes + 2);
+      CHECK(missing <= rule);
+      b_zero(&s.native, (size_t)missing - 1);
+      CHECK(convert(&s.native, out, why, sizeof why) == SEVEN_NATIVE_TOO_SMALL);
+      CHECK(strstr(why, "missing 1 bytes"));
+      b_zero(&s.native, 1);
+      CHECK(convert(&s.native, out, why, sizeof why) == SEVEN_NATIVE_OK);
+      CHECK(!memcmp(out, s.stock.p, s.stock.n));
+      check_block(&s, out, s.native.n);
+      free(out);
+      song_free(&s);
+    }
+  g_templates = saved_t;
+  g_chordnotes = saved_c;
+}
+
+// Bad data in a bass chart is as bad as in a guitar's: a section mask bit past its strings, a note on a string past them
+static void test_extended_bass_bad_data(void) {
+  for (int n = 5; n <= 6; n++) {
+    song s;
+    make_song(&s, 1, n, 0, 4096);
+    uint8_t *out = malloc(s.native.n);
+    char why[180];
+    // the header: a bass of 7, 3 strings
+    for (int bad = 3; bad <= 7; bad += 4) {
+      bytes b = {0};
+      b_add(&b, s.native.p, s.native.n);
+      b.p[6] = (uint8_t)bad;
+      CHECK(convert(&b, out, why, sizeof why) == SEVEN_NATIVE_BAD);
+      b_free(&b);
+    }
+    // the tuning's count against the header's
+    bytes b = {0};
+    b_add(&b, s.native.p, s.native.n);
+    uint32_t other = (uint32_t)(n == 5 ? 6 : 5);
+    memcpy(b.p + s.tuning, &other, 4);
+    CHECK(convert(&b, out, why, sizeof why) == SEVEN_NATIVE_BAD);
+    b_free(&b);
     free(out);
     song_free(&s);
   }
@@ -477,7 +581,7 @@ static void test_padding_missing_bytes_and_exact_fit(void) {
 
 static void test_every_truncation_is_safe(void) {
   for (int instrument = 0; instrument < 2; instrument++)
-    for (int n = instrument ? 4 : 6; n <= (instrument ? 4 : 8); n++) {
+    for (int n = instrument ? 4 : 6; n <= (instrument ? 6 : 8); n++) {
       song s;
       make_song(&s, instrument, n, 1, 4096);
       uint8_t *out = malloc(s.native.n);
@@ -548,12 +652,45 @@ static void test_manifest_bass(void) {
   // a four-string bass is a stock one
   CHECK(same(run_manifest(ATTR("Bass", 1, 2, 3, 4), NULL, NULL),
              current("\"string0\": 1, \"string1\": 2, \"string2\": 3, \"string3\": 4, \"string4\": 0, \"string5\": 0", "Bass")));
-  // an extended bass is not supported: a stock Tuning of what is there, counted as invalid
+  // an extended bass: the low B (native 0) is slot 4, E A D G slots 0-3, a high C slot 5; Rs7String4 (and 5) say so
+  CHECK(same(run_manifest(ATTR("Bass", -5, 1, 2, 3, 4), &rw, &bad),
+             current("\"string0\": 1, \"string1\": 2, \"string2\": 3, \"string3\": 4, \"string4\": -5, \"string5\": 0, "
+                     "\"Rs7String4\": -5",
+                     "Bass")));
+  CHECK(rw == 1 && bad == 0);
+  CHECK(same(run_manifest(ATTR("Bass", -5, 1, 2, 3, 4, 9), &rw, &bad),
+             current("\"string0\": 1, \"string1\": 2, \"string2\": 3, \"string3\": 4, \"string4\": -5, \"string5\": 9, "
+                     "\"Rs7String4\": -5, \"Rs7String5\": 9",
+                     "Bass")));
+  CHECK(rw == 1 && bad == 0);
+  // seven bass strings, a guitar's name with five (strings of a bass only), a repeated key: harmless six entries
+  CHECK(same(run_manifest(ATTR("Bass", 1, 2, 3, 4, 5, 6, 7), &rw, &bad),
+             current("\"string0\": 1, \"string1\": 2, \"string2\": 3, \"string3\": 4, \"string4\": 5, \"string5\": 6", "Bass")));
+  CHECK(rw == 0 && bad == 1);
+  // while the unit cannot build one: a stock Tuning of what is there, counted as invalid, as before wave 2
+  seven_native_allow_bass(0);
   CHECK(same(run_manifest(ATTR("Bass", -5, 1, 2, 3, 4), &rw, &bad),
              current("\"string0\": -5, \"string1\": 1, \"string2\": 2, \"string3\": 3, \"string4\": 4, \"string5\": 0", "Bass")));
   CHECK(rw == 0 && bad == 1);
   CHECK(same(run_manifest(ATTR("Bass", -5, 1, 2, 3, 4, 9), NULL, NULL),
              current("\"string0\": -5, \"string1\": 1, \"string2\": 2, \"string3\": 3, \"string4\": 4, \"string5\": 9", "Bass")));
+  CHECK(same(run_manifest(ATTR("Bass", 1, 2, 3, 4), NULL, NULL),
+             current("\"string0\": 1, \"string1\": 2, \"string2\": 3, \"string3\": 4, \"string4\": 0, \"string5\": 0", "Bass")));
+  seven_native_allow_bass(1);
+}
+
+// A package with a guitar 7 and a bass 5 (the real test chart's shape): both arrangements of one header file are rewritten
+static void test_manifest_mixed_guitar_and_bass_package(void) {
+  int rw = -1, bad = -1;
+  char in[4096], want[4096];
+  snprintf(in, sizeof in, "{\"Entries\": {\"A\": {\"Attributes\": %s}, \"B\": {\"Attributes\": %s}, \"C\": {\"Attributes\": %s}}}",
+           ATTR("Lead", -7, 1, 2, 3, 4, 5, 6), ATTR("Bass", -2, 0, 0, 0, 0), ATTR("Rhythm", 0, 0, 0, 0, 0, 0));
+  snprintf(want, sizeof want, "{\"Entries\": {\"A\": {\"Attributes\": %s}, \"B\": {\"Attributes\": %s}, \"C\": {\"Attributes\": %s}}}",
+           current("\"string0\": 1, \"string1\": 2, \"string2\": 3, \"string3\": 4, \"string4\": 5, \"string5\": 6, \"Rs7String6\": -7", "Lead"),
+           current("\"string0\": 0, \"string1\": 0, \"string2\": 0, \"string3\": 0, \"string4\": -2, \"string5\": 0, \"Rs7String4\": -2", "Bass"),
+           current("\"string0\": 0, \"string1\": 0, \"string2\": 0, \"string3\": 0, \"string4\": 0, \"string5\": 0", "Rhythm"));
+  CHECK(same(run_manifest(in, &rw, &bad), want));
+  CHECK(rw == 3 && bad == 0);
 }
 
 static void test_manifest_the_arrangement_name_decides_the_instrument(void) {
@@ -825,7 +962,8 @@ static void test_callback_sng(void) {
   const uint8_t first = body[0];
   on_sng(&f, NULL);
   CHECK(f.go == 0 && body[0] == first && !memcmp(body, s.stock.p, s.stock.n));
-  // a native body that cannot be converted goes to the loader's failure exit; an extended bass too
+  // a native body that cannot be converted goes to the loader's failure exit; an extended bass too while the unit cannot
+  // build one (SEVEN_F_BASS), and is converted (an RS7X block with STRS only) when it can
   memcpy(body, s.native.p, s.native.n);
   body[6] = 17;
   on_sng(&f, NULL);
@@ -835,8 +973,15 @@ static void test_callback_sng(void) {
   memcpy(body, s.native.p, s.native.n);
   vals[4] = s.native.n;
   f.go = 0;
+  g_bass_feature = 0;
   on_sng(&f, NULL);
-  CHECK(f.go == 1);
+  CHECK(f.go == 1 && !memcmp(body, "SNXR", 4));
+  g_bass_feature = 1;
+  f.go = 0;
+  on_sng(&f, NULL);
+  CHECK(f.go == 0 && !memcmp(body, s.stock.p, s.stock.n));
+  check_block(&s, body, s.native.n);
+  memcpy(body, s.native.p, s.native.n);
   // switched off: the body stays native for the stock parser (the game fails it as before)
   g_on = 0;
   f.go = 0;
@@ -861,13 +1006,17 @@ int main(void) {
   window_used = 0x100;
 #endif
   test_guitar_columns_and_tail();
-  test_extended_bass_is_refused();
+  test_extended_bass_columns_and_tail();
+  test_extended_bass_is_refused_while_off();
+  test_extended_bass_padding();
+  test_extended_bass_bad_data();
   test_detection_and_bad_headers();
   test_counts_and_padding_rules();
   test_padding_missing_bytes_and_exact_fit();
   test_every_truncation_is_safe();
   test_manifest_guitar_strings_move_to_their_slots();
   test_manifest_bass();
+  test_manifest_mixed_guitar_and_bass_package();
   test_manifest_the_arrangement_name_decides_the_instrument();
   test_manifest_marker_is_removed_wherever_it_stands();
   test_manifest_every_arrangement_of_a_header_file();

@@ -104,7 +104,9 @@ static int by_time(const void *a, const void *b) {
 }
 
 int sng_parse(const uint8_t *d, size_t n, int bass, double cents, sng_arrangement *out) {
-  static const int GUITAR[6] = {40, 45, 50, 55, 59, 64}, BASS[6] = {28, 33, 38, 43, 48, 53};
+  // the open notes of the six stock slots; a bass's slots 4 and 5 are an extended bass's low B and high C (native charts:
+  // seven_slot_of), unused by a four-string one
+  static const int GUITAR[6] = {40, 45, 50, 55, 59, 64}, BASS[6] = {28, 33, 38, 43, 23, 48};
   reader r = {d, d + n, 0};
   int shift = (int)lround(cents / 100);
   memset(out, 0, sizeof *out);

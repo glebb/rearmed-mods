@@ -115,6 +115,17 @@ static int guitar_slot(int n, int i) {
   return i < extra ? 6 + (extra - 1 - i) : i - extra;
 }
 
+// A bass keeps all its strings in the stock six slots: the low B (native 0 of a 5- or 6-string) is slot 4, the strings
+// E A D G (native 1-4) slots 0-3, a 6-string's high C (native 5) slot 5; a 4-string bass is the stock one (the same
+// table as seven_slot_of in seven_model.c, which this file does not link)
+static int bass_slot(int n, int i) {
+  if (n == 4) return i;
+  return i == 0 ? 4 : i <= 4 ? i - 1 : 5;
+}
+
+static int g_bass_ok = 1;  // an extended bass (5/6 strings) is converted (else refused: SEVEN_NATIVE_UNSUPPORTED)
+void seven_native_allow_bass(int on) { __atomic_store_n(&g_bass_ok, on != 0, __ATOMIC_RELAXED); }
+
 static int native_of(const conv *c, int slot) {
   for (int i = 0; i < c->n; i++)
     if (c->slot[i] == slot) return i;
@@ -133,11 +144,11 @@ static seven_native_status read_header(conv *c, char *why, size_t cap) {
   if (p[7] != 0) return bad(c, "header reserved", 7), SEVEN_NATIVE_BAD;
   c->instrument = p[5];
   c->n = n;
-  if (!guitar && n != 4) {
+  if (!guitar && n != 4 && !__atomic_load_n(&g_bass_ok, __ATOMIC_RELAXED)) {
     if (why && cap) snprintf(why, cap, "an extended bass (%d strings) is not supported", n);
     return SEVEN_NATIVE_UNSUPPORTED;
   }
-  for (int i = 0; i < n; i++) c->slot[i] = guitar ? guitar_slot(n, i) : i;
+  for (int i = 0; i < n; i++) c->slot[i] = guitar ? guitar_slot(n, i) : bass_slot(n, i);
   return SEVEN_NATIVE_OK;
 }
 
@@ -299,23 +310,26 @@ static int section(conv *c, const char *id, unsigned flags, uint64_t *size_at) {
 static int end_section(conv *c, uint64_t size_at) { return patch(c, size_at, (uint32_t)(c->w - size_at - 4)); }
 
 // The RS7X block (docs/release/RS7X-SPEC.md at rs7string 2edcf68), in the padding after MetaData: STRS, CHDT, CHNT and
-// PAD0 (non-critical, the rest of the buffer: the block's size is what is left)
+// PAD0 (non-critical, the rest of the buffer: the block's size is what is left). An extended bass has STRS (instrument
+// 1, no columns: its low B and high C are the stock slots 4 and 5) and PAD0 only (rs7string's extension-block.md 2.3:
+// CHDT and CHNT are omitted, the reader rejects them with no columns)
 static int extension(conv *c) {
   const uint64_t start = c->w;
-  const int n = c->n;
+  const int n = c->n, bass = c->instrument;
   uint64_t sec;
   T(put(c, "RS7X", 4));
   T(put_u16(c, 1));
   T(put_u16(c, RS7X_HEADER_SIZE));
   T(put_u32(c, c->out ? (uint32_t)(c->cap - (size_t)start) : 0));
-  T(put_u32(c, 4));
+  T(put_u32(c, bass ? 2 : 4));
   T(section(c, "STRS", 1, &sec));
-  T(put_u8(c, 0));  // guitar
+  T(put_u8(c, bass ? 1 : 0));  // the instrument
   T(put_u8(c, (unsigned)n));
-  T(put_u8(c, (unsigned)(n - 6)));
+  T(put_u8(c, bass ? 0 : (unsigned)(n - 6)));
   T(put_u8(c, 0));
-  for (int slot = 6; slot < n; slot++) T(put_u8(c, (unsigned)slot));
+  for (int slot = 6; !bass && slot < n; slot++) T(put_u8(c, (unsigned)slot));
   T(end_section(c, sec));
+  if (bass) goto pad;
 
   T(section(c, "CHDT", 1, &sec));
   T(put_u32(c, c->templates));
@@ -348,6 +362,7 @@ static int extension(conv *c) {
   }
   T(end_section(c, sec));
 
+pad:
   T(section(c, "PAD0", 0, &sec));
   if (c->out) T(patch(c, sec, (uint32_t)(c->cap - (size_t)c->w)));
   return 1;
@@ -375,7 +390,7 @@ static int run(conv *c) {
   T(sections(c));
   T(levels(c));
   T(metadata(c));
-  if (!c->instrument && c->n > 6) T(extension(c));  // a stock-shaped guitar or bass has no block
+  if (c->instrument ? c->n > 4 : c->n > 6) T(extension(c));  // a stock-shaped guitar or bass has no block
   return 1;
 }
 
@@ -614,10 +629,12 @@ static void put_key(sbuf *b, const char *key, const char *v, size_t k) {
   sb_add(b, v, k);
 }
 
-// The unit's Tuning of a native arrangement: string0..5 in the game's slot order, then Rs7String6 / Rs7String7. A guitar
-// of 6 to 8 strings or a four-string bass is valid; an extended bass is not (it is no instrument of this unit). *valid
-// comes in as "may be valid" and goes out 0 when the arrangement is not a valid native one: the result is then the
-// harmless six-entry form, from what is there.
+// The unit's Tuning of a native arrangement: string0..5 in the game's slot order, then Rs7String6 / Rs7String7 (a guitar)
+// or Rs7String4 / Rs7String5 (an extended bass: the low B's and the high C's offsets again, as the marker of the
+// bass's strings; rs7string's RsxrString4 / 5). A guitar of 6 to 8 strings and a bass of 4 to 6 are valid (an extended
+// bass only while seven_native_allow_bass is on: else it is no instrument of this unit). *valid comes in as "may be
+// valid" and goes out 0 when the arrangement is not a valid native one: the result is then the harmless six-entry
+// form, from what is there.
 static char *tuning_text(const scan *sc, const object *arrangement, const object *marker, const object *tuning, int *valid) {
   static const char *const stock[6] = {"string0", "string1", "string2", "string3", "string4", "string5"};
   const char *native[MAX_KEYS];
@@ -626,7 +643,8 @@ static char *tuning_text(const scan *sc, const object *arrangement, const object
   const int count = (int)(tuning->n < MAX_KEYS + 1 ? tuning->n : MAX_KEYS + 1);
   const member *version = find(sc, marker, "Version"), *name = find(sc, arrangement, "ArrangementName");
   const int bass = name && text_is(sc, name->vb, name->ve, "\"Bass\"");
-  const int shape = bass ? count == 4 : count >= 6 && count <= 8;
+  const int shape = bass ? count == 4 || (count >= 5 && count <= 6 && __atomic_load_n(&g_bass_ok, __ATOMIC_RELAXED))
+                         : count >= 6 && count <= 8;
   *valid = *valid && version && text_is(sc, version->vb, version->ve, "1") && shape;
   for (size_t m = 0; m < tuning->n; m++) {
     const member *mem = &tuning->m[m];
@@ -645,12 +663,14 @@ static char *tuning_text(const scan *sc, const object *arrangement, const object
   size_t slen[MAX_STRINGS];
   for (int s = 0; s < MAX_STRINGS; s++) slots[s] = "0", slen[s] = 1;
   for (int i = 0; i < count && i < MAX_KEYS; i++) {
-    const int slot = *valid ? (bass ? i : guitar_slot(count, i)) : i < 6 ? i : -1;
+    const int slot = *valid ? (bass ? bass_slot(count, i) : guitar_slot(count, i)) : i < 6 ? i : -1;
     if (slot >= 0 && seen[i]) slots[slot] = native[i], slen[slot] = nlen[i];
   }
   sbuf out = {0};
   sb_str(&out, "{");
   for (int s = 0; s < 6; s++) put_key(&out, stock[s], slots[s], slen[s]);
+  if (*valid && bass && count >= 5) put_key(&out, "Rs7String4", slots[4], slen[4]);
+  if (*valid && bass && count == 6) put_key(&out, "Rs7String5", slots[5], slen[5]);
   if (*valid && !bass && count >= 7) put_key(&out, "Rs7String6", slots[6], slen[6]);
   if (*valid && !bass && count == 8) put_key(&out, "Rs7String7", slots[7], slen[7]);
   sb_str(&out, "}");

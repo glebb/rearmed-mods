@@ -3,7 +3,8 @@
 // PSARC), manifests with "ExtendedRange" and a positional "Tuning" string0..N-1 (thickest first), and a chart whose
 // inflated body starts "SNXR" with N-wide records. seven_native.c translates all three while the game loads them, to the
 // form the rest of this unit reads (rs7string's at 2edcf68, the one this port was made from): a package with the magic
-// PSAR, a manifest Tuning string0..5 in the game's slot order plus Rs7String6 / Rs7String7, a chart with the RS7X block.
+// PSAR, a manifest Tuning string0..5 in the game's slot order plus Rs7String6 / Rs7String7 (a bass: Rs7String4 / 5), a chart
+// with the RS7X block (an extended bass: a block with STRS only, instrument 1).
 // The pure converters (bytes in, bytes out; seven_native_core.c, tests/test_seven_native.c) are what the offline readers
 // link too; the mod part is seven_native_init (seven_native.c).
 #ifndef RS_SEVEN_NATIVE_H
@@ -16,8 +17,13 @@ typedef enum {
   SEVEN_NATIVE_NOT_NATIVE,   // no SNXR magic
   SEVEN_NATIVE_BAD,          // malformed
   SEVEN_NATIVE_TOO_SMALL,    // too little zero padding after MetaData for the translation
-  SEVEN_NATIVE_UNSUPPORTED,  // well formed, but an instrument this unit does not have (an extended bass)
+  SEVEN_NATIVE_UNSUPPORTED,  // well formed, but an instrument this unit does not have (an extended bass, while it is off)
 } seven_native_status;
+
+// Whether an extended bass (5 or 6 strings) is translated: on at start (the offline readers want it). The game's part
+// turns it off when its RS Re-ARMed cannot build such a bass (seven_feature(SEVEN_F_BASS)): the chart is then refused
+// (SEVEN_NATIVE_UNSUPPORTED) and the manifest gets a stock Tuning counted as invalid, as before wave 2.
+void seven_native_allow_bass(int on);
 
 // 1 when an inflated SNG body starts with the native magic
 int seven_native_is_sng(const uint8_t *body, size_t size);

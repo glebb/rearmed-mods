@@ -35,7 +35,12 @@
 #include <stdint.h>
 
 #define SEVEN_CHORD_SLOTS 8   // the record slots: strings 0-7
-#define SEVEN_CHORD_NATIVE 7  // the strings the widened chord loops cover (0-6)
+#define SEVEN_CHORD_NATIVE 8  // the strings the widened chord loops cover (0-7) with the wave-2 tables
+
+// The strings the widened chord loops cover on this RS Re-ARMed: 8 when its tables are wave-2's (the marker point
+// seven_e8 was taken: SEVEN_F_EIGHT), else 7 (an older RS Re-ARMed: the loops end at the seventh string). A callback that
+// does "the extra strings" by itself runs strings 6 .. seven_chord_native() - 1.
+static inline int seven_chord_native(void) { return seven_feature(SEVEN_F_EIGHT) ? SEVEN_CHORD_NATIVE : 7; }
 
 // The T8 record of template `id` of the template vector whose first entry is `templates` (the song's +0x94 begin),
 // NULL when that vector has no T8 array (the build failed, or not a loaded song's) or `id` is past it
@@ -51,8 +56,12 @@ uint8_t *seven_chords_as_c8(const void *record);
 uint8_t *seven_chords_t8_of(const void *game_template);
 // The song's (SNG_Song, host pointer) T8 array and its count: 1, or 0 when it has none
 int seven_chords_song_templates(const void *song, uint8_t **t8, uint32_t *count);
-// The string count of the song's RS7X block (7, 8, ... as its STRS says), 0 when the song has no valid block
+// The string count of the song's RS7X block (7, 8, ... as its STRS says; 5 or 6 for an extended bass's), 0 when the song
+// has no valid block
 int seven_chords_block_strings(const void *song);
+// The instrument its STRS says: SEVEN_GUITAR or SEVEN_BASS (an extended bass: its block has no chord columns, its strings
+// are the stock slots 4 and 5), -1 when the song has no valid block
+int seven_chords_block_instrument(const void *song);
 
 // A T8's slots (6, 7 or 8: the arrangement's strings, 6 for a six-string song or bass) and its string s (0-7):
 // fret, finger (-1 none, 0 thumb, 1-4), expected MIDI note (-1 none). s past 7 gives -1.

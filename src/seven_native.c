@@ -23,9 +23,11 @@
 //                       MetaData takes the RS7X block), one that cannot be goes to the loader's own failure exit
 // The three points are taken together or the part stays off (seven_mid_optional); the unit stays on either way.
 //
-// Extended bass (instrument 1 with 5 or 6 strings) is not supported: its chart is refused with a log line (the song
-// does not load), its manifest gets a stock Tuning. A four-string bass in a native header is a stock bass and loads.
-// A six-string guitar in a native header is stock too (no block).
+// An extended bass (instrument 1 with 5 or 6 strings) is translated when this RS Re-ARMed can build one
+// (seven_feature(SEVEN_F_BASS), the bass part's points): the six stock slots hold its strings (the low B slot 4, a high
+// C slot 5), its chart gets an RS7X block with STRS only, its manifest Rs7String4 (and Rs7String5). Otherwise its chart
+// is refused with a log line (the song does not load) and its manifest gets a stock Tuning, as before. A four-string
+// bass in a native header is a stock bass and loads. A six-string guitar in a native header is stock too (no block).
 #include <dlfcn.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -93,6 +95,7 @@ static void on_json(rc_mid_frame *f, void *user) {
   if (!g_on || !seven_on) return;
   uint8_t *cursor = (uint8_t *)(uintptr_t)SEVEN_GET(f, "cursor");
   if (!cursor) return;
+  seven_native_allow_bass(seven_feature(SEVEN_F_BASS));
   const char *text = rc_mod_ptr(cursor);
   if (!text || (g_jbuf && text >= g_jbuf && text < g_jbuf + g_jcap)) return;  // the text we wrote: nothing in it to do
   const size_t size = seven_native_json_extent(text, MAX_JSON);
@@ -128,6 +131,7 @@ static void on_sng(rc_mid_frame *f, void *user) {
   const size_t size = (uint32_t)SEVEN_GET(f, "size");
   if (!buf || size < 4 || memcmp(buf, "SNXR", 4)) return;
   const unsigned instrument = size > 6 ? buf[5] : 0, strings = size > 6 ? buf[6] : 0;
+  seven_native_allow_bass(seven_feature(SEVEN_F_BASS));
   char why[200] = "";
   uint8_t *in = size <= MAX_BODY ? malloc(size) : NULL, *out = in ? malloc(size) : NULL;
   seven_native_status st = SEVEN_NATIVE_BAD;

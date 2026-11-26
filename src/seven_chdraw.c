@@ -226,10 +226,12 @@ static void on_b2(rc_mid_frame *f, void *user) {
        top, fit.scale, fit.shift, fit.spacing, fit.margin, fit.origin, b[0], b[1], b[2]);
 }
 
-// ---- string 6 where a build unrolled a six-string loop (the Mac: no count to widen). Each point sits after the
-// game's strings 0-5 and does string 6 by the game's own per-string call; on a target that keeps the loop (Learn &
-// Play: its edits widen it) the point is `none` and never runs.
+// ---- strings 6 and 7 where a build unrolled a six-string loop (the Mac: no count to widen). Each point sits after the
+// game's strings 0-5 and does strings 6 .. seven_chord_native() - 1 by the game's own per-string call (the extra
+// strings of a seven-string song have their slot empty: nothing to do); on a target that keeps the loop (Learn & Play:
+// its edits widen it) the point is `none` and never runs.
 #define STR6 SEVEN_STOCK  // the seventh string's index
+static int g_line;        // string7_line: the section string mask has the bits of strings 6/7 (edit group seven_line)
 
 static uint32_t f32bits(float v) {
   uint32_t b;
@@ -237,23 +239,26 @@ static uint32_t f32bits(float v) {
   return b;
 }
 
-// SH7: the slide-to heads of a chord (strings 0-5 drawn): string 6's, when its mask slides (0x800) and not unpitched
-// (0x400000), at the note's time + sustain, to its slideTo (rs7string's SH1/SH2: the loop to 7)
+// SH7: the slide-to heads of a chord (strings 0-5 drawn): those of strings 6/7, when the mask slides (0x800) and not
+// unpitched (0x400000), at the note's time + sustain, to its slideTo (rs7string's SH1/SH2: the loop to 7, 8 since
+// beta.4)
 static void on_sh7(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
   const uint8_t *notes = PTR(f, "notes"), *note = PTR(f, "note");
   if (!notes || !note) return;
-  const uint32_t m = RC_LD(uint32_t, FIELD(notes, seven_c8_mask) + 4 * STR6);
-  if (!(m & 0x800) || (m & 0x400000)) return;
-  const float at = RC_LD(float, FIELD(note, sng_note_time)) + RC_LD(float, FIELD(note, sng_note_sustain));
-  const uint64_t a[] = {SEVEN_GET(f, "obj"), SEVEN_GET(f, "arg"), (uint32_t)SEVEN_GET(f, "time_arg"), STR6,
-                        RC_LD(uint8_t, FIELD(notes, seven_c8_slide_to) + STR6), f32bits(at)};
-  rc_call_name_f("chord_slide_head", a, 6, 1u << 5);
+  for (int s = STR6; s < seven_chord_native(); s++) {
+    const uint32_t m = RC_LD(uint32_t, FIELD(notes, seven_c8_mask) + 4 * s);
+    if (!(m & 0x800) || (m & 0x400000)) continue;
+    const float at = RC_LD(float, FIELD(note, sng_note_time)) + RC_LD(float, FIELD(note, sng_note_sustain));
+    const uint64_t a[] = {SEVEN_GET(f, "obj"), SEVEN_GET(f, "arg"), (uint32_t)SEVEN_GET(f, "time_arg"), (uint64_t)s,
+                          RC_LD(uint8_t, FIELD(notes, seven_c8_slide_to) + s), f32bits(at)};
+    rc_call_name_f("chord_slide_head", a, 6, 1u << 5);
+  }
 }
 
-// PL7: the chord pluck (strings 0-5 plucked): string 6 when the chord frets it, as the game plucks the others (fret 0
-// plucks with 1; the GuitarStrings call checks the guitar's strings itself)
+// PL7: the chord pluck (strings 0-5 plucked): strings 6/7 when the chord frets them, as the game plucks the others (fret
+// 0 plucks with 1; the GuitarStrings call checks the guitar's strings itself)
 static void on_pl7(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
@@ -261,21 +266,28 @@ static void on_pl7(rc_mid_frame *f, void *user) {
   const uint8_t *t8 = tpl ? seven_chords_as_t8(tpl) : NULL;
   const uint8_t *guitar = ptr_at(session, RC_OFF(session_guitar));
   const uint8_t *strings = ptr_at(guitar, RC_OFF(guitar_strings));
-  const int fret = t8 ? seven_chords_t8_fret(t8, STR6) : -1;
-  if (!strings || fret < 0) return;
-  OV_GUEST(guitar_strings_pluck, (uint64_t)(uintptr_t)strings, STR6, (uint32_t)fret, (uint32_t)(fret ? fret : 1));
+  if (!strings) return;
+  for (int s = STR6; s < seven_chord_native(); s++) {
+    const int fret = t8 ? seven_chords_t8_fret(t8, s) : -1;
+    if (fret < 0) continue;
+    OV_GUEST(guitar_strings_pluck, (uint64_t)(uintptr_t)strings, (uint64_t)s, (uint32_t)fret,
+             (uint32_t)(fret ? fret : 1));
+  }
 }
 
-// SM7: the section string mask (strings 0-5 marked): string 6's bit when the chord frets it. The records here are the
-// song's own (the post-processing reads its vector): their T8 through the chords part.
+// SM7: the section string mask (strings 0-5 marked): the bits of strings 6/7 when the chord frets them (and
+// string7_line is on). The records here are the song's own (the post-processing reads its vector): their T8 through the
+// chords part.
 static void on_sm7(rc_mid_frame *f, void *user) {
   (void)user;
-  if (!seven_on) return;
+  if (!seven_on || !g_line) return;
   const uint8_t *records = PTR(f, "records");
   if (!records) return;
   const uint8_t *t8 = seven_chords_t8_of(records + (size_t)SEVEN_GET(f, "index9") * 8);
-  if (!t8 || seven_chords_t8_fret(t8, STR6) < 0) return;
-  OV_GUEST(section_string_bit, SEVEN_GET(f, "mask"), (uint32_t)SEVEN_GET(f, "phrase"), STR6);
+  if (!t8) return;
+  for (int s = STR6; s < seven_chord_native(); s++)
+    if (seven_chords_t8_fret(t8, s) >= 0)
+      OV_GUEST(section_string_bit, SEVEN_GET(f, "mask"), (uint32_t)SEVEN_GET(f, "phrase"), (uint32_t)s);
 }
 
 // ---- the finger markers on the neck (rs7string's publish: PUBFA, PUBGF, PUBBC), 1.0.0-beta.6
@@ -358,6 +370,8 @@ static void on_pubbc_setscale(rc_mid_frame *f, void *user) {
 }
 
 int seven_chdraw_init(void) {
+  g_line = seven_settings_get()->string7_line;
+  seven_edits_after("seven_line", &g_line);  // the section mask's bits of strings 6/7 (N12/N13/SM), at start like upstream's
   if (seven_mid("seven_b1", on_b1) || seven_mid("seven_b2", on_b2) || seven_mid("seven_sh7", on_sh7) ||
       seven_mid("seven_pl7", on_pl7) || seven_mid("seven_sm7", on_sm7))
     return -1;

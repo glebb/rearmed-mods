@@ -35,8 +35,11 @@
 // The recipes are compiled in from data/rs7string/chord-diagrams/ (rs7string's three files, MIT: copy instructions
 // over the player's own class tag, its hashes and 78 single new bytes; no bytes of the game's movies).
 //
-// What rs7string has and this part hasn't: its settings ([chords] diagrams7, [debug] diagrams_trace: the defaults are
-// the behaviour), the FileOpener hook (above), compressed movies (refused there too).
+// [Seven String] diagrams7 (default 1; rs7string's [chords] diagrams7) is read at start: 0 and the part takes no point and
+// makes no movie, so the game draws six rows. Eight strings: a shape with eight entries (or an eight-string song's T8)
+// puts the eighth row's keys (LowFs*) in too, as the seventh's.
+// What rs7string has and this part hasn't: [debug] diagrams_trace (the default is the behaviour), the FileOpener hook
+// (above), compressed movies (refused there too).
 #include <CommonCrypto/CommonDigest.h>
 #include <ctype.h>
 #include <pthread.h>
@@ -592,6 +595,12 @@ static void movies_init(void) {
 }
 
 int seven_diagrams_init(void) {
+  // [Seven String] diagrams7 (rs7string's [chords] diagrams7; read at start, as upstream: the movies are made once): off,
+  // none of the part's points is taken and the file hook is not set, so the game draws its six rows
+  if (!seven_settings_get()->diagrams7) {
+    rsm_log("seven-string: diagrams: diagrams7 is off: the chord diagrams keep the game's six rows");
+    return 0;
+  }
   for (int k = 0; k < NKEYS; k++)
     if (!(g.text[k] = guest_text(KEY_TEXT[k]))) return -1;
   g.keys = rc_guest_alloc((size_t)NKEYS * rc_guest_ptr_size);
