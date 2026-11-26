@@ -15,18 +15,22 @@
 // CLVB) are instructions here, in place.
 //
 // What runs here is the chord frame on a guitar built with 7 strings (rs7string's B1 and B2). The frame model has the
-// height of six lanes, and no game data sizes it: every chord frame of such a guitar is fitted to the lanes the chord
-// uses. seven_b1 marks a frame when the chord box builder has made its geometry, with the highest string its chord
-// uses (5 for strings 0-5 only); seven_b2, when Rnd_GemGeom_Build applies that geometry's span, scales the frame along
-// the string axis so it covers lanes 0 to that string, its edge on the highway floor (the grid part moves the floor of
-// inverted strings one spacing out). The game's own Rnd_Gem_SetScaleTranslate then sets what seven_b2 left in its
-// arguments. Guitars built with 6 strings and bass keep the game's frames.
+// height of six lanes, and no game data sizes it: every chord frame of such a guitar is fitted to the whole guitar, as
+// the game's frame covers all six strings of its own (RS Extended Range 1.0.0-beta.4: whatever strings the chord uses).
+// seven_b1 marks a frame when the chord box builder has made its geometry, with the guitar's last string (6 for 7
+// strings); seven_b2, when Rnd_GemGeom_Build applies that geometry's span, scales the frame along the string axis so it
+// covers lanes 0 to that string, its edge on the highway floor (the grid part moves the floor of inverted strings one
+// spacing out). The game's own Rnd_Gem_SetScaleTranslate then sets what seven_b2 left in its arguments. Guitars built
+// with 6 strings and bass keep the game's frames.
+//
+// And the finger markers on the neck, whose barres cover the seventh string (rs7string's PUBFA, PUBGF and PUBBC; at the end).
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "seven.h"
+#include "seven_barre.h"
 
 #define FRAME_AXIS 1  // the frame model's string axis (rs7string's [chords] frame_axis default: y)
 #define MARKS 32      // frames marked and not yet built
@@ -84,7 +88,7 @@ static int floor_moved(const float a0[3], const float a1[3], const float b[3]) {
 // A chord frame is one model whose origin edge sits on the fret wires' bottom end b (the highway floor) and which
 // extends towards the lanes by H = 5d + 2m (d the string spacing, m the game's margin beyond the outer lane of lanes
 // 0-5; rs7string's HYPOTHESIS: the model is symmetric about lanes 0-5). It must cover lanes 0-5, or 0-top (top 6/7: the
-// highest string the chord uses), each with margin m. The origin edge stays on the floor; only the far edge moves
+// guitar's last string), each with margin m. The origin edge stays on the floor; only the far edge moves
 // (scale), except where the origin edge lies inside the outermost lane and its margin (a floor that was not moved): then
 // it moves out too (shift). a0 / a1 = the string 0 / 1 attach points, b = fret bar 0's bottom end, all guitar-local;
 // moved = the floor was moved by a spacing. 0 for a degenerate geometry (out untouched).
@@ -153,19 +157,14 @@ static void lock(void) {
 }
 static void unlock(void) { __atomic_store_n(&g_lock, 0, __ATOMIC_RELEASE); }
 
-// The highest string 6 / 7 of a chord on a guitar built with `count` strings, else 5 (strings 0-5 only). rs7string's
-// Rs7Chord_FrameTop over the song's strings: here the guitar's, which a 7-string song builds (the strings part).
-static int frame_top(const void *tpl, int count) {
-  const uint8_t *t8 = tpl ? seven_chords_as_t8(tpl) : NULL;  // the chords part's (seven_chords.h)
-  for (int s = (count > SEVEN_CAPACITY ? SEVEN_CAPACITY : count) - 1; t8 && s >= SEVEN_STOCK; s--)
-    if (seven_chords_t8_fret(t8, s) >= 0) return s;
-  return SEVEN_STOCK - 1;
-}
+// The last string of a guitar built with `count` strings (7 or 8): every chord frame reaches it, whatever strings the
+// chord uses (rs7string's Rs7Chord_OnBoxGeom since 1.0.0-beta.4: top = count - 1; before, 6 when the chord used string 6
+// and 5 otherwise, so a chord of strings 0-5 got a frame that stopped short of the seventh string).
+static int frame_top(int count) { return (count > SEVEN_CAPACITY ? SEVEN_CAPACITY : count) - 1; }
 
 // B1: the chord box builder has made the chord frame's geometry (geom, 0 when its allocation failed) for the chord
-// render object `chord` (its template at chord_render_template) on the play session `session`. On a guitar built with
-// 7 or 8 strings it is marked, every frame (rs7string's Rs7Chord_OnBoxGeom): a chord of strings 0-5 covers lanes 0-5
-// from a floor that moved (else it is the game's frame), a chord with string 6 reaches its lane.
+// render object `chord` on the play session `session`. On a guitar built with 7 or 8 strings it is marked, every frame
+// (rs7string's Rs7Chord_OnBoxGeom): it covers all the guitar's lanes, up to its last string.
 static void on_b1(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
@@ -173,7 +172,7 @@ static void on_b1(rc_mid_frame *f, void *user) {
   const uint8_t *guitar = geom && chord ? ptr_at(session, RC_OFF(session_guitar)) : NULL;
   const int count = seven_count(guitar);
   if (!count) return;
-  const int top = frame_top(ptr_at(chord, RC_OFF(chord_render_template)), count);
+  const int top = frame_top(count);
   lock();
   for (int i = 0; i < MARKS; i++)
     if (g_marks[i].geom == geom) {  // a geometry made again at the same address: its new mark only
@@ -279,9 +278,95 @@ static void on_sm7(rc_mid_frame *f, void *user) {
   OV_GUEST(section_string_bit, SEVEN_GET(f, "mask"), (uint32_t)SEVEN_GET(f, "phrase"), STR6);
 }
 
+// ---- the finger markers on the neck (rs7string's publish: PUBFA, PUBGF, PUBBC), 1.0.0-beta.6
+// The game's neck marks a finger of a chord with a pill (a "barre" over several strings): the marker loop takes the
+// first string in slot order that has the finger, the span function counts the strings from the finger's lowest to
+// its highest, the marker's barre clip is seeked to (span - 1) / 5 of its length, and the barre runs up from the anchor
+// string. With a seventh string the slot order is not the neck's (string 6 lies beyond string 0: seven_barre.h), so
+//   seven_pubfa   the marker function's entry: the finger's anchor becomes its lowest string (a barre over the low B and
+//                 E was drawn from the E, one string too high)
+//   seven_pubgf   the span function: the span over the template's physical ranks, string 6 counted (Learn & Play only:
+//                 the Mac's unrolled copy is its own edit, FG5M in edits.map). Before, the low B was left out of a barre
+//   seven_pubbc_scale / seven_pubbc_setscale   when a marker's span changed, the barre capsules' scale: the clip ends at
+//                 five guitar gaps, a barre of seven strings is six, so the capsule is scaled up by 6 / 5 (Learn &
+//                 Play: an edit calls Entity_SetScale with the bits this callback leaves in ecx; the Mac: this callback
+//                 calls it). rs7string also scales the clip's seek by the same gap ratio; with the guitar's own gap that
+//                 ratio is 1, so it is left out here (this port has no string spacing setting)
+// All of it runs only when the game has every point (seven_mid_optional): an older RS Re-ARMed keeps the stock markers.
+#define GUITAR_GAP 1.608f  // the game's string gap (rs7string's kGuitarGap); the barre clip ends at five of them
+static int g_barre;       // every point of the fix is taken
+
+// The guitar of a finger marker's owner (the neck's marker manager: its player at seven_marker_player), else NULL
+static const uint8_t *marker_guitar(const uint8_t *owner) {
+  const uint8_t *player = ptr_at(owner, RC_OFF(seven_marker_player));
+  return ptr_at(player, RC_OFF(session_guitar));
+}
+
+// PUBFA: eax / r15 = the string the marker loop found, template = its T8 (the neck's marker function is only called
+// from that loop). A 7- or 8-slot template: the finger's lowest string
+static void on_pubfa(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on || !g_barre) return;
+  const uint8_t *t8 = seven_chords_as_t8(PTR(f, "template"));
+  if (!t8) return;
+  const unsigned n = (unsigned)seven_chords_t8_slots(t8), s = (unsigned)SEVEN_GET(f, "string") & 0xff;
+  if (n != 7 && n != 8) return;
+  SEVEN_SET(f, "string", seven_barre_anchor((const uint8_t *)FIELD(t8, seven_t8_fingers), n, s));
+}
+
+// PUBGF (Learn & Play): the span function's loop has run over the template's six fingers; lo / hi = its lowest and
+// highest string (edx, ecx), and `span = hi - lo + 1`, `hi != 0` follow. For a T8 of seven or eight slots they are
+// the physical ranks over all of them
+static void on_pubgf(rc_mid_frame *f, void *user) {
+  (void)user;
+  if (!seven_on || !g_barre) return;
+  const uint8_t *t8 = seven_chords_as_t8(PTR(f, "template"));
+  if (!t8) return;
+  const unsigned n = (unsigned)seven_chords_t8_slots(t8);
+  if (n != 7 && n != 8) return;
+  unsigned lo, hi;
+  seven_barre_span((const uint8_t *)FIELD(t8, seven_t8_fingers), n, (unsigned)SEVEN_GET(f, "finger") & 0xff, &lo, &hi);
+  SEVEN_SET(f, "lo", lo);
+  SEVEN_SET(f, "hi", hi);
+}
+
+// The scale of a marker's capsules for a barre of `span` strings on its owner's guitar, as the float's bits; 0 for a
+// guitar that is not built with 7 or 8 strings (or a marker with no capsules): the game's own
+static uint32_t barre_scale_bits(rc_mid_frame *f) {
+  if (!seven_on || !g_barre || !SEVEN_GET(f, "entity1") || !SEVEN_GET(f, "entity2")) return 0;
+  if (!seven_count(marker_guitar(PTR(f, "owner")))) return 0;
+  const float k = seven_barre_entity_scale((int32_t)SEVEN_GET(f, "span"), GUITAR_GAP, GUITAR_GAP);
+  return f32bits(k);
+}
+
+// PUBBC (Learn & Play): the edit after this point calls Entity_SetScale(capsule, scale) twice unless scale_bits is 0
+static void on_pubbc_scale(rc_mid_frame *f, void *user) {
+  (void)user;
+  SEVEN_SET(f, "scale_bits", barre_scale_bits(f));
+}
+
+// PUBBC (the Mac): the game's Entity_SetScale(entity, 1, scale) on both capsules
+static void on_pubbc_setscale(rc_mid_frame *f, void *user) {
+  (void)user;
+  const uint32_t bits = barre_scale_bits(f);
+  if (!bits) return;
+  const uint64_t e[] = {SEVEN_GET(f, "entity1"), SEVEN_GET(f, "entity2")};
+  for (int i = 0; i < 2; i++) {
+    const uint64_t a[3] = {e[i], 1, bits};
+    rc_call_name_f("entity_set_scale", a, 3, 1u << 2);
+  }
+}
+
 int seven_chdraw_init(void) {
   if (seven_mid("seven_b1", on_b1) || seven_mid("seven_b2", on_b2) || seven_mid("seven_sh7", on_sh7) ||
       seven_mid("seven_pl7", on_pl7) || seven_mid("seven_sm7", on_sm7))
     return -1;
+  // the finger markers' barres: all four, or none of it (a point this RS Re-ARMed lacks leaves the game's markers)
+  const char *what = "barre markers over all strings";
+  const int a = seven_mid_optional("seven_pubfa", on_pubfa, what);
+  const int b = seven_mid_optional("seven_pubgf", on_pubgf, what);
+  const int c = seven_mid_optional("seven_pubbc_scale", on_pubbc_scale, what);
+  const int d = seven_mid_optional("seven_pubbc_setscale", on_pubbc_setscale, what);
+  g_barre = a && b && c && d && RC_HAS_OFF(seven_marker_player);
   return 0;
 }
