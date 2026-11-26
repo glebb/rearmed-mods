@@ -218,6 +218,45 @@ static int lowest(int game, const int16_t t[8], size_t n, int is_bass) {
   return low;
 }
 
+// The detection's raw floor follows its lowest open note (rs7string's RsxrPitch_DetFloor). The floor the game's reset
+// wrote is kept per detection, so a floor lowered for a low song goes back to it for a higher one, also to a floor
+// another mod patched in. A detection first seen after its reset records the floor it has then (not below the stock
+// one: the record of a lowered floor may have been replaced). A full table replaces its entries in turn.
+static struct {
+  const void *det;
+  int reset;
+} g_floor[8];
+static int g_floor_next, g_floor_lines;
+
+static int reset_floor_of(const uint8_t *det, int reset, int current) {
+  for (int i = 0; i < 8; i++)
+    if (g_floor[i].det == det) {
+      if (reset) g_floor[i].reset = current;
+      return g_floor[i].reset;
+    }
+  int at = -1;
+  for (int i = 0; i < 8 && at < 0; i++)
+    if (!g_floor[i].det) at = i;
+  if (at < 0) at = g_floor_next++ & 7;
+  g_floor[at].det = det;
+  g_floor[at].reset = reset || current >= SEVEN_FLOOR_STOCK ? current : SEVEN_FLOOR_STOCK;
+  return g_floor[at].reset;
+}
+
+void seven_pitch_det_floor(void *detection, int reset) {
+  uint8_t *det = detection;
+  if (!det || !RC_HAS_OFF(detection_floor)) return;
+  uint8_t *at = det + RC_OFF(detection_floor);
+  const int current = RC_LD(int32_t, at), lowest = RC_LD(int32_t, det + RC_OFF(detection_lowest_open));
+  const int base = reset_floor_of(det, reset, current);
+  const int want = seven_pitch_floor(base, lowest);
+  if (want == current) return;
+  if (g_floor_lines++ < 60)
+    rsm_log("seven-string: pitch: detection %p floor %d -> %d (lowest open %d, reset floor %d)", (void *)det, current,
+            want, lowest, base);
+  RC_ST(int32_t, at, want);
+}
+
 static void write_det(uint8_t *det, const int16_t t[8]) {
   int16_t open[8];
   const int b = bass(det);
@@ -245,6 +284,7 @@ static void det_tuned(uint8_t *det, const int16_t *e, size_t n, int apply) {
   write_det(det, t);
   uint8_t *low = det + RC_OFF(detection_lowest_open);
   RC_ST(int32_t, low, lowest(RC_LD(int32_t, low), t, n, bass(det)));
+  seven_pitch_det_floor(det, 0);
 }
 
 static void mat_new(uint8_t *m) {
@@ -419,7 +459,10 @@ static void on_pr0(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
   uint8_t *det = P(SEVEN_GET(f, "detection"));
-  if (det) det_reset(det);
+  if (det) {
+    det_reset(det);
+    seven_pitch_det_floor(det, 1);  // the floor the reset just wrote is this detection's own
+  }
 }
 
 // Play_Detector_SetTuning's exits, at their ret: the game copied the vector's six entries and made the open notes
@@ -495,6 +538,7 @@ static void song_setup(uint8_t *det, const uint8_t *tuning, uint8_t *session) {
   set_song_count(det, count);
   RC_ST(uint32_t, det + RC_OFF(seven_detection_count), count);
   RC_ST(int32_t, det + RC_OFF(detection_lowest_open), low);
+  seven_pitch_det_floor(det, 0);
   song_note("widened (strings, lowest open note)", count, (unsigned)low);
 }
 

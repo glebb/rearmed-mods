@@ -19,7 +19,7 @@
 //                     the first string of the order)
 //   single reads      TS8FIN (a letter), TS8NTI (the labels of strings 6 / 7), TS8SN1/SN2 (the tuned sound's note)
 //   low range         TS8SEL (the detector's lowest open note), W (the wrong-instrument threshold), for 7/8 strings
-//   others            LT1 (tuner letters on a 3+3 headstock)
+//   others            LT1 (tuner letters on a 3+3 headstock), TF2 (the right-handed 7-string camera's pan)
 // rs7string's TS8PA / TS8PZ (Play_Tuning_ApplyToDetection running) are the pitch part's: it knows that call by its
 // return address.
 // Game thread only.
@@ -411,6 +411,7 @@ static void on_ts8sel(rc_mid_frame *f, void *user) {
   if (low >= cur) return;
   tlog("low range: detection %p lowest open note %d -> %d", (void *)det, cur, low);
   RC_ST(int32_t, FIELD(det, detection_lowest_open), low);
+  seven_pitch_det_floor(det, 0);  // the raw candidate floor follows it, so the lowest string is heard
 }
 
 // W: the guitar's wrong-instrument check compares the mean of ten detected notes with the game's limit (34, a note
@@ -441,6 +442,24 @@ static void on_lt1(rc_mid_frame *f, void *user) {
   if (!(__builtin_popcount(v) & 1)) fl |= 1u << 2;  // PF
   f->flags = fl;
   f->go = SEVEN_CONT(f, "done");
+}
+
+// TF2 (rs7string's, beta.4): the tuner camera's pose puts the camera's world y (along the neck) over the neck's tip
+// after the overview table's offset. The stock framing fits six pegs; a right-handed guitar built with 7/8 strings has
+// a longer in-line headstock whose outer pegs and the high e letter fell off the edge, so the camera pans 6 units
+// towards the tip (rs7string's value, tested in game for 7 and 8 pegs). Left-handed views have room (mirrored
+// framing), and so does the other offset table (the song's own view, not this point). The point is at the start of the
+// overview table's path, where the camera's y has the pose's own value; the table's offset is added after it, as in
+// rs7string's, which subtracts after the add. A bass is not widened here.
+#define TF2_PAN 6.0f
+
+static void on_tf2(rc_mid_frame *f, void *user) {
+  if (!seven_on) return;
+  const uint8_t *s = PTR(f, "session");
+  if (!s || SEVEN_GET(f, "lefty")) return;
+  void *guitar = rc_mod_ptr(FIELD(s, player_tuner_guitar));
+  if (!guitar || seven_strings_count(guitar) < 7) return;
+  SEVEN_SETF(f, "y", SEVEN_GETF(f, "y") - TF2_PAN);
 }
 
 int seven_tuner_init(void) {
@@ -481,5 +500,7 @@ int seven_tuner_init(void) {
   };
   for (size_t k = 0; k < sizeof points / sizeof *points; k++)
     if (seven_mid(points[k].name, points[k].fn)) return -1;
+  // after rs7string 2edcf68: an older RS Re-ARMed lacks it (the pan stays off)
+  seven_mid_optional("seven_tf2", on_tf2, "the right-handed 7-string tuner's pan (rs7string beta.4)");
   return 0;
 }
