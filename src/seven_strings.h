@@ -50,11 +50,11 @@ static inline int seven_build_count(int n) { return n == 0 || n < 4 ? SEVEN_STOC
 enum seven_role { SEVEN_ROLE_OTHER, SEVEN_ROLE_SONG, SEVEN_ROLE_TUNER, SEVEN_ROLE_MODE };
 // rs7string's RebuildTarget: the count to rebuild a player's instrument with, 0 for none. Song selection: the
 // arrangement's count; the tuning list's tuner: the picked tuning's, unless a song runs; a mode entry: back to stock
-// (`stock` 6 for a guitar, 4 for a bass). Never another player than 0 here (player 1's rebuild is co-op's), never while
-// a player tuner holds a guitar.
+// (`stock` 6 for a guitar, 4 for a bass). Players 0 and 1 (local co-op), never another one, never while a player tuner
+// holds a guitar.
 static inline int seven_rebuild_target_for(enum seven_role r, unsigned player, int want, int was, int tuners, int song,
                                            int stock) {
-  if (player != 0 || tuners) return 0;
+  if (player > 1 || tuners) return 0;
   if (r == SEVEN_ROLE_SONG) return want != was ? want : 0;
   if (r == SEVEN_ROLE_TUNER) return !song && want != was ? want : 0;
   if (r == SEVEN_ROLE_MODE && want == stock && was != stock) return stock;
@@ -62,6 +62,22 @@ static inline int seven_rebuild_target_for(enum seven_role r, unsigned player, i
 }
 static inline int seven_rebuild_target(enum seven_role r, unsigned player, int want, int was, int tuners, int song) {
   return seven_rebuild_target_for(r, player, want, was, tuners, song, SEVEN_STOCK);
+}
+
+// rs7string's NormaliseSlot1: a mode entry stores player 0's tuning only, so player 1's guitar of 7 or 8 strings (or bass
+// of 5 or 6) built for a co-op song goes back to the stock count with it. `wide`: player 1's instrument is built or
+// wanted with more than the stock strings; never while a player tuner holds a guitar.
+static inline int seven_slot1_normalise(enum seven_role r, unsigned player, int wide, int tuners) {
+  return r == SEVEN_ROLE_MODE && player == 0 && wide && !tuners;
+}
+
+// The strings an InstrumentInfo loads and shows (its +0x41 / +0x40) of the build count n: the build count, but the
+// strings past the stock count (6 of a guitar, 4 of a bass) are not loaded or shown while string7_line is off (rs7string's
+// N1 / N21 pool requests and its culling of the added strings). The build count (+0x0b) stays: the lanes, the notes
+// and the detection keep the extended instrument; only its string line is gone.
+static inline int seven_shown_count(int n, int bass, int line) {
+  const int c = seven_build_count(n), stock = bass ? 4 : SEVEN_STOCK;
+  return line || c <= stock ? c : stock;
 }
 
 // String s (0-7) of a GuitarStrings (host pointer), its ghost when ghost: a host pointer, NULL for none
