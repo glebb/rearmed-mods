@@ -790,8 +790,29 @@ private struct SevenStringSettings: View {
                           fallback: store.colorValue(Section.sevenString, "string6_N") ?? Catalog.lowBColor,
                           showsGame: false, resetHelp: "Back to the normal color")
             }
+            GridRow {
+                Text("String 7 (8-string's F#)")
+                ColorCell(section: Section.sevenString, key: "string7_N", fallback: Catalog.lowF7Color,
+                          showsGame: false, resetHelp: "Back to pink")
+                ColorCell(section: Section.sevenString, key: "string7_CB",
+                          fallback: store.colorValue(Section.sevenString, "string7_N") ?? Catalog.lowF7Color,
+                          showsGame: false, resetHelp: "Back to the normal color")
+            }
         }
         Toggle("With Extended Range on, the low B takes its low string color", isOn: onOff("ExtendedRangeColor"))
+        Divider()
+        Text("String spacing on the neck").font(.caption).foregroundStyle(.secondary)
+        ForEach(Catalog.spacingKeys, id: \.key) { item in
+            HStack {
+                Text(item.label).frame(width: 110, alignment: .leading)
+                Slider(value: spacing(item.key), in: 0...4, step: 0.1)
+                Text(spacing(item.key).wrappedValue < 0.5 ? "Standard" : String(format: "%.1f", spacing(item.key).wrappedValue))
+                    .font(.callout.monospaced()).frame(width: 64)
+            }
+        }
+        Toggle("A line over the 7th string's fret wire", isOn: flag("string7_line"))
+        Toggle("Chord diagrams with a 7th row (needs a game restart)", isOn: flag("diagrams7"))
+        Toggle("No wrong-instrument warning in 7-string Drop A, A and G Standard", isOn: flag("lowrange"))
         Divider()
         Picker("A 7- or 8-note chord counts as played", selection: store.binding(Section.sevenString, "ChordWideMisses")) {
             Text("Only with every note").tag("0")
@@ -816,7 +837,7 @@ private struct SevenStringSettings: View {
             Text(String(format: "%.2f", wood.wrappedValue)).font(.callout.monospaced()).frame(width: 40)
         }
         .disabled(!onOff("Headstock7").wrappedValue)
-        Text("For 7-string charts, such as DotCharter's: a seventh string, its notes and chords, the fret grid, tuner and chord diagrams over seven strings, after rs7string. Six-string songs and bass stay as the game has them. The color changes while the game runs; the rest from its next start. DotCharter's unencrypted charts need Plain Packages too.")
+        Text("For 7- and 8-string charts, such as DotCharter's, and 5- and 6-string bass: extra strings, its notes and chords, the fret grid, tuner and chord diagrams over seven strings, after rs7string. Six-string songs and four-string bass stay as the game has them. Colors, spacing and the line and warning switches change while the game runs; the rest from the next start. DotCharter's unencrypted charts need Plain Packages too.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
@@ -826,6 +847,17 @@ private struct SevenStringSettings: View {
     private func onOff(_ key: String) -> Binding<Bool> {
         Binding(get: { store.value(Section.sevenString, key).lowercased() != "off" },
                 set: { store.set(Section.sevenString, key, $0 ? "on" : "off") })
+    }
+
+    // A 0/1 key of [Seven String], on unless it says 0, off, false or no (seven_settings_parse)
+    private func flag(_ key: String) -> Binding<Bool> {
+        Binding(get: { !["0", "off", "false", "no"].contains((store.ini.value(Section.sevenString, key) ?? "1").lowercased()) },
+                set: { store.set(Section.sevenString, key, $0 ? "1" : "0") })
+    }
+
+    private func spacing(_ key: String) -> Binding<Double> {
+        Binding(get: { Catalog.spacingSlider(text: store.ini.value(Section.sevenString, key) ?? "") },
+                set: { store.set(Section.sevenString, key, Catalog.spacingText(slider: $0)) })
     }
 
     private var wood: Binding<Double> {
