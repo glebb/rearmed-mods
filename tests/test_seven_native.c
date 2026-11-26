@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "check.h"
+#include "seven_native_core.c"
 #include "seven_native.c"
 
 // --- the game's side -----------------------------------------------------------------------------------------------

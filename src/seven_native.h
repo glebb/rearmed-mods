@@ -4,7 +4,8 @@
 // inflated body starts "SNXR" with N-wide records. seven_native.c translates all three while the game loads them, to the
 // form the rest of this unit reads (rs7string's at 2edcf68, the one this port was made from): a package with the magic
 // PSAR, a manifest Tuning string0..5 in the game's slot order plus Rs7String6 / Rs7String7, a chart with the RS7X block.
-// The pure converters are here (bytes in, bytes out; tests/test_seven_native.c); the mod part is seven_native_init.
+// The pure converters (bytes in, bytes out; seven_native_core.c, tests/test_seven_native.c) are what the offline readers
+// link too; the mod part is seven_native_init (seven_native.c).
 #ifndef RS_SEVEN_NATIVE_H
 #define RS_SEVEN_NATIVE_H
 #include <stddef.h>

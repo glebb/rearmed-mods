@@ -24,7 +24,8 @@ typedef struct {
 rsm_psarc *rsm_psarc_open_io(const char *path, const uint8_t key[32], const rsm_psarc_io *io);
 int rsm_psarc_files(const rsm_psarc *a);                             // the named files
 const char *rsm_psarc_name(const rsm_psarc *a, int i);               // file i's name (from 0)
-void *rsm_psarc_read(rsm_psarc *a, int i, size_t *len);              // file i, malloc'ed and NUL-terminated; NULL
+void *rsm_psarc_read(rsm_psarc *a, int i, size_t *len);              // file i, malloc'ed and NUL-terminated; NULL (a native package's *.json / *.hsan in the game's internal form)
+int rsm_psarc_is_native(const rsm_psarc *a);                        // a "PSXR" package (RS Extended Range native)
 void rsm_psarc_close(rsm_psarc *a);
 // The game's key, as it has it: 64 hex digits
 int rsm_psarc_key_from_hex(const char *hex, uint8_t key[32]);

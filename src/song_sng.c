@@ -9,6 +9,8 @@
 #include <strings.h>
 #include <zlib.h>
 
+#include "seven_native.h"
+
 // The SNG keys, public since the custom-song tools: the Mac's and the PC's
 static const uint8_t KEY_MAC[32] = {0x98, 0x21, 0x33, 0x0E, 0x34, 0xB9, 0x1F, 0x70, 0xD0, 0xA4, 0x8C, 0xBD, 0x62, 0x59, 0x93, 0x12,
                                     0x69, 0x70, 0xCE, 0xA0, 0x91, 0x92, 0xC0, 0xE6, 0xCD, 0xA6, 0x76, 0xCC, 0x98, 0x38, 0x28, 0x9D};
@@ -41,6 +43,13 @@ uint8_t *sng_decrypt(const uint8_t *file, size_t n, int mac, size_t *out_n) {
   if (p) inflateEnd(&z);
   free(dec);
   if (r != Z_STREAM_END || z.total_out != len) return free(p), NULL;
+  // a native chart (SNXR, in a plain package's SNG) to the form the parser reads; it needs no more room than it has
+  if (flags == 1 && seven_native_is_sng(p, len)) {
+    uint8_t *q = malloc(len);
+    if (!q || seven_native_sng(p, len, q, NULL, 0) != SEVEN_NATIVE_OK) return free(q), free(p), NULL;
+    free(p);
+    p = q;
+  }
   *out_n = len;
   return p;
 }

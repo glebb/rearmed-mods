@@ -242,6 +242,31 @@ int main(void) {
   back = sng_decrypt(open.p, open.n, 1, &n);
   CHECK(back && n == plain.n && !memcmp(back, plain.p, n));
   free(back), free(open.p);
+  // a native chart (SNXR: a 6-string guitar in a native header, which the format allows) in a plain SNG comes back as the
+  // stock body the parser reads, the same notes
+  {
+    buf nat = {0};
+    put(&nat, "SNXR\x01\x00\x06\x00", 8);
+    put(&nat, plain.p, plain.n);
+    put(&nat, NULL, 256);  // the padding after MetaData
+    buf nf = {0};
+    u32(&nf, 0x4a), u32(&nf, 1);
+    put(&nf, NULL, 16);
+    uint32_t nlen = (uint32_t)nat.n;
+    put(&nf, &nlen, 4);
+    uLongf nzn = compressBound(nat.n);
+    uint8_t *nzd = at(&nf, nzn);
+    compress(nzd, &nzn, nat.p, nat.n);
+    nf.n = 28 + nzn;
+    put(&nf, NULL, 56);
+    size_t nn = 0;
+    uint8_t *conv = sng_decrypt(nf.p, nf.n, 1, &nn);
+    sng_arrangement na;
+    CHECK(conv && nn == nat.n && memcmp(conv, "SNXR", 4));
+    CHECK(conv && sng_parse(conv, nn, 0, 0, &na) && na.n == 3 && na.ev[0].midi[0] == 50 && na.ev[2].midi[0] == 40);
+    if (conv && na.ev) sng_free(&na);
+    free(conv), free(nf.p), free(nat.p);
+  }
   file.p[30] ^= 1;
   CHECK(sng_decrypt(file.p, file.n, 1, &n) == NULL);
   free(file.p), free(plain.p);

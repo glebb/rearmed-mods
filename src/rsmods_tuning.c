@@ -16,6 +16,7 @@
 #include <zlib.h>
 
 #include "rsmods_tuning.h"
+#include "seven_native.h"
 
 #define PSARC_ENCRYPTED 4
 #define MAX_ENTRIES 200000
@@ -31,6 +32,7 @@ struct rsm_psarc {
   int fd;
   uint32_t block_size;
   int nentries;
+  int native;      // magic "PSXR": the RS Extended Range native package (plain), its manifests rewritten on read
   entry *e;
   uint32_t *zlen;  // each block's stored size
   uint32_t nblocks;
@@ -134,7 +136,9 @@ rsm_psarc *rsm_psarc_open_io(const char *path, const uint8_t key[32], const rsm_
     a->io = io;
     a->fd = fd;
   }
-  if (!a || !read_at(a, h, sizeof h, 0) || memcmp(h, "PSAR", 4) || memcmp(h + 8, "zlib", 4)) goto fail;
+  if (!a || !read_at(a, h, sizeof h, 0) || memcmp(h + 8, "zlib", 4)) goto fail;
+  a->native = !memcmp(h, "PSXR", 4);
+  if (!a->native && memcmp(h, "PSAR", 4)) goto fail;
   uint32_t toc_end = be32(h + 12), entry_size = be32(h + 16), n = be32(h + 20);
   a->block_size = be32(h + 24);
   uint32_t flags = be32(h + 28);
@@ -144,6 +148,7 @@ rsm_psarc *rsm_psarc_open_io(const char *path, const uint8_t key[32], const rsm_
   size_t toc_len = toc_end - 32;
   toc = malloc(toc_len);
   if (!toc || !read_at(a, toc, toc_len, 32)) goto fail;
+  if (a->native && (flags & PSARC_ENCRYPTED)) goto fail;  // a native package is plain
   if ((flags & PSARC_ENCRYPTED) && !decrypt_toc(toc, toc_len, key)) goto fail;
   a->nentries = (int)n;
   a->e = calloc(n, sizeof *a->e);
@@ -191,7 +196,28 @@ fail:
 
 int rsm_psarc_files(const rsm_psarc *a) { return a->nentries - 1; }
 const char *rsm_psarc_name(const rsm_psarc *a, int i) { return i >= 0 && i < a->nentries - 1 ? a->names[i] : NULL; }
-void *rsm_psarc_read(rsm_psarc *a, int i, size_t *len) { return read_entry(a, i + 1, len); }
+int rsm_psarc_is_native(const rsm_psarc *a) { return a->native; }
+
+// A native package's manifests and HSAN (*.json, *.hsan) come out in the form the game is given (seven_native_manifest):
+// stock string0..5 in slot order, Rs7String6 / 7 for the extra strings, so every reader sees what the game sees
+void *rsm_psarc_read(rsm_psarc *a, int i, size_t *len) {
+  size_t n = 0;
+  char *d = read_entry(a, i + 1, &n);
+  if (d && a->native && i >= 0 && i < a->nentries - 1) {
+    const char *nm = a->names[i];
+    size_t l = strlen(nm);
+    char *out;
+    size_t on;
+    if (((l > 5 && !strcasecmp(nm + l - 5, ".json")) || (l > 5 && !strcasecmp(nm + l - 5, ".hsan"))) &&
+        seven_native_manifest(d, n, &out, &on, NULL, NULL)) {
+      free(d);
+      d = out;
+      n = on;
+    }
+  }
+  if (d && len) *len = n;
+  return d;
+}
 
 void rsm_psarc_close(rsm_psarc *a) {
   if (!a) return;

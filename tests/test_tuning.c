@@ -138,7 +138,45 @@ int main(void) {
       CHECK(encrypt ? a == NULL : a != NULL);
       rsm_psarc_close(a);
     }
-  FILE *f = fopen("not.psarc", "w");
+  // a native package (magic PSXR, plain): opened, flagged, its manifests in the form the game is given. A 7-string guitar,
+  // positional Tuning from the thickest (B E A D G B e): the stock strings come out in slot order, the low B apart.
+  const char *seven =
+      "{\"Entries\":{\"X\":{\"Attributes\":{\"ArrangementName\":\"Lead\",\"ExtendedRange\":{\"Version\":1},\"Tuning\":"
+      "{\"string0\":-2,\"string1\":-2,\"string2\":0,\"string3\":0,\"string4\":0,\"string5\":0,\"string6\":3}}}}}";
+  const char *nnames[] = {"manifests/songs_dlc_sev/sev_lead.json", "manifests/songs_dlc_sev/sev_vocals.json",
+                          "manifests/songs_dlc_sev/sev.hsan", "songs/bin/macos/sev_lead.sng"};
+  const char *nbodies[] = {seven, vocals, seven, big};
+  write_psarc("n.psarc", key, 0, 1024, 4, nnames, nbodies);
+  FILE *f = fopen("n.psarc", "r+b");
+  fwrite("PSXR", 1, 4, f);
+  fclose(f);
+  rsm_psarc *na = rsm_psarc_open("n.psarc", key);
+  CHECK(na && rsm_psarc_is_native(na) && rsm_psarc_files(na) == 4);
+  if (na) {
+    rsm_arrangement sa;
+    for (int i = 0; i < 4; i += 2) {
+      char *t = rsm_psarc_read(na, i, NULL);
+      CHECK(t && !strstr(t, "ExtendedRange") && strstr(t, "Rs7String6"));
+      CHECK(t && rsm_manifest_arrangement(t, &sa) && !strcmp(sa.name, "Lead") && sa.tuning[0] == -2 && sa.tuning[1] == 0 &&
+            sa.tuning[4] == 0 && sa.tuning[5] == 3);
+      free(t);
+    }
+    size_t len = 0;
+    char *v = rsm_psarc_read(na, 1, &len), *sng = rsm_psarc_read(na, 3, &len);
+    CHECK(v && !strcmp(v, vocals) && sng && len == strlen(big) && !memcmp(sng, big, len));  // not manifests: untouched
+    free(v), free(sng);
+    rsm_psarc_close(na);
+  }
+  // a plain package keeps its manifests as they are, a PSXR one can't be encrypted
+  rsm_psarc *pa = rsm_psarc_open("a.psarc", key);
+  CHECK(pa && !rsm_psarc_is_native(pa));
+  rsm_psarc_close(pa);
+  write_psarc("n2.psarc", key, 1, 1024, 4, nnames, nbodies);
+  f = fopen("n2.psarc", "r+b");
+  fwrite("PSXR", 1, 4, f);
+  fclose(f);
+  CHECK(rsm_psarc_open("n2.psarc", key) == NULL);
+  f = fopen("not.psarc", "w");
   fputs("PSAR but not one", f);
   fclose(f);
   CHECK(rsm_psarc_open("not.psarc", key) == NULL && rsm_psarc_open("missing.psarc", key) == NULL);
