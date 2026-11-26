@@ -543,9 +543,10 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     each with their own notes, tuner and scoring.
   * Native charts: RS Extended Range's native N-string format (`*_rsxr_p.psarc`, a plain PSARC with the magic `PSXR`;
     manifests with `"ExtendedRange"` and a positional `Tuning`; charts whose body starts `SNXR`) is read: while the
-    game loads a package, its manifests and its charts are translated to the form the unit reads. It needs Plain
-    Packages on (a native package is a plain archive) and the RS Re-ARMed mid points `seven_native_psarc`,
-    `seven_native_json` and `seven_native_sng`; without them native packages aren't listed. On the Mac the game lists
+    game loads a package, its manifests and its charts are translated to the form the unit reads. Plain Packages comes
+    on with it (a native package is a plain archive), whatever its own switch says. It needs the RS Re-ARMed mid
+    points `seven_native_psarc`, `seven_native_json` and `seven_native_sng`; without them native packages aren't
+    listed. The mods' own readers (song lists, the key finder, Extended Range, Tone Host, Song Stems) read them too. On the Mac the game lists
     `*_m.psarc` only, so a native package needs that name there.
   * `SevenString`, `[Seven String]` `string6_N` and `string6_CB` (the low B's color, normal and colorblind; empty: light
     grey), `string7_N` and `string7_CB` (the eighth string's, empty: pink, FF66CC; upstream's `string7_color`),
@@ -554,11 +555,13 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     (empty), `TuningNameSuffix` (7Str), `Headstock7` (on), `Headstock7Wood` (0.6; 0.05 to 1, its wood's brightness).
     After rs7string's `[neck]`, `[chords]` and `[tuner]`: `spacing_guitar7`, `spacing_guitar8`, `spacing_bass5` and
     `spacing_bass6` (empty or 0: the game's spacing; 0.5 to 4.0: how far apart the strings are on the neck, and the
-    headstock's pegs), `string7_line` (1: a line over the seventh string's fret wire), `diagrams7` (1: the chord book's
+    headstock's pegs), `string7_line` (1; 0: the added strings of every extended instrument aren't drawn, their lanes,
+    notes and detection stay, and they're kept out of the sections' dimming; read at the start), `diagrams7` (1: the chord book's
     seventh row; read at the start), `lowrange` (1: no wrong-instrument warning in 7-string Drop A, A Standard and G
     Standard). Other values than those are logged, and the key takes its default.
-    The app's Seven-String page sets them. They change while the game runs (the file is read again every half second);
-    the switch, `diagrams7` and the headstock's keys from the next start.
+    The app's Seven-String page sets them. The colors and `lowrange` change while the game runs (the file is read
+    again every half second), a spacing with the next instrument the game builds (a song for another instrument or
+    string count), the switch, `string7_line`, `diagrams7` and the headstock's keys from the next start.
   * A port of [rs7string](https://github.com/SomeeName/rs7string) by SomeeName, which patches the running Windows game.
     Here the same changes are built into RS Re-ARMed as edits and mid points, and the library switches them on when the
     game starts: in Learn & Play from RS Re-ARMed 1.12.0, on the Mac from 1.13.0. The chord diagrams and the headstock are built at
@@ -578,8 +581,12 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     says why. rs7string's switches for its other code paths aren't here; its defaults are the behaviour. On the Mac the
     game's list of a chord's expected notes keeps six entries, where Learn & Play's holds eight: a chord of seven or eight
     notes is judged by the mod's own chord detection in both.
+  * Checked in Learn & Play in scripted runs (2026-11-26) with a native chart (`_rsxr_p.psarc`: a 7-string Lead, a
+    5-string Bass): listed, B STANDARD 7STR, the chart converted as it loads and played on seven strings with the
+    seven-peg headstock, the tuner on the low B, chord frames over the low B and the fret range glow over all
+    strings, no fault.
   * Not checked in the game yet: everything about 8 strings, bass with five or six strings, local co-op, the spacing
-    keys and native charts. They were written from RS Extended Range's sources (beta.4 to beta.6) without running
+    keys, and the Mac with native charts. They were written from RS Extended Range's sources (beta.4 to beta.6) without running
     the game, in both editions; the first runs will show what is left. Each part that needs a mid point or edit
     an older RS Re-ARMed lacks stays off alone, and the log names the point.
   * Known limits, as upstream's: in co-op with a guitar and a bass, the bass's low B's glow, fret wires and scale
