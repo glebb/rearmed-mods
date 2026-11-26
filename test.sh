@@ -37,6 +37,23 @@ $cc "$here/tests/test_seven_native.c" -o "$out/test_seven_native"
 $cc -DGUEST32 "$here/tests/test_seven_native.c" -o "$out/test_seven_native32"
 $cc "$here/tests/test_seven_pitch.c" -o "$out/test_seven_pitch"
 $cc "$here/tests/test_seven_names.c" -o "$out/test_seven_names"
+$cc "$here/tests/test_seven_model.c" "$here/src/seven_model.c" -o "$out/test_seven_model"
+# Wave 2's tests of the packages: tests/test_<name>.link, if there, lists the extra sources and flags of its build
+# (paths from the repository's root; a package writes it instead of editing this file)
+for n in seven_bass seven_spacing seven_arrangements seven_colours; do
+  link=
+  if [ -f "$here/tests/test_$n.link" ]; then
+    for w in $(cat "$here/tests/test_$n.link"); do
+      case $w in
+      -*) link="$link $w" ;;
+      *) link="$link $here/$w" ;;
+      esac
+    done
+  fi
+  $cc "$here/tests/test_$n.c" $link -o "$out/test_$n"
+done
+"$out/test_seven_model"
+for n in seven_bass seven_spacing seven_arrangements seven_colours; do "$out/test_$n"; done
 "$out/test_ini"
 "$out/test_colors"
 "$out/test_gate"

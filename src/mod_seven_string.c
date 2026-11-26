@@ -29,15 +29,19 @@ static const char *const k_mac_only[] = {
     "seven_pd2_chord",         "seven_pd3_update",        "seven_pd4_update",        "seven_pd4_sustain",
     "seven_pd5_eval"};
 
-int seven_mid(const char *name, rc_mid_fn fn) {
-  // looked up: an older RS Re-ARMed has no rc_mid_is_none
+// A runtime that has the `none` state (rc_mid_is_none), looked up once: an older RS Re-ARMed hasn't it
+static int (*is_none_fn(void))(int) {
   static int (*is_none)(int) = (int (*)(int))-1;
   if (is_none == (int (*)(int))-1) is_none = (int (*)(int))dlsym(RTLD_DEFAULT, "rc_mid_is_none");
+  return is_none;
+}
+
+// Registers a name. mac_only: a name Learn & Play's tables have as `none`, which an older RS Re-ARMed lacks whole.
+static int add_point(const char *name, rc_mid_fn fn, int mac_only) {
+  int (*is_none)(int) = is_none_fn();
   int point = rc_mid_add_name(name, fn, NULL);
   if (point < 0) {
-    if (!is_none)
-      for (size_t i = 0; i < sizeof k_mac_only / sizeof *k_mac_only; i++)
-        if (!strcmp(name, k_mac_only[i])) return 0;
+    if (!is_none && mac_only) return 0;
     return -1;
   }
   if (is_none && is_none(point))
@@ -45,6 +49,24 @@ int seven_mid(const char *name, rc_mid_fn fn) {
   else
     g_points++;
   return 0;
+}
+
+int seven_mid(const char *name, rc_mid_fn fn) {
+  int mac_only = 0;
+  for (size_t i = 0; i < sizeof k_mac_only / sizeof *k_mac_only; i++)
+    if (!strcmp(name, k_mac_only[i])) mac_only = 1;
+  return add_point(name, fn, mac_only);
+}
+
+int seven_mid_mac(const char *name, rc_mid_fn fn) { return add_point(name, fn, 1); }
+
+int seven_mids_optional(const char *what, const struct seven_point *pts, int n) {
+  for (int i = 0; i < n; i++)
+    if (add_point(pts[i].name, pts[i].fn, pts[i].mac_only)) {
+      rsm_log("seven-string: %s off: this RS Re-ARMed has no mid point %s", what, pts[i].name);
+      return 0;
+    }
+  return 1;
 }
 
 int seven_mid_optional(const char *name, rc_mid_fn fn, const char *what) {
@@ -59,7 +81,7 @@ int seven_mid_optional(const char *name, rc_mid_fn fn, const char *what) {
 static struct {
   const char *group;
   const int *on;
-} g_after[4];
+} g_after[8];
 static int g_nafter;
 
 void seven_edits_after(const char *group, const int *on) {
@@ -81,6 +103,9 @@ __attribute__((constructor)) static void seven_init(void) {
                {"chord detection", seven_chdetect_init}, {"chord drawing", seven_chdraw_init},
                {"chord diagrams", seven_diagrams_init}, {"tuning names", seven_names_init},
                {"headstock", seven_headstock_init},
+               {"bass", seven_bass_init},
+               {"spacing", seven_spacing_init},
+               {"arrangements", seven_arrangements_init},
                {"native charts", seven_native_init}};
   for (size_t i = 0; i < sizeof parts / sizeof *parts; i++)
     if (parts[i].init()) {

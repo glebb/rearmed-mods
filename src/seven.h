@@ -44,6 +44,19 @@ int seven_mid_optional(const char *name, rc_mid_fn fn, const char *what);
 // after the unit's own group, and only while *on is set then. A target whose tables have no such group (the Mac,
 // where the fix's other points call the game themselves) needs none, so its failure leaves *on as it is.
 void seven_edits_after(const char *group, const int *on);
+// The same for a Mac-only name (`none` in Learn & Play's tables) of a part that isn't in k_mac_only: seven_mid's rules for
+// it (0 when taken; an RS Re-ARMed without rc_mid_is_none has no Mac tables, so a missing name is no reason to fail).
+int seven_mid_mac(const char *name, rc_mid_fn fn);
+// A fix's points together: all registered (1), or the first missing one is logged as `what` off and 0 is returned.
+// A mac_only point missing on an RS Re-ARMed without rc_mid_is_none counts as taken. CAVEAT: a point registered cannot be
+// unregistered, so after a 0 the points before the missing one stay registered and their callbacks run: each must check
+// seven_feature(F) first (seven_feature_set(F, seven_mids_optional(...))).
+struct seven_point {
+  const char *name;
+  rc_mid_fn fn;
+  int mac_only;
+};
+int seven_mids_optional(const char *what, const struct seven_point *pts, int n);
 // Plain Packages (mod_plain_packages.c) switched on, once, whatever its own switch says: 0 when it is on
 int plain_packages_start(const char *by);
 // The index of a point's value / continuation by name, looked up once per place (a point's index is f->point)
@@ -76,12 +89,17 @@ int seven_chdraw_init(void);
 int seven_diagrams_init(void);
 int seven_names_init(void);
 int seven_headstock_init(void);
+// Parts of the fixes that need several points; they return 0 always (a fix stays off through seven_feature)
+int seven_bass_init(void);
+int seven_spacing_init(void);
+int seven_arrangements_init(void);
 
 // What the parts share is declared in their own headers
 #include "seven_colours.h"
 #include "seven_grid.h"
 #include "seven_pitch.h"
 #include "seven_strings.h"
+#include "seven_model.h"
 #include "seven_tuner.h"
 #include "seven_chords.h"
 #include "seven_chdetect.h"
@@ -89,5 +107,8 @@ int seven_headstock_init(void);
 #include "seven_diagrams.h"
 #include "seven_names.h"
 #include "seven_headstock.h"
+#include "seven_bass.h"
+#include "seven_spacing.h"
+#include "seven_arrangements.h"
 
 #endif
