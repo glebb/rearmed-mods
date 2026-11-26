@@ -13,6 +13,14 @@
 // tuning list's tuner with a six-string tuning (and seven with a 7-string one). Never while a player tuner holds the
 // guitar or a song runs on it. Player 1 is always built with six.
 //
+// Wave 2: the manifest keys are four (Rs7String6 / 7 for a guitar of 7 / 8 strings, Rs7String4 / 5 for a bass of 5 / 6),
+// the counts per instrument are the model's (seven_desired_guitar / seven_desired_bass), and a count past the stock
+// is asked for only when its fix is on: eight strings (seven_feature(SEVEN_F_EIGHT), set by the chords part, and the
+// peg word's point), an extended bass (SEVEN_F_BASS, set by the pitch part, and this part's points: the bass branch's
+// count, the peg word, the attach points of its strings 4 and 5 from its rows, the headstock's clamp to four meshes).
+// The InstrumentInfo's class (+0x0) tells a bass from a guitar. Player 1 is still always built with the stock count
+// (co-op's rebuild of it, and the mode-entry normalisation, are not here). The string spacing is seven_spacing.c's.
+//
 // Every GuitarStrings, InstrumentInfo and PegSet has the native layout of eight (seven_strings.h): the edits size
 // them, the GuitarStrings ctor builds eight strings and eight ghosts into the native arrays (seven_gsc1 copies the
 // first six where the game's own arrays were, for the code that still reads those), and the sixteen GuitarStrings
@@ -92,6 +100,7 @@ int seven_strings_info_count(const void *info) { return info ? U8(info, instrume
 int seven_strings_guitar_count(const void *guitar) { return seven_strings_info_count(ptr_at(guitar, RC_OFF(guitar_info))); }
 int seven_strings_count(const void *guitar) { return seven_strings_guitar_count(guitar); }
 int seven_strings_active(const void *info) { return info ? U8(info, seven_info_active) : 0; }
+int seven_strings_info_is_bass(const void *info) { return info && RC_LD(int32_t, FIELD(info, instrument_type)) == 2; }
 int seven_strings_letter_inline(const void *info) { return seven_headstock_letter_inline(info); }
 
 // An InstrumentInfo's own counts from its build count (+0x0b), rs7string's RefreshCounts: loaded and active are the
@@ -99,8 +108,7 @@ int seven_strings_letter_inline(const void *info) { return seven_headstock_lette
 // strings 6 and 7 (+0x38 / +0x3c) are string 0's: a string beside string 0 bends its way (rs7string's BD1-BD4; the
 // game's rule would give string 6 the high strings' mode).
 static void counts(uint8_t *info) {
-  int n = U8(info, instrument_strings);
-  int c = n == 4 ? 4 : n < SEVEN_STOCK ? SEVEN_STOCK : n > SEVEN_CAPACITY ? SEVEN_CAPACITY : n;
+  int c = seven_build_count(U8(info, instrument_strings));
   RC_ST(uint8_t, FIELD(info, seven_info_active), c);
   RC_ST(uint8_t, FIELD(info, seven_info_loaded), c);
   uint8_t *mode = FIELD(info, instrument_string_mode);
@@ -109,11 +117,12 @@ static void counts(uint8_t *info) {
 }
 
 // ---- C-lite: the build count
-static int g_desired = SEVEN_STOCK;  // the count player 0's next guitar profile gets (the last song selection's)
+// The counts the next profiles get are the model's (seven_desired_guitar / seven_desired_bass: the last song selection's)
+static int g_pegs_ok, g_bass_ok;  // the peg word's point (8 pegs, the bass's) is taken; the bass's points are all taken
 static int g_load_player;            // the player of the profile the guitar manager loads next (seven_gkm)
 static uint8_t *g_manager;           // the guitar manager (seven_gkm)
 
-int seven_strings_desired(void) { return __atomic_load_n(&g_desired, __ATOMIC_RELAXED); }
+int seven_strings_desired(void) { return seven_desired_guitar(0); }
 
 // The guitar of player 0 or 1 by the guitar manager, NULL for none
 static uint8_t *player_guitar(unsigned player) {
@@ -121,28 +130,54 @@ static uint8_t *player_guitar(unsigned player) {
   return ptr_at(holder, RC_OFF(guitar_holder_guitar));
 }
 
-// The count the guitar profile of player 0 or 1 asks for: 7 or 8 for a guitar built so, else 6 (bass, no manager)
+// The count the guitar profile of player 0 or 1 asks for: a guitar's 6 to 8, a bass's 4 to 6; 0 for none (no manager)
 static int profile_count(unsigned player) {
   uint8_t *holder = player < 2 ? ptr_at(g_manager, RC_OFF(guitar_manager_holders) + player * rc_guest_ptr_size) : NULL;
   uint8_t *profile = ptr_at(holder, RC_OFF(guitar_holder_profile));
-  if (!profile || RC_LD(int32_t, FIELD(profile, guitar_profile_type)) != 1) return SEVEN_STOCK;
-  int n = U8(profile, guitar_profile_strings);
-  return n == 7 || n == 8 ? n : SEVEN_STOCK;
+  if (!profile) return 0;
+  const int type = RC_LD(int32_t, FIELD(profile, guitar_profile_type)), n = U8(profile, guitar_profile_strings);
+  if (type == 1) return n == 7 || n == 8 ? n : SEVEN_STOCK;
+  if (type == 2) return seven_is_ext_bass(n) ? n : SEVEN_BASS_STOCK;
+  return 0;
 }
 
-// GKC: the guitar branch of GuitarProfile_Load has written the game's 6: player 0's profile gets the desired count,
-// every other player's six (only player 0 is ever built with seven). The peg word after it (the pool's pegs for the
-// guitar) is 7, by the edit PSQ1 on it, for every guitar: a guitar built with seven may load a seventh peg (PSL1).
+// GKC: the guitar branch of GuitarProfile_Load has written the game's 6: the player's desired count goes there (player
+// 1's is six: co-op's rebuild of it is not here). The Mac's point follows both branches' common store, so a bass's
+// profile passes here too: the bass count the same way. The peg word after it (the pool's pegs for the guitar) is 7,
+// by the edit PSQ1 on it, for every guitar: a guitar built with seven may load a seventh peg (PSL1); seven_gkp
+// writes the word for eight and for the extended bass.
 static void on_gkc(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   uint8_t *profile = PTR(f, "profile");
-  // a bass's count stays the game's (the Mac's point follows both branches' common store)
-  if (!profile || RC_LD(int32_t, FIELD(profile, guitar_profile_type)) == 2) return;
-  int n = g_load_player == 0 ? seven_strings_desired() : SEVEN_STOCK;
+  if (!profile) return;
+  const int bass = RC_LD(int32_t, FIELD(profile, guitar_profile_type)) == 2;
+  // a bass's count stays the game's unless an extended bass is wanted
+  const int n = bass ? (g_bass_ok ? seven_desired_bass(g_load_player) : SEVEN_BASS_STOCK) : seven_desired_guitar(g_load_player);
+  if (bass && n == SEVEN_BASS_STOCK) return;
   RC_ST(uint8_t, FIELD(profile, guitar_profile_strings), n);
-  static int last = SEVEN_STOCK;
-  if (n != last) slog("guitar profile %p loaded with %d strings (player %d)", (void *)profile, n, g_load_player);
-  last = n;
+  static int last[2] = {SEVEN_STOCK, SEVEN_BASS_STOCK};
+  if (n != last[bass]) slog("%s profile %p loaded with %d strings (player %d)", bass ? "bass" : "guitar", (void *)profile, n, g_load_player);
+  last[bass] = n;
+}
+
+// GKB (Learn & Play): the bass branch's count, written as the game's 4 (before its peg word's store): the same
+static void on_gkb(rc_mid_frame *f, void *user) {
+  if (!seven_on || !g_bass_ok) return;
+  uint8_t *profile = PTR(f, "profile");
+  const int n = seven_desired_bass(g_load_player);
+  if (!profile || n == SEVEN_BASS_STOCK) return;
+  RC_ST(uint8_t, FIELD(profile, guitar_profile_strings), n);
+  slog("bass profile %p loaded with %d strings (player %d)", (void *)profile, n, g_load_player);
+}
+
+// GKP: the end of the profile's load, after the peg word's store (both branches): the pool's pegs for an eight-string
+// guitar and an extended bass are their string count (a guitar of seven has its 7 from PSQ1)
+static void on_gkp(rc_mid_frame *f, void *user) {
+  if (!seven_on) return;
+  uint8_t *profile = PTR(f, "profile");
+  if (!profile) return;
+  const int type = RC_LD(int32_t, FIELD(profile, guitar_profile_type)), n = U8(profile, guitar_profile_strings);
+  if ((type == 1 && n == 8) || (type == 2 && seven_is_ext_bass(n))) RC_ST(uint16_t, FIELD(profile, seven_profile_pegs), n);
 }
 
 // GKE: GuitarProfile_Equals: profiles whose string counts differ are not equal (the guitar is rebuilt)
@@ -166,26 +201,35 @@ static void on_gkm(rc_mid_frame *f, void *user) {
   g_manager = m;
 }
 
-// GKL: Lua's GetGuitarStringCount answers 6 for a guitar, 4 for a bass: a guitar built with 7 or 8 answers that
+// GKL: Lua's GetGuitarStringCount answers 6 for a guitar, 4 for a bass: a guitar built with 7 or 8 (a bass with 5 or 6)
+// answers that
 static void on_gkl(rc_mid_frame *f, void *user) {
-  if (!seven_on || (int32_t)SEVEN_GET(f, "count") != SEVEN_STOCK) return;
-  int n = profile_count((uint32_t)SEVEN_GET(f, "player"));
-  if (n != SEVEN_STOCK) SEVEN_SET(f, "count", n);
+  if (!seven_on) return;
+  const int count = (int32_t)SEVEN_GET(f, "count");
+  if (count != SEVEN_STOCK && count != SEVEN_BASS_STOCK) return;
+  const int n = profile_count((uint32_t)SEVEN_GET(f, "player"));
+  if (n && n != count && (count == SEVEN_STOCK ? n > SEVEN_STOCK : n > SEVEN_BASS_STOCK)) SEVEN_SET(f, "count", n);
 }
 
 // GKH1 / GKH2: Rnd_Headstock_LoadStringMeshes loops over the InstrumentInfo's count, but the headstock has six
 // segment slots (+0x18 loaded[6], +0x20 params[6]): at most six (string_size_6..1 as on a six-string guitar; with
 // seven the game's loop read params[6] past the object)
-static void on_gkh(rc_mid_frame *f, void *user) {
-  if (seven_on && (uint8_t)SEVEN_GET(f, "count") > SEVEN_STOCK) SEVEN_SET(f, "count", SEVEN_STOCK);
+// A bass's headstock has four string meshes: at most four, whatever it is built with (when extended basses are built, the
+// points have the InstrumentInfo, which says what instrument it is)
+static void clamp_headstock(rc_mid_frame *f, int bass_ok) {
+  if (!seven_on) return;
+  const uint8_t count = (uint8_t)SEVEN_GET(f, "count");
+  if (count <= SEVEN_BASS_STOCK) return;
+  const int bass = bass_ok && seven_strings_info_is_bass(PTR(f, "info"));
+  if (bass) SEVEN_SET(f, "count", SEVEN_BASS_STOCK);
+  else if (count > SEVEN_STOCK) SEVEN_SET(f, "count", SEVEN_STOCK);
 }
-static void on_gkh2(rc_mid_frame *f, void *user) {
-  if (seven_on && (uint8_t)SEVEN_GET(f, "count") > SEVEN_STOCK) SEVEN_SET(f, "count", SEVEN_STOCK);
-}
+static void on_gkh(rc_mid_frame *f, void *user) { clamp_headstock(f, g_bass_ok); }
+static void on_gkh2(rc_mid_frame *f, void *user) { clamp_headstock(f, g_bass_ok); }
 
 // --- GKT: the stored target tuning
 // The manifest key on the Tuning JSON object: the object's find (by name) and the value's number
-static const char *g_keys;  // "Rs7String6" in the game's memory
+static const char *g_keys[4];  // the manifest keys in the game's memory: Rs7String6, 7, 4, 5
 
 static int has_key(const uint8_t *tuning, const char *key) {
   if (!tuning || !key) return 0;
@@ -197,19 +241,17 @@ static int has_key(const uint8_t *tuning, const char *key) {
 }
 
 // What a store of the target tuning is, by its caller (the return address of Play_Tuning_SetPlayerTargetTuning)
-enum role { OTHER, SONG_SELECT, TUNER_MENU, MODE_ENTRY };
-
 // Code addresses compare at pointer width. The Mac has copies of Play_SetPlayerTuningFromManifest per caller
 // (song_select2/3) and a third Guitarcade store; on Learn & Play those names repeat the first one's address.
 // A return address as the guest sees it: the image address on Learn & Play, the mapped (slid) one on the Mac
 #define AT(caller, addr) seven_at((caller), (addr))
 
-static enum role role_of(uint64_t caller, const char **mode) {
+static enum seven_role role_of(uint64_t caller, const char **mode) {
   *mode = NULL;
   if (AT(caller, RC_ADDR(tuning_store_song_select)) || AT(caller, RC_ADDR(tuning_store_song_select2)) ||
       AT(caller, RC_ADDR(tuning_store_song_select3)))
-    return SONG_SELECT;
-  if (AT(caller, RC_ADDR(tuning_store_tuner_menu)) || AT(caller, RC_ADDR(tuning_store_tuner_menu2))) return TUNER_MENU;
+    return SEVEN_ROLE_SONG;
+  if (AT(caller, RC_ADDR(tuning_store_tuner_menu)) || AT(caller, RC_ADDR(tuning_store_tuner_menu2))) return SEVEN_ROLE_TUNER;
   if (AT(caller, RC_ADDR(tuning_store_guitarcade)) || AT(caller, RC_ADDR(tuning_store_guitarcade2)) ||
       AT(caller, RC_ADDR(tuning_store_guitarcade3)))
     *mode = "Guitarcade";
@@ -218,7 +260,7 @@ static enum role role_of(uint64_t caller, const char **mode) {
            AT(caller, RC_ADDR(tuning_store_session_start)) || AT(caller, RC_ADDR(tuning_store_session_start2)))
     *mode = "Session Mode";
   else if (AT(caller, RC_ADDR(tuning_store_technique_hub))) *mode = "the technique hub";
-  return *mode ? MODE_ENTRY : OTHER;
+  return *mode ? SEVEN_ROLE_MODE : SEVEN_ROLE_OTHER;
 }
 
 // The player tuners of the tuner manager that hold a guitar (a rebuild would free it under the tuner)
@@ -238,36 +280,32 @@ static int song_running(void) {
   return s0 && U8(s0, guitar_string_dim);
 }
 
-// rs7string's RebuildTarget: the count to rebuild player 0's guitar with, 0 for none. Song selection: the
-// arrangement's count; the tuning list's tuner: the picked tuning's, unless a song runs; a mode entry: back to six.
-// Never another player's, never while a player tuner holds a guitar.
-static int rebuild_target(enum role r, uint32_t player, int want, int was, int tuners, int song) {
-  if (player != 0 || tuners) return 0;
-  if (r == SONG_SELECT) return want != was ? want : 0;
-  if (r == TUNER_MENU) return !song && want != was ? want : 0;
-  if (r == MODE_ENTRY && want == SEVEN_STOCK && was != SEVEN_STOCK) return SEVEN_STOCK;
-  return 0;
-}
-
 static void on_gkt(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   uint32_t player = (uint32_t)SEVEN_GET(f, "player");
   uint64_t caller = SEVEN_GET(f, "caller");
-  int want = has_key(PTR(f, "tuning"), g_keys) ? 7 : SEVEN_STOCK, was = seven_strings_desired();
+  const uint8_t *tuning = PTR(f, "tuning");
+  const int has6 = has_key(tuning, g_keys[0]), has7 = has_key(tuning, g_keys[1]);
+  const int has4 = has_key(tuning, g_keys[2]), has5 = has_key(tuning, g_keys[3]);
+  const int want = seven_wanted_guitar(has6, has7, seven_feature(SEVEN_F_EIGHT) && g_pegs_ok, 1);
+  const int want_bass = seven_wanted_bass(has4, has5, g_bass_ok && seven_feature(SEVEN_F_BASS));
+  const int was = seven_desired_guitar(0), was_bass = seven_desired_bass(0);
   const char *mode;
-  enum role r = role_of(caller, &mode);
-  if (r == OTHER) return;
-  int tuners = tuners_holding(), song = r == TUNER_MENU && song_running();
-  int target = rebuild_target(r, player, want, was, tuners, song);
-  slog("target tuning stored (player %u, %s%s): %d strings, the guitar's %d%s", player,
-       r == SONG_SELECT ? "song selection" : r == TUNER_MENU ? "tuning list" : "entering ", mode ? mode : "", want,
-       was, tuners && player == 0 ? "; a tuner holds the guitar: no rebuild" : song ? "; a song runs: no rebuild" : "");
-  if (!target) return;
+  enum seven_role r = role_of(caller, &mode);
+  if (r == SEVEN_ROLE_OTHER) return;
+  int tuners = tuners_holding(), song = r == SEVEN_ROLE_TUNER && song_running();
+  const int target = seven_rebuild_target_for(r, player, want, was, tuners, song, SEVEN_STOCK);
+  const int target_bass = seven_rebuild_target_for(r, player, want_bass, was_bass, tuners, song, SEVEN_BASS_STOCK);
+  slog("target tuning stored (player %u, %s%s): %d strings (bass %d), the guitar's %d (bass %d)%s", player,
+       r == SEVEN_ROLE_SONG ? "song selection" : r == SEVEN_ROLE_TUNER ? "tuning list" : "entering ", mode ? mode : "", want,
+       want_bass, was, was_bass,
+       tuners && player == 0 ? "; a tuner holds the guitar: no rebuild" : song ? "; a song runs: no rebuild" : "");
+  if (!target && !target_bass) return;
   if (!g_manager) {
-    slog("no guitar manager yet: %d strings wait", target);
+    slog("no guitar manager yet: %d strings wait", target ? target : target_bass);
     return;
   }
-  __atomic_store_n(&g_desired, target, __ATOMIC_RELAXED);
+  seven_set_desired(0, target ? target : was, target_bass ? target_bass : was_bass);
   // The game's own rebuild of player 0's guitar from its profile, and the scene attach of both players' guitars
   // (rs7string calls Rnd_Guitar_EnsureForPlayer and 0x4B24F0 itself; this function of the game is that pair)
   int before = seven_strings_guitar_count(player_guitar(0));
@@ -277,6 +315,7 @@ static void on_gkt(rc_mid_frame *f, void *user) {
   if (after != before) {
     seven_pitch_grid_forget_all();
     seven_grid_forget_all();  // and the fret grid part's floor state and glow pieces
+    seven_spacing_forget();
   }
   slog("player 0's guitar %s: %d strings", after != before ? "rebuilt" : "kept", after);
 }
@@ -289,6 +328,7 @@ static void on_gia1(rc_mid_frame *f, void *user) {
   if (!info) return;
   memset(info + RC_OFF(instrument_size), 0, (size_t)(RC_OFF(seven_info_size) - RC_OFF(instrument_size)));
   counts(info);
+  seven_spacing_forget();  // a new InstrumentInfo (its address may be an old one's): the stock geometry is asked again
 }
 
 // The InstrumentInfo's modes after the profile's count reached +0x0b (the guitar's build): its counts
@@ -337,6 +377,37 @@ int seven_strings_attach_ext(void *info, unsigned s, float *out) {
   static int told;
   if (told++ < 2) slog("string %u attach (%.3f, %.3f, %.3f) from strings 0 and 1", s, v[0], v[1], v[2]);
   return 1;
+}
+
+// The attach point of an extended bass's string 4 or 5 (the game's query has four rows for a bass): the low B (4)
+// continues the row beyond string 0, 2 * a0 - a1, the high C (5) beyond string 3, 2 * a3 - a2 (rs7string's
+// BassAttachRows). Strings 4 and 5 of a bass are slots 4 and 5 (seven_bass_open). 1 when written.
+static int attach_bass(void *info, unsigned s, float *out) {
+  uint8_t *point = (uint8_t *)out;
+  const unsigned from = s == 4 ? 0 : 3, next = s == 4 ? 1 : 2;
+  float a[3], b[3], v[3];
+  if (!(OV_GUEST(guitar_string_attach_point, (uintptr_t)info, from, (uintptr_t)point) & 0xff)) return 0;
+  ld3(a, point);
+  if (!(OV_GUEST(guitar_string_attach_point, (uintptr_t)info, next, (uintptr_t)point) & 0xff)) return 0;
+  ld3(b, point);
+  for (int i = 0; i < 3; i++) v[i] = 2.0f * a[i] - b[i];
+  st3(point, v);
+  static int told;
+  if (told++ < 2) slog("bass string %u attach (%.3f, %.3f, %.3f) from strings %u and %u", s, v[0], v[1], v[2], from, next);
+  return 1;
+}
+
+// seven_pubga (before the pitch part's hook and the spacing's): strings 4 and 5 of a bass built with 5 or 6 strings,
+// which the game's query has no rows for
+static void on_pubga_bass(rc_mid_frame *f, void *user) {
+  if (!seven_on || !g_bass_ok) return;
+  const unsigned s = (unsigned)(SEVEN_GET(f, "string") & 0xff);
+  void *info = PTR(f, "info");
+  float *out = (float *)PTR(f, "out");
+  if (s < 4 || s > 5 || !info || !out || !seven_strings_info_is_bass(info)) return;
+  if (seven_strings_info_count(info) <= (int)s) return;
+  SEVEN_SET(f, "point", (uint32_t)attach_bass(info, s, out));
+  f->go = SEVEN_CONT(f, "ret");
 }
 
 // The main string object s (0-7) of a guitar, NULL for none
@@ -637,14 +708,16 @@ static void on_r6(rc_mid_frame *f, void *user) {
 }
 
 int seven_strings_init(void) {
-  static const char key[] = "Rs7String6";
-  char *k = rc_guest_alloc(sizeof key);
-  if (!k) {
-    rsm_log("seven-string: strings: no game memory for the manifest key");
-    return -1;
+  static const char *const keys[4] = {SEVEN_KEY_G6, SEVEN_KEY_G7, SEVEN_KEY_B4, SEVEN_KEY_B5};
+  for (int i = 0; i < 4; i++) {
+    char *k = rc_guest_alloc(strlen(keys[i]) + 1);
+    if (!k) {
+      rsm_log("seven-string: strings: no game memory for the manifest keys");
+      return -1;
+    }
+    memcpy(k, keys[i], strlen(keys[i]) + 1);
+    g_keys[i] = k;
   }
-  memcpy(k, key, sizeof key);
-  g_keys = k;
   static const struct {
     const char *name;
     rc_mid_fn fn;
@@ -684,5 +757,15 @@ int seven_strings_init(void) {
   };
   for (size_t i = 0; i < sizeof points / sizeof *points; i++)
     if (seven_mid(points[i].name, points[i].fn)) return -1;
+  // Wave 2, points added after the unit first shipped: each fix runs only when all its points are taken
+  // The peg word of eight strings and of the extended bass
+  g_pegs_ok = seven_mid_optional("seven_gkp", on_gkp, "the pegs of an eight-string guitar and an extended bass");
+  // The extended bass: its profile count (Learn & Play's bass branch; the Mac's GKC covers both, its gkb is none), the
+  // attach points of its extra strings
+  static const struct seven_point bass[] = {
+      {"seven_gkb", on_gkb, 0},
+      {"seven_pubga", on_pubga_bass, 0},
+  };
+  g_bass_ok = g_pegs_ok && seven_mids_optional("the extended bass's build", bass, (int)(sizeof bass / sizeof *bass));
   return 0;
 }

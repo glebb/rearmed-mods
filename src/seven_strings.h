@@ -19,7 +19,7 @@
 #define SEVEN_STOCK 6     // the game's strings of a guitar
 #define SEVEN_CAPACITY 8  // the native arrays
 
-// The count the guitar (Rnd_Guitar, a host pointer) was built with, InstrumentInfo +0x0b: 4 (bass), 6 or 7; 0 for
+// The count the guitar (Rnd_Guitar, a host pointer) was built with, InstrumentInfo +0x0b: 4 to 6 (bass), 6 to 8; 0 for
 // none. seven_strings_count is the same.
 int seven_strings_guitar_count(const void *guitar);
 int seven_strings_count(const void *guitar);
@@ -28,9 +28,41 @@ int seven_strings_info_count(const void *info);
 // The strings the guitar of this InstrumentInfo shows (its active count, +0x40), 0 for none
 int seven_strings_active(const void *info);
 
-// The count the last song selection asked for: 7 for an arrangement with Rs7String6, else 6. Player 0's next guitar
-// profile is built with it (a mode entry, Session Mode, Guitarcade, Lessons, the technique hub, asks for 6).
+// The count the last song selection asked for of player 0's guitar: 7 (8 with Rs7String7 too) for an arrangement with
+// Rs7String6, else 6. Player 0's next guitar profile is built with it (a mode entry, Session Mode, Guitarcade, Lessons,
+// the technique hub, asks for 6). The bass's is seven_desired_bass (seven_model.h): 5 / 6 with Rs7String4 (/ 5).
 int seven_strings_desired(void);
+
+// ---- the pure rules (tests/test_seven_spacing.c)
+// The guitar count the manifest keys ask for (Rs7String6, Rs7String7), given whether eight strings may be built and
+// whether seven may: 6 without Rs7String6 (Rs7String7 alone is no chart), else 8, 7, or 6 when it may not be built
+static inline int seven_wanted_guitar(int has6, int has7, int eight_ok, int seven_ok) {
+  if (!has6 || !seven_ok) return 6;
+  return has7 && eight_ok ? 8 : 7;
+}
+// The bass count (Rs7String4, Rs7String5): 4 unless an extended bass may be built, else 5, or 6 with Rs7String5
+static inline int seven_wanted_bass(int has4, int has5, int bass_ok) {
+  return bass_ok && has4 ? (has5 ? 6 : 5) : 4;
+}
+// An InstrumentInfo's own counts from its build count: 4 to 8 (a bass 4-6, a guitar 6-8); anything else the game's six
+static inline int seven_build_count(int n) { return n == 0 || n < 4 ? SEVEN_STOCK : n > SEVEN_CAPACITY ? SEVEN_CAPACITY : n; }
+// What a store of the target tuning is, by its caller (the return address of Play_Tuning_SetPlayerTargetTuning)
+enum seven_role { SEVEN_ROLE_OTHER, SEVEN_ROLE_SONG, SEVEN_ROLE_TUNER, SEVEN_ROLE_MODE };
+// rs7string's RebuildTarget: the count to rebuild a player's instrument with, 0 for none. Song selection: the
+// arrangement's count; the tuning list's tuner: the picked tuning's, unless a song runs; a mode entry: back to stock
+// (`stock` 6 for a guitar, 4 for a bass). Never another player than 0 here (player 1's rebuild is co-op's), never while
+// a player tuner holds a guitar.
+static inline int seven_rebuild_target_for(enum seven_role r, unsigned player, int want, int was, int tuners, int song,
+                                           int stock) {
+  if (player != 0 || tuners) return 0;
+  if (r == SEVEN_ROLE_SONG) return want != was ? want : 0;
+  if (r == SEVEN_ROLE_TUNER) return !song && want != was ? want : 0;
+  if (r == SEVEN_ROLE_MODE && want == stock && was != stock) return stock;
+  return 0;
+}
+static inline int seven_rebuild_target(enum seven_role r, unsigned player, int want, int was, int tuners, int song) {
+  return seven_rebuild_target_for(r, player, want, was, tuners, song, SEVEN_STOCK);
+}
 
 // String s (0-7) of a GuitarStrings (host pointer), its ghost when ghost: a host pointer, NULL for none
 uint8_t *seven_strings_string(const void *strings, int s, int ghost);
@@ -42,6 +74,8 @@ void *seven_strings_child(void *guitar, int s);
 // ghost * 3 + {0 no object, 1 no entity, 2 not loaded}). Only strings below the build count are loaded here (not all
 // eight, as rs7string's): string 7 of a 7-string guitar never loads.
 int seven_strings_extra_why(void *guitar);
+// 1 when the InstrumentInfo is a bass's (its +0x0, the profile's instrument class, 2)
+int seven_strings_info_is_bass(const void *info);
 // The attach point of string 6 or 7 (vec3 to out, the caller's in the game's memory), from strings 0 and 1 by the
 // game's own query; 1 when written (rs7string's AttachExt)
 int seven_strings_attach_ext(void *info, unsigned string, float *out);
