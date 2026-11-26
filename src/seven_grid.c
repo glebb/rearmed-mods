@@ -585,5 +585,6 @@ int seven_grid_init(void) {
   for (size_t i = 0; i < sizeof glow / sizeof *glow; i++)
     taken += seven_mid_optional(glow[i].name, glow[i].fn, "the fret range glow reaching all strings");
   g_glow_on = taken == (int)(sizeof glow / sizeof *glow);
+  seven_edits_after("seven_glow", &g_glow_on);
   return 0;
 }

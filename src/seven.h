@@ -40,6 +40,10 @@ int seven_mid(const char *name, rc_mid_fn fn);
 // this RS Re-ARMed has no such point (a log line names `what`, the fix it belongs to, as off). The unit stays on; a fix
 // that needs several points checks them all and stays off unless every one is taken.
 int seven_mid_optional(const char *name, rc_mid_fn fn, const char *what);
+// An edit group of such a fix (Learn & Play's injected calls, which read a register its mid point sets): switched on
+// after the unit's own group, and only while *on is set then. A target whose tables have no such group (the Mac,
+// where the fix's other points call the game themselves) needs none, so its failure leaves *on as it is.
+void seven_edits_after(const char *group, const int *on);
 // The index of a point's value / continuation by name, looked up once per place (a point's index is f->point)
 #define SEVEN_VAL(f, name) ({ static int v_ = -2; if (v_ == -2) v_ = rc_mid_value((f)->point, name); v_; })
 #define SEVEN_CONT(f, name) ({ static int k_ = -2; if (k_ == -2) k_ = rc_mid_cont((f)->point, name); k_; })

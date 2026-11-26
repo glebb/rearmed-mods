@@ -368,5 +368,6 @@ int seven_chdraw_init(void) {
   const int c = seven_mid_optional("seven_pubbc_scale", on_pubbc_scale, what);
   const int d = seven_mid_optional("seven_pubbc_setscale", on_pubbc_setscale, what);
   g_barre = a && b && c && d && RC_HAS_OFF(seven_marker_player);
+  seven_edits_after("seven_barre", &g_barre);
   return 0;
 }

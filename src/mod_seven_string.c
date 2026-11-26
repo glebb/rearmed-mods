@@ -56,6 +56,16 @@ int seven_mid_optional(const char *name, rc_mid_fn fn, const char *what) {
   return 0;
 }
 
+static struct {
+  const char *group;
+  const int *on;
+} g_after[4];
+static int g_nafter;
+
+void seven_edits_after(const char *group, const int *on) {
+  if (g_nafter < (int)(sizeof g_after / sizeof *g_after)) g_after[g_nafter++] = (typeof(g_after[0])){group, on};
+}
+
 __attribute__((constructor)) static void seven_init(void) {
   rsm_ini_poll();
   if (!rsm_on("SevenString")) return;
@@ -83,6 +93,10 @@ __attribute__((constructor)) static void seven_init(void) {
     return;
   }
   seven_on = 1;
+  for (int i = 0; i < g_nafter; i++)
+    if (*g_after[i].on && rc_edit_enable(g_after[i].group))
+      rsm_log("seven-string: no edits of %s on %s: its fix calls the game from its own points", g_after[i].group,
+              rc_target());
   if (g_none)
     rsm_log("seven-string: on, %d mid points (and %d this game needs no call at)", g_points, g_none);
   else
