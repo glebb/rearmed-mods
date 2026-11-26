@@ -16,6 +16,10 @@ enum {
   SEVEN_KIND_PEG = 4,   // its peg in the tuner (rs7string's peg names 2 to 9)
 };
 
+// The eighth string's (string 7's) colour in a colour mode, as seven_colours_rgb gives string 6's: [Seven String]
+// string7_N / string7_CB, default FF66CC. Its kinds are column 7 of the manager.
+const float *seven_colours_rgb7(int mode);
+
 // The seventh string's (string 6's) colour in a colour mode: three floats from 0 to 1, as the game keeps a colour. Its
 // other kinds (dimmed, glow, ...) are column 6 of the manager (seven_colours_get). The values follow RSMods.ini.
 const float *seven_colours_rgb(int mode);
@@ -43,7 +47,9 @@ void seven_colours_drain(void);
 // RAMP_A), 16 rows of 8 lines, a row a string and colour mode, at V = (2 row + 1) / 32. String 6 samples lines no row
 // is sampled at, in the grey rows (7 and 15): in the game's own ramp it is grey, until a ramp with its colour there is
 // drawn. mod_colors.c, which has the ramp's rule, draws one:
-//   seven_colours_ramp(rgba, w, h): string 6's lines painted into a ramp of that layout (RGBA, rows top first, h 128)
+//   (string 7 samples V = 62/128 and 126/128, lines 61, 62 and 125, 126 of the grey rows; its lines are painted with
+//   its colour in the same calls, and its notes sample them from the first ramp drawn, else string 5's row)
+//   seven_colours_ramp(rgba, w, h): string 6's (and 7's) lines painted into a ramp of that layout (RGBA, rows top first, h 128)
 //     it made; 0, and rgba as it was, when the unit is off or h isn't 128
 //   seven_colours_game_ramp(): the game's own ramp with string 6's lines, RGBA 256 x 128, to draw in place of the
 //     game's; NULL when the unit is off, the renderer has no render API, or the game's ramp isn't read (static.psarc,
