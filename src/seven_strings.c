@@ -11,15 +11,26 @@
 // player 0's guitar is rebuilt right there with the game's own rebuild. Entering Session Mode, Guitarcade, Lessons
 // or the technique hub, whose code indexes six-string tables with the count, rebuilds it with six; so does the
 // tuning list's tuner with a six-string tuning (and seven with a 7-string one). Never while a player tuner holds the
-// guitar or a song runs on it. Player 1 is always built with six.
+// guitar or a song runs on it.
+//
+// Local co-op (wave 3, SEVEN_F_COOP, seven_gkr): the counts are per player (seven_desired_guitar / seven_desired_bass
+// of the player), the stored tuning of player 0 or 1 rebuilds that player's instrument (the game's rebuild takes the
+// player: the Mac's own argument, Learn & Play's through seven_gkr, which sets the player of its call), the profile load
+// of player 1 writes player 1's count (GKM says whose profile it is), and a mode entry, which stores player 0's tuning
+// only, also rebuilds player 1's extended guitar or bass to the stock count (rs7string's NormaliseSlot1). Without the
+// point (an older RS Re-ARMed) player 1 is built with the stock count as before.
 //
 // Wave 2: the manifest keys are four (Rs7String6 / 7 for a guitar of 7 / 8 strings, Rs7String4 / 5 for a bass of 5 / 6),
 // the counts per instrument are the model's (seven_desired_guitar / seven_desired_bass), and a count past the stock
 // is asked for only when its fix is on: eight strings (seven_feature(SEVEN_F_EIGHT), set by the chords part, and the
 // peg word's point), an extended bass (SEVEN_F_BASS, set by the pitch part, and this part's points: the bass branch's
 // count, the peg word, the attach points of its strings 4 and 5 from its rows, the headstock's clamp to four meshes).
-// The InstrumentInfo's class (+0x0) tells a bass from a guitar. Player 1 is still always built with the stock count
-// (co-op's rebuild of it, and the mode-entry normalisation, are not here). The string spacing is seven_spacing.c's.
+// The InstrumentInfo's class (+0x0) tells a bass from a guitar. The string spacing is seven_spacing.c's.
+//
+// string7_line (RSMods.ini [Seven String], read at start; rs7string's N1 / N21 and the culling of the added strings): when it
+// is 0 the InstrumentInfo loads and shows the stock strings only (seven_shown_count: 6 of a guitar, 4 of a bass), so the
+// strings past them have no model, no mesh and no bends (the native loops stop at the active count), while the build
+// count (+0x0b) keeps the lanes, the notes and the detection on the extended instrument.
 //
 // Every GuitarStrings, InstrumentInfo and PegSet has the native layout of eight (seven_strings.h): the edits size
 // them, the GuitarStrings ctor builds eight strings and eight ghosts into the native arrays (seven_gsc1 copies the
@@ -107,8 +118,9 @@ int seven_strings_letter_inline(const void *info) { return seven_headstock_lette
 // build count (4 bass; 6 to 8), so the native loops load and show exactly the guitar's strings. perStringMode of
 // strings 6 and 7 (+0x38 / +0x3c) are string 0's: a string beside string 0 bends its way (rs7string's BD1-BD4; the
 // game's rule would give string 6 the high strings' mode).
+static int g_line = 1;  // string7_line: the added strings are loaded and shown (seven_strings_init)
 static void counts(uint8_t *info) {
-  int c = seven_build_count(U8(info, instrument_strings));
+  int c = seven_shown_count(U8(info, instrument_strings), seven_strings_info_is_bass(info), g_line);
   RC_ST(uint8_t, FIELD(info, seven_info_active), c);
   RC_ST(uint8_t, FIELD(info, seven_info_loaded), c);
   uint8_t *mode = FIELD(info, instrument_string_mode);
@@ -120,6 +132,9 @@ static void counts(uint8_t *info) {
 // The counts the next profiles get are the model's (seven_desired_guitar / seven_desired_bass: the last song selection's)
 static int g_pegs_ok, g_bass_ok;  // the peg word's point (8 pegs, the bass's) is taken; the bass's points are all taken
 static int g_load_player;            // the player of the profile the guitar manager loads next (seven_gkm)
+static int g_gkm_fresh;              // seven_gkm ran since the last profile load (a load without it is logged)
+static int g_coop;                   // the points of local co-op are taken (seven_gkr)
+static unsigned g_rebuild_player;    // the player whose rebuild seven_rebuild_player is running (seven_gkr), 0 otherwise
 static uint8_t *g_manager;           // the guitar manager (seven_gkm)
 
 int seven_strings_desired(void) { return seven_desired_guitar(0); }
@@ -141,8 +156,55 @@ static int profile_count(unsigned player) {
   return 0;
 }
 
-// GKC: the guitar branch of GuitarProfile_Load has written the game's 6: the player's desired count goes there (player
-// 1's is six: co-op's rebuild of it is not here). The Mac's point follows both branches' common store, so a bass's
+// 1 when the profile of player 0 or 1 is an extended guitar's or bass's (7 or 8 strings, 5 or 6), whichever it is
+static int profile_wide(unsigned player) {
+  uint8_t *holder = player < 2 ? ptr_at(g_manager, RC_OFF(guitar_manager_holders) + player * rc_guest_ptr_size) : NULL;
+  uint8_t *profile = ptr_at(holder, RC_OFF(guitar_holder_profile));
+  if (!profile) return 0;
+  const int type = RC_LD(int32_t, FIELD(profile, guitar_profile_type)), n = U8(profile, guitar_profile_strings);
+  return (type == 1 && seven_is_ext_guitar(n)) || (type == 2 && seven_is_ext_bass(n));
+}
+
+// The game's own rebuild of a player's instrument from its profile (Rnd_Guitar_EnsureForPlayer, then the scene attach of
+// both players' guitars when it rebuilt; rs7string's RebuildPlayer, 0x596030 + 0x4B24F0). The Mac's function takes the
+// player; Learn & Play's has player 0 in it (`xor ecx, ecx` before its EnsureForPlayer call), which seven_gkr there sets
+// to g_rebuild_player. 1 when the player's guitar is another one afterwards (its build count or its object).
+static int rebuild_player(unsigned player) {
+  const uint8_t *was = player_guitar(player);
+  const int before = seven_strings_guitar_count(was);
+  g_rebuild_player = player;
+  OV_GUEST(guitar_rebuild_player0, (int)player);
+  g_rebuild_player = 0;
+  const uint8_t *now = player_guitar(player);
+  const int after = seven_strings_guitar_count(now);
+  const int changed = after != before || now != was;
+  // A new build: no wait deadline or failed neck of the old guitar carries over (the pitch part's PUBGB records)
+  if (changed) {
+    seven_pitch_grid_forget_all();
+    seven_grid_forget_all();  // and the fret grid part's floor state and glow pieces
+    seven_spacing_forget();
+  }
+  slog("player %u's guitar %s: %d strings", player, changed ? "rebuilt" : "kept", after);
+  return changed;
+}
+
+// GKR (Learn & Play only, 0x13e3abe: the `call Rnd_Guitar_EnsureForPlayer` of guitar_rebuild_player0, ecx = 0 there): the
+// player whose rebuild this is. The game's own calls of that function have no request pending and keep player 0.
+static void on_gkr(rc_mid_frame *f, void *user) {
+  if (!seven_on || !g_coop || !g_rebuild_player) return;
+  SEVEN_SET(f, "player", g_rebuild_player);
+}
+
+// Co-op check (rs7string's #171, a hypothesis there): a profile load that no GKM announced uses the previous load's
+// player; logged so a game run shows whether it happens
+static void note_load(const char *kind) {
+  static int logged;
+  if (!g_gkm_fresh && g_coop && logged++ < 4) slog("%s profile load without a GKM before it: player %d of the previous load used", kind, g_load_player);
+  g_gkm_fresh = 0;
+}
+
+// GKC: the guitar branch of GuitarProfile_Load has written the game's 6: the count the player whose profile
+// it is (GKM) asks for goes there. The Mac's point follows both branches' common store, so a bass's
 // profile passes here too: the bass count the same way. The peg word after it (the pool's pegs for the guitar) is 7,
 // by the edit PSQ1 on it, for every guitar: a guitar built with seven may load a seventh peg (PSL1); seven_gkp
 // writes the word for eight and for the extended bass.
@@ -150,6 +212,7 @@ static void on_gkc(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   uint8_t *profile = PTR(f, "profile");
   if (!profile) return;
+  note_load("guitar");
   const int bass = RC_LD(int32_t, FIELD(profile, guitar_profile_type)) == 2;
   // a bass's count stays the game's unless an extended bass is wanted
   const int n = bass ? (g_bass_ok ? seven_desired_bass(g_load_player) : SEVEN_BASS_STOCK) : seven_desired_guitar(g_load_player);
@@ -164,6 +227,7 @@ static void on_gkc(rc_mid_frame *f, void *user) {
 static void on_gkb(rc_mid_frame *f, void *user) {
   if (!seven_on || !g_bass_ok) return;
   uint8_t *profile = PTR(f, "profile");
+  note_load("bass");
   const int n = seven_desired_bass(g_load_player);
   if (!profile || n == SEVEN_BASS_STOCK) return;
   RC_ST(uint8_t, FIELD(profile, guitar_profile_strings), n);
@@ -196,6 +260,7 @@ static void on_gke(rc_mid_frame *f, void *user) {
 static void on_gkm(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   g_load_player = (int32_t)SEVEN_GET(f, "player") != 0;
+  g_gkm_fresh = 1;
   uint8_t *m = PTR(f, "manager");
   if (m != g_manager) slog("guitar manager %p", (void *)m);
   g_manager = m;
@@ -285,39 +350,43 @@ static void on_gkt(rc_mid_frame *f, void *user) {
   uint32_t player = (uint32_t)SEVEN_GET(f, "player");
   uint64_t caller = SEVEN_GET(f, "caller");
   const uint8_t *tuning = PTR(f, "tuning");
+  // Player 1 (local co-op) only with its points: else it is built with the stock counts as before
+  if (player > 1 || (player == 1 && !g_coop)) return;
   const int has6 = has_key(tuning, g_keys[0]), has7 = has_key(tuning, g_keys[1]);
   const int has4 = has_key(tuning, g_keys[2]), has5 = has_key(tuning, g_keys[3]);
   const int want = seven_wanted_guitar(has6, has7, seven_feature(SEVEN_F_EIGHT) && g_pegs_ok, 1);
   const int want_bass = seven_wanted_bass(has4, has5, g_bass_ok && seven_feature(SEVEN_F_BASS));
-  const int was = seven_desired_guitar(0), was_bass = seven_desired_bass(0);
+  const int was = seven_desired_guitar((int)player), was_bass = seven_desired_bass((int)player);
   const char *mode;
   enum seven_role r = role_of(caller, &mode);
   if (r == SEVEN_ROLE_OTHER) return;
   int tuners = tuners_holding(), song = r == SEVEN_ROLE_TUNER && song_running();
   const int target = seven_rebuild_target_for(r, player, want, was, tuners, song, SEVEN_STOCK);
   const int target_bass = seven_rebuild_target_for(r, player, want_bass, was_bass, tuners, song, SEVEN_BASS_STOCK);
+  // A mode entry stores player 0's tuning only: player 1's extended guitar or bass of a co-op song goes back to the stock
+  // count with it (NormaliseSlot1)
+  const int wide1 = g_coop && g_manager &&
+                    (seven_desired_guitar(1) != SEVEN_STOCK || seven_desired_bass(1) != SEVEN_BASS_STOCK || profile_wide(1));
+  const int norm1 = seven_slot1_normalise(r, player, wide1, tuners);
   slog("target tuning stored (player %u, %s%s): %d strings (bass %d), the guitar's %d (bass %d)%s", player,
        r == SEVEN_ROLE_SONG ? "song selection" : r == SEVEN_ROLE_TUNER ? "tuning list" : "entering ", mode ? mode : "", want,
        want_bass, was, was_bass,
-       tuners && player == 0 ? "; a tuner holds the guitar: no rebuild" : song ? "; a song runs: no rebuild" : "");
-  if (!target && !target_bass) return;
-  if (!g_manager) {
-    slog("no guitar manager yet: %d strings wait", target ? target : target_bass);
-    return;
+       tuners ? "; a tuner holds the guitar: no rebuild" : song ? "; a song runs: no rebuild" : "");
+  if (r == SEVEN_ROLE_MODE && player == 0 && wide1 && !norm1)
+    slog("player 1's wide guitar / bass NOT normalised on the %s entry (a tuner holds a guitar)", mode);
+  if (!target && !target_bass && !norm1) return;
+  if (target || target_bass) {
+    seven_set_desired((int)player, target ? target : was, target_bass ? target_bass : was_bass);
+    if (!g_manager) slog("no guitar manager yet: %d strings wait", target ? target : target_bass);
+    // The game's own rebuild of the player's guitar from its profile, and the scene attach of both players' guitars
+    // (rs7string calls Rnd_Guitar_EnsureForPlayer and 0x4B24F0 itself; this function of the game is that pair)
+    else rebuild_player(player);
   }
-  seven_set_desired(0, target ? target : was, target_bass ? target_bass : was_bass);
-  // The game's own rebuild of player 0's guitar from its profile, and the scene attach of both players' guitars
-  // (rs7string calls Rnd_Guitar_EnsureForPlayer and 0x4B24F0 itself; this function of the game is that pair)
-  int before = seven_strings_guitar_count(player_guitar(0));
-  OV_GUEST(guitar_rebuild_player0, 0);  // player 0 (the Mac's takes it; Learn & Play's ignores it)
-  int after = seven_strings_guitar_count(player_guitar(0));
-  // A new build: no wait deadline or failed neck of the old guitar carries over (the pitch part's PUBGB records)
-  if (after != before) {
-    seven_pitch_grid_forget_all();
-    seven_grid_forget_all();  // and the fret grid part's floor state and glow pieces
-    seven_spacing_forget();
+  if (norm1) {
+    slog("leaving song play for %s with player 1's guitar / bass built wide: rebuilt with 6 / 4", mode);
+    seven_set_desired(1, SEVEN_STOCK, SEVEN_BASS_STOCK);
+    rebuild_player(1);
   }
-  slog("player 0's guitar %s: %d strings", after != before ? "rebuilt" : "kept", after);
 }
 
 // ---- the native GuitarStrings and InstrumentInfo
@@ -767,5 +836,10 @@ int seven_strings_init(void) {
       {"seven_pubga", on_pubga_bass, 0},
   };
   g_bass_ok = g_pegs_ok && seven_mids_optional("the extended bass's build", bass, (int)(sizeof bass / sizeof *bass));
+  // Local co-op: the rebuild of player 1's instrument (Learn & Play's rebuild function takes its player through this point;
+  // the Mac's own takes it, its gkr is none)
+  g_coop = seven_mid_optional("seven_gkr", on_gkr, "local co-op (player 1's extended guitar or bass)");
+  seven_feature_set(SEVEN_F_COOP, g_coop);
+  g_line = seven_settings_get()->string7_line;
   return 0;
 }

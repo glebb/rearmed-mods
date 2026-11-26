@@ -118,5 +118,27 @@ int main(void) {
     CHECK(seven_spacing_bar_far(a0, a1, mid, 1, 3, 1, 1.0f, SEVEN_HALF_LEN, shift, &scale6, &len) && scale6 > scale);
     CHECK(!seven_spacing_bar_far(a0, a1, mid, 1, 3, 2, 1.0f, SEVEN_HALF_LEN, shift, &scale, &len));
   }
+  // local co-op: player 1 rebuilds too (the song selection's, a mode entry back to stock); a third player never
+  CHECK(seven_rebuild_target(SEVEN_ROLE_SONG, 1, 7, 6, 0, 0) == 7);
+  CHECK(seven_rebuild_target(SEVEN_ROLE_SONG, 1, 6, 8, 0, 0) == 6);
+  CHECK(seven_rebuild_target(SEVEN_ROLE_SONG, 1, 7, 7, 0, 0) == 0);
+  CHECK(seven_rebuild_target(SEVEN_ROLE_SONG, 1, 7, 6, 1, 0) == 0);    // a tuner holds a guitar
+  CHECK(seven_rebuild_target(SEVEN_ROLE_MODE, 1, 6, 8, 0, 0) == 6);
+  CHECK(seven_rebuild_target_for(SEVEN_ROLE_SONG, 1, 5, 4, 0, 0, 4) == 5);  // player 1's bass
+  CHECK(seven_rebuild_target_for(SEVEN_ROLE_MODE, 1, 4, 6, 0, 0, 4) == 4);
+  CHECK(seven_rebuild_target_for(SEVEN_ROLE_SONG, 2, 5, 4, 0, 0, 4) == 0);
+  // NormaliseSlot1: only a mode entry of player 0, with player 1 wide, and no tuner holding a guitar
+  CHECK(seven_slot1_normalise(SEVEN_ROLE_MODE, 0, 1, 0) == 1);
+  CHECK(seven_slot1_normalise(SEVEN_ROLE_MODE, 0, 0, 0) == 0);         // player 1 is stock already
+  CHECK(seven_slot1_normalise(SEVEN_ROLE_MODE, 0, 1, 1) == 0);         // a tuner holds a guitar
+  CHECK(seven_slot1_normalise(SEVEN_ROLE_MODE, 1, 1, 0) == 0);         // player 1's own store is its own rebuild
+  CHECK(seven_slot1_normalise(SEVEN_ROLE_SONG, 0, 1, 0) == 0);
+  CHECK(seven_slot1_normalise(SEVEN_ROLE_TUNER, 0, 1, 0) == 0);
+  // string7_line: the strings an InstrumentInfo loads and shows; off, the stock ones only (the build count stays elsewhere)
+  CHECK(seven_shown_count(7, 0, 1) == 7 && seven_shown_count(8, 0, 1) == 8 && seven_shown_count(6, 0, 1) == 6);
+  CHECK(seven_shown_count(7, 0, 0) == 6 && seven_shown_count(8, 0, 0) == 6 && seven_shown_count(6, 0, 0) == 6);
+  CHECK(seven_shown_count(5, 1, 1) == 5 && seven_shown_count(6, 1, 1) == 6 && seven_shown_count(4, 1, 1) == 4);
+  CHECK(seven_shown_count(5, 1, 0) == 4 && seven_shown_count(6, 1, 0) == 4 && seven_shown_count(4, 1, 0) == 4);
+  CHECK(seven_shown_count(0, 0, 0) == 6);  // no build count yet: the game's six
   return check_done("test_seven_spacing");
 }
