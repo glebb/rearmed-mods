@@ -41,7 +41,11 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   isn't there), on the Mac the RS Re-ARMed after 1.18.1. Prevent Buggy Tones and Custom Song List Titles need 1.11.0
   too, for its hook points on the tone change and a song list's name.
 - Seven-String Guitar, Plain Packages and Nashville Numbers need RS Re-ARMed's edits and mid points: in Learn & Play
-  from 1.12.0, on the Mac from 1.13.0; with an older one they stay off.
+  from 1.12.0, on the Mac from 1.13.0; with an older one they stay off. RS Extended Range's native charts, 8-string
+  guitars, 5/6-string bass, local co-op and the spacing keys need the RS Re-ARMed after 1.20.0, released with this
+  library: with 1.20.0 or older those parts stay off and the log names what is missing. That RS Re-ARMed moved the
+  added strings' lines into a group of their own (`seven_line`), so rearmed-mods 0.18.0 and older lose those lines
+  on it: update both together.
 - Pitch Shifter needs RS Re-ARMed's hook point on the guitar input: the Mac edition has it, Learn & Play from the RS
   Re-ARMed after 1.17.1. With an older one it stays off in Learn & Play.
 - Song Stems needs RS Re-ARMed 1.12.0, for its hook point on the audio the game decodes, and macOS 15 or later for
