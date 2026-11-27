@@ -42,7 +42,7 @@ not made or endorsed by the RSMods team, and not affiliated with Ubisoft. Rocksm
   too, for its hook points on the tone change and a song list's name.
 - Seven-String Guitar, Plain Packages and Nashville Numbers need RS Re-ARMed's edits and mid points: in Learn & Play
   from 1.12.0, on the Mac from 1.13.0; with an older one they stay off. RS Extended Range's native charts, 8-string
-  guitars, 5/6-string bass, local co-op and the spacing keys need the RS Re-ARMed after 1.20.0, released with this
+  guitars, 5/6-string bass, local co-op and the spacing keys need RS Re-ARMed 1.21.0, released with this
   library: with 1.20.0 or older those parts stay off and the log names what is missing. That RS Re-ARMed moved the
   added strings' lines into a group of their own (`seven_line`), so rearmed-mods 0.18.0 and older lose those lines
   on it: update both together.
@@ -596,10 +596,12 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     strings, no fault.
   * Played (2026-11-27): the native Nickelback chart's 7-string Lead on the Mac too, and an 8-string native chart
     (F# STANDARD 8STR, its Lead) on eight strings in Learn & Play (scripted) and on the Mac, with no fault.
-  * Not checked in the game yet: bass with five or six strings, local co-op, the spacing keys, `string7_line = 0`, and
-    the arrangement scrolling. They were written from RS Extended Range's sources (beta.4 to beta.6) without running
-    the game, in both editions; the first runs will show what is left. Each part that needs a mid point or edit
-    an older RS Re-ARMed lacks stays off alone, and the log names the point.
+  * Run in the game tests (`tests/game`, both editions, a test input in place of a guitar, 2026-11-27): the 7- and
+    8-string Leads and two 5-string Basses (B standard, and drop A) built, tuned, converted and heard down to their
+    lowest string, `string7_line = 0`, and a song of seven arrangements (its list scrolls, the last one plays).
+  * Not checked in the game yet: a six-string bass (no chart was at hand), local co-op with two inputs, and the
+    spacing keys' look. Each part that needs a mid point or edit an older RS Re-ARMed lacks stays off alone, and the
+    log names the point.
   * Known limits, as upstream's: in co-op with a guitar and a bass, the bass's low B's glow, fret wires and scale
     markers use the guitar's B color; a rare wrong tail color on a six-string bass in Riff Repeater; co-op setups made
     back to back within five seconds. Not upstream's: the finger markers' barres of a 5/6-string bass go by its slots,
