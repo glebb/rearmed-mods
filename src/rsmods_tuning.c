@@ -32,7 +32,8 @@ struct rsm_psarc {
   int fd;
   uint32_t block_size;
   int nentries;
-  int native;      // magic "PSXR": the RS Extended Range native package (plain), its manifests rewritten on read
+  int native;      // magic "PSXR": an RS Extended Range native package (DotCharter's plain, Song Bridge's served one with its
+                   // table encrypted), its manifests rewritten on read
   entry *e;
   uint32_t *zlen;  // each block's stored size
   uint32_t nblocks;
@@ -148,7 +149,6 @@ rsm_psarc *rsm_psarc_open_io(const char *path, const uint8_t key[32], const rsm_
   size_t toc_len = toc_end - 32;
   toc = malloc(toc_len);
   if (!toc || !read_at(a, toc, toc_len, 32)) goto fail;
-  if (a->native && (flags & PSARC_ENCRYPTED)) goto fail;  // a native package is plain
   if ((flags & PSARC_ENCRYPTED) && !decrypt_toc(toc, toc_len, key)) goto fail;
   a->nentries = (int)n;
   a->e = calloc(n, sizeof *a->e);

@@ -418,7 +418,10 @@ seven_native_status seven_native_sng(const uint8_t *body, size_t size, uint8_t *
   }
   memset(out, 0, size);
   conv writing = {.in = body, .size = size, .out = out, .cap = size};
-  read_header(&writing, NULL, 0);
+  // the header again (the same bytes; only the bass switch, which another thread may have turned off since, can change
+  // the answer: then refused as the sizing pass would have, not converted with no slots)
+  st = read_header(&writing, why, why_cap);
+  if (st != SEVEN_NATIVE_OK) return memset(out, 0, size), st == SEVEN_NATIVE_BAD ? fail(&writing, why, why_cap) : st;
   if (!run(&writing)) return fail(&writing, why, why_cap);
   return SEVEN_NATIVE_OK;
 }

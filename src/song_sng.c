@@ -43,8 +43,9 @@ uint8_t *sng_decrypt(const uint8_t *file, size_t n, int mac, size_t *out_n) {
   if (p) inflateEnd(&z);
   free(dec);
   if (r != Z_STREAM_END || z.total_out != len) return free(p), NULL;
-  // a native chart (SNXR, in a plain package's SNG) to the form the parser reads; it needs no more room than it has
-  if (flags == 1 && seven_native_is_sng(p, len)) {
+  // a native chart (SNXR: a plain SNG of DotCharter's, or one Song Bridge serves encrypted with the edition's key) to the
+  // form the parser reads; it needs no more room than it has
+  if (seven_native_is_sng(p, len)) {
     uint8_t *q = malloc(len);
     if (!q || seven_native_sng(p, len, q, NULL, 0) != SEVEN_NATIVE_OK) return free(q), free(p), NULL;
     free(p);
@@ -238,9 +239,12 @@ int sng_parse(const uint8_t *d, size_t n, int bass, double cents, sng_arrangemen
   int8_t *ext_frets = NULL;
   if (ext && templates) {
     ext_frets = malloc((size_t)templates * 2);
-    if (ext_frets && r.e - r.p >= 12 && !block_columns(r.p + 12, (size_t)(r.e - r.p - 12), templates, ext_frets) &&
-        strings == 7)
-      for (uint32_t t = 0; t < templates; t++) ext_frets[t * 2] = (int8_t)old_name_fret(tmpl + (size_t)t * 72);
+    if (ext_frets) {
+      memset(ext_frets, -1, (size_t)templates * 2);  // a chart that ends before the block's place has none
+      const int columns = r.e - r.p >= 12 ? block_columns(r.p + 12, (size_t)(r.e - r.p - 12), templates, ext_frets) : 0;
+      if (!columns && strings == 7)
+        for (uint32_t t = 0; t < templates; t++) ext_frets[t * 2] = (int8_t)old_name_fret(tmpl + (size_t)t * 72);
+    }
   }
   out->ev = malloc((kept ? kept : 1) * sizeof *out->ev);
   for (size_t i = 0; i < kept; i++) {

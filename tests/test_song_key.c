@@ -65,8 +65,10 @@ static void note(buf *b, float t, float sus, int string, int fret, int chord, in
 // A chart on a guitar of `strings` (6, or 7 and 8: the 7th string tuned down a tone, A1, a note on it at 7 s, string 6
 // fret 3, and the G chord's extended strings in an RS7X block: fret 2 on the 7th, open on the 8th; with `old_format`
 // in the template's name[31] instead, fret 4 on the 7th, and no block); 5: a 5-string bass's chart, six tuning entries as
-// the native form has them and a note on its low B (stock slot 4) at 7 s, fret 1)
-static buf make_sng_on(int strings, int old_format) {
+// the native form has them and a note on its low B (stock slot 4) at 7 s, fret 1; 106: a 6-string bass's, the same and a
+// note on its high C (stock slot 5) at 8 s, fret 2). down: every tuning entry that many semitones (a tuned-down bass:
+// its low B and high C too)
+static buf make_chart(int strings, int old_format, int down) {
   buf b = {0};
   u32(&b, 0);  // beats
   u32(&b, 2);  // phrases: the first's notes are in level 1, the second's in level 0
@@ -89,11 +91,14 @@ static buf make_sng_on(int strings, int old_format) {
   // level 0: a note of iteration 0 (not this level's), and iteration 1's E on the low string, fret 0, capo 2
   u32(&b, 0);
   for (int i = 0; i < 4; i++) u32(&b, 0);
-  u32(&b, strings != 6 ? 3 : 2);
+  const int bass6 = strings == 106;
+  if (bass6) strings = 5;
+  u32(&b, strings != 6 ? 3 + bass6 : 2);
   note(&b, 1.0f, 0, 0, 3, -1, 0);
   note(&b, 5.0f, 1.5f, 0, 0, -1, 1);
   if (strings > 6) note(&b, 7.0f, 0, 6, 3, -1, 1);
   if (strings == 5) note(&b, 7.0f, 0, 4, 1, -1, 1);
+  if (bass6) note(&b, 8.0f, 0, 5, 2, -1, 1);
   u32(&b, 0), u32(&b, 0), u32(&b, 0);
   // level 1: iteration 0's G chord, then D on the A string fret 5, and iteration 1's note (not this level's)
   u32(&b, 1);
@@ -108,6 +113,8 @@ static buf make_sng_on(int strings, int old_format) {
   const int entries = strings < 6 ? 6 : strings;
   u32(&b, (uint32_t)entries);
   int16_t tuning[8] = {-2, 0, 0, 0, 0, 0, -2, 0};  // drop D (and drop A)
+  if (down)
+    for (int i = 0; i < 8; i++) tuning[i] = (int16_t)down;
   put(&b, tuning, 2 * (size_t)entries);
   put(&b, NULL, 12);  // the rest of the metadata
   if (strings > 6 && !old_format) {
@@ -128,6 +135,7 @@ static buf make_sng_on(int strings, int old_format) {
   return b;
 }
 
+static buf make_sng_on(int strings, int old_format) { return make_chart(strings, old_format, 0); }
 static buf make_sng(void) { return make_sng_on(6, 0); }
 
 static buf encrypt_sng(const buf *plain) {
@@ -273,6 +281,47 @@ int main(void) {
     sng_free(&ea);
     free(e.p);
   }
+  {  // a 6-string bass: its high C is stock slot 5 (C3, 48), fret 2: D3
+    buf e = make_sng_on(106, 0);
+    sng_arrangement ea;
+    CHECK(sng_parse(e.p, e.n, 1, 0, &ea) && ea.n == 5);
+    if (ea.n == 5) CHECK(ea.ev[3].midi[0] == 24 && ea.ev[4].time == 8.0f && ea.ev[4].n == 1 && ea.ev[4].midi[0] == 50);
+    sng_free(&ea);
+    free(e.p);
+  }
+  for (int bass6 = 0; bass6 < 2; bass6++) {  // tuned down a tone (B standard -2: A0 low B, A#2 high C)
+    buf e = make_chart(bass6 ? 106 : 5, 0, -2);
+    sng_arrangement ea;
+    CHECK(sng_parse(e.p, e.n, 1, 0, &ea) && ea.n == 4 + bass6);
+    if (ea.n == 4 + bass6) CHECK(ea.ev[2].midi[0] == 28 && ea.ev[3].midi[0] == 23 - 2 + 1);
+    if (bass6 && ea.n == 5) CHECK(ea.ev[4].midi[0] == 48 - 2 + 2);
+    sng_free(&ea);
+    free(e.p);
+  }
+  {  // a 7-string guitar tuned down a tone throughout: the 7th string's note A1 + 3, the block's fret 2 on it
+    buf e = make_chart(7, 0, -2);
+    sng_arrangement ea;
+    CHECK(sng_parse(e.p, e.n, 0, 0, &ea) && ea.n == 4 && ea.ev[1].n == 7 && ea.ev[1].midi[6] == 35 - 2 + 2);
+    if (ea.n == 4) CHECK(ea.ev[3].midi[0] == 35 - 2 + 3);
+    sng_free(&ea);
+    free(e.p);
+  }
+  for (int strings = 7; strings <= 8; strings++) {  // a chart that ends with its tuning (no MetaData tail, no block)
+    buf e = make_chart(strings, 0, 0);
+    const uint8_t *tail = NULL;
+    for (size_t i = 0; i + 4 <= e.n; i++)
+      if (!memcmp(e.p + i, "RS7X", 4)) tail = e.p + i;
+    if (tail) e.n = (size_t)(tail - e.p) - 12;
+    sng_arrangement ea;
+    CHECK(tail && sng_parse(e.p, e.n, 0, 0, &ea) && ea.n == 4 && ea.ev[1].n == 6);  // the chord's six, nothing made up
+    sng_free(&ea);
+    free(e.p);
+    e = make_chart(7, 1, 0);  // the older format the same: its name[31] still read
+    e.n -= 12;
+    CHECK(sng_parse(e.p, e.n, 0, 0, &ea) && ea.n == 4 && ea.ev[1].n == 7 && ea.ev[1].midi[6] == 37);
+    sng_free(&ea);
+    free(e.p);
+  }
   {  // the older 7-string format: the 7th string's chord fret in name[31] (fret 4: 37)
     buf e = make_sng_on(7, 1);
     sng_arrangement ea;
@@ -317,7 +366,14 @@ int main(void) {
     CHECK(conv && nn == nat.n && memcmp(conv, "SNXR", 4));
     CHECK(conv && sng_parse(conv, nn, 0, 0, &na) && na.n == 3 && na.ev[0].midi[0] == 50 && na.ev[2].midi[0] == 40);
     if (conv && na.ev) sng_free(&na);
-    free(conv), free(nf.p), free(nat.p);
+    free(conv);
+    // the same body encrypted with the edition's key (flags 3: how Song Bridge serves a native package's charts)
+    buf enc = encrypt_sng(&nat);
+    conv = sng_decrypt(enc.p, enc.n, 1, &nn);
+    CHECK(conv && nn == nat.n && memcmp(conv, "SNXR", 4));
+    CHECK(conv && sng_parse(conv, nn, 0, 0, &na) && na.n == 3 && na.ev[0].midi[0] == 50 && na.ev[2].midi[0] == 40);
+    if (conv && na.ev) sng_free(&na);
+    free(conv), free(enc.p), free(nf.p), free(nat.p);
   }
   file.p[30] ^= 1;
   CHECK(sng_decrypt(file.p, file.n, 1, &n) == NULL);

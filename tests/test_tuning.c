@@ -167,7 +167,8 @@ int main(void) {
     free(v), free(sng);
     rsm_psarc_close(na);
   }
-  // a plain package keeps its manifests as they are, a PSXR one can't be encrypted
+  // a plain package keeps its manifests as they are; a PSXR one with its table encrypted (as Song Bridge serves a native
+  // package) is read with the key, its manifests translated the same
   rsm_psarc *pa = rsm_psarc_open("a.psarc", key);
   CHECK(pa && !rsm_psarc_is_native(pa));
   rsm_psarc_close(pa);
@@ -175,7 +176,15 @@ int main(void) {
   f = fopen("n2.psarc", "r+b");
   fwrite("PSXR", 1, 4, f);
   fclose(f);
-  CHECK(rsm_psarc_open("n2.psarc", key) == NULL);
+  na = rsm_psarc_open("n2.psarc", key);
+  CHECK(na && rsm_psarc_is_native(na) && rsm_psarc_files(na) == 4);
+  if (na) {
+    char *t = rsm_psarc_read(na, 0, NULL);
+    rsm_arrangement sa;
+    CHECK(t && !strstr(t, "ExtendedRange") && rsm_manifest_arrangement(t, &sa) && sa.extra == 1 && sa.tuning[5] == 3);
+    free(t);
+    rsm_psarc_close(na);
+  }
   f = fopen("not.psarc", "w");
   fputs("PSAR but not one", f);
   fclose(f);
@@ -218,6 +227,27 @@ int main(void) {
   CHECK(rsm_manifest_arrangement("{\"Entries\":{\"x\":{\"Attributes\":{\"ArrangementName\":\"Bass\",\"Tuning\":"
                                  "{\"string0\":0,\"string1\":0,\"string2\":0,\"string3\":0,\"string4\":0,"
                                  "\"string5\":0,\"Rs7String4\":0}}}}}", &parsed) && parsed.extra == 1);
+  // a 6-string bass (Rs7String4 and 5): the same, its high C (slot 5) left out too; tuned down a tone throughout, its four
+  // stock strings are at -2; a 5-string whose low B alone is dropped (slot 4 at -5: an F#0) is not low either
+  rsm_arrangement bass6 = arr("Bass", 0, 0, 0, 0, 0, 0, 0), bass6_down = arr("Bass", -2, -2, -2, -2, -2, -2, 0),
+                  bass6_low = arr("Bass", -6, -6, -6, -6, -6, -6, 0), bass5_dropb = arr("Bass", 0, 0, 0, 0, -5, 0, 0);
+  bass6.extra = bass6_down.extra = bass6_low.extra = 2, bass5_dropb.extra = 1;
+  CHECK(!rsm_extended_range_rule(&bass6, -5, 0, 0) && !rsm_extended_range_rule(&bass6_down, -5, 0, 0));
+  CHECK(rsm_extended_range_rule(&bass6_down, -2, 0, 0) && rsm_extended_range_rule(&bass6_low, -5, 0, 0));
+  CHECK(!rsm_extended_range_rule(&bass5_dropb, -5, 0, 0) && !rsm_extended_range_rule(&bass5_dropb, -5, 1, 1));
+  CHECK(rsm_manifest_arrangement("{\"Entries\":{\"x\":{\"Attributes\":{\"ArrangementName\":\"Bass\",\"Tuning\":"
+                                 "{\"string0\":-2,\"string1\":-2,\"string2\":-2,\"string3\":-2,\"string4\":-2,"
+                                 "\"string5\":-2,\"Rs7String4\":-2,\"Rs7String5\":-2}}}}}", &parsed) &&
+        parsed.extra == 2 && rsm_is_bass(&parsed) && parsed.tuning[4] == -2 && parsed.tuning[5] == -2);
+  // a 7- and an 8-string guitar (Rs7String6 / 7): the added strings are not in tuning[], the six stock ones decide
+  rsm_arrangement g7 = arr("Lead", 0, 0, 0, 0, 0, 0, 0), g8_down = arr("Lead", -5, -5, -5, -5, -5, -5, 0);
+  g7.extra = 1, g8_down.extra = 2;
+  CHECK(!rsm_extended_range_rule(&g7, -5, 0, 0) && rsm_extended_range_rule(&g8_down, -5, 0, 0));
+  CHECK(rsm_manifest_arrangement("{\"Entries\":{\"x\":{\"Attributes\":{\"ArrangementName\":\"Lead\",\"Tuning\":"
+                                 "{\"string0\":0,\"string1\":0,\"string2\":0,\"string3\":0,\"string4\":0,"
+                                 "\"string5\":0,\"Rs7String6\":-2,\"Rs7String7\":0}}}}}", &parsed) &&
+        parsed.extra == 2 && !rsm_is_bass(&parsed) && parsed.tuning[0] == 0);
+  CHECK(rsm_manifest_arrangement(lead, &parsed) && parsed.extra == 0);  // a stock 6-string
   // a bass with its top strings left at E: not a drop tuning, unless they are fixed to the G string's
   CHECK(rsm_extended_range_rule(&bass_open, -7, 0, 0));      // lowest -7, not a drop: counts at -7
   CHECK(!rsm_extended_range_rule(&bass_open, -6, 0, 1));     // fixed: a drop, so it needs -6 - 2

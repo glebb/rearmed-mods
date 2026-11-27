@@ -40,6 +40,23 @@ int main(void) {
   CHECK(shift(arr("Bass", -2, 0, 0, 0, 0, 0, 0), 1, 0) && g_semitones == 0);
   CHECK(shift(arr("Bass", -2, -2, 0, 0, 0, 0, 0), 1, 0) && g_semitones == 0);
 
+  // an extended bass (Rs7String4 / 5: its low B and high C in slots 4 / 5, from their own standard) by its four stock
+  // strings too: a 5-string in standard, one with its low B dropped, a 6-string a tone down throughout
+  rsm_arrangement ext = arr("Bass", 0, 0, 0, 0, 0, 0, 0);
+  ext.extra = 1;
+  CHECK(pitch_auto_shift(&ext, 1, 1, 0, 12, &g_semitones, &g_a4) && g_semitones == 0);
+  ext = arr("Bass", 0, 0, 0, 0, -5, 0, 0), ext.extra = 1;
+  CHECK(pitch_auto_shift(&ext, 1, 1, 0, 12, &g_semitones, &g_a4) && g_semitones == 0);
+  ext = arr("Bass", -2, -2, -2, -2, -2, -2, 0), ext.extra = 2;
+  CHECK(pitch_auto_shift(&ext, 1, 1, 0, 12, &g_semitones, &g_a4) && g_semitones == -2);
+  // a 7- or 8-string guitar's added strings are not in the six (Rs7String6 / 7): a B standard 7-string and an F#
+  // standard 8-string are a guitar in E, an 8-string a semitone down is at -1
+  rsm_arrangement g = arr("Lead", 0, 0, 0, 0, 0, 0, 0);
+  g.extra = 1;
+  CHECK(pitch_auto_shift(&g, 1, 0, 0, 12, &g_semitones, &g_a4) && g_semitones == 0);
+  g = arr("Lead", -1, -1, -1, -1, -1, -1, 0), g.extra = 2;
+  CHECK(pitch_auto_shift(&g, 1, 0, 0, 12, &g_semitones, &g_a4) && g_semitones == -1);
+
   // off concert pitch: the A, by the cents (Castles Made of Sand, E Standard at A428)
   CHECK(shift(arr("Lead", 0, 0, 0, 0, 0, 0, -48), 0, 0) && g_semitones == 0 && g_a4 == 428);
   CHECK(shift(arr("Lead", -1, -1, -1, -1, -1, -1, 20), 0, 0) && g_semitones == -1 && g_a4 == 445);
