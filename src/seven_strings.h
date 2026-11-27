@@ -8,8 +8,8 @@
 // Every GuitarStrings, InstrumentInfo and PegSet of the game has the native layout of eight (offsets.map, seven_*):
 //   GuitarStrings  +0x40 main[8], +0x60 ghost[8] (the game's six at +0x4 / +0x1c stay as copies of the first six),
 //                  +0x80 glow[8] (the renderer's glow ramp), +0xa0 tail, +0xa4 its guitar, +0xa8 its InstrumentInfo
-//   InstrumentInfo +0x40 active strings, +0x41 loaded strings (both the build count: 4 bass, 6, 7), +0x38 / +0x3c
-//                  perStringMode of strings 6 / 7 (string 0's)
+//   InstrumentInfo +0x40 active strings, +0x41 loaded strings (both the build count, 4 to 8, or with string7_line
+//                  off the stock count: seven_shown_count), +0x38 / +0x3c perStringMode of strings 6 / 7 (string 0's)
 //   PegSet         slots[8] at +0xc, pegColor[8] at +0x14c, tail at +0x1cc
 #ifndef RS_SEVEN_STRINGS_H
 #define RS_SEVEN_STRINGS_H
@@ -25,8 +25,9 @@ int seven_strings_guitar_count(const void *guitar);
 int seven_strings_count(const void *guitar);
 // The same for an InstrumentInfo
 int seven_strings_info_count(const void *info);
-// The strings the guitar of this InstrumentInfo shows (its active count, +0x40), 0 for none
+// The strings the guitar of this InstrumentInfo shows (its active count, +0x40), and loads (+0x41), 0 for none
 int seven_strings_active(const void *info);
+int seven_strings_loaded(const void *info);
 
 // The count the last song selection asked for of player 0's guitar: 7 (8 with Rs7String7 too) for an arrangement with
 // Rs7String6, else 6. Player 0's next guitar profile is built with it (a mode entry, Session Mode, Guitarcade, Lessons,
@@ -80,14 +81,32 @@ static inline int seven_shown_count(int n, int bass, int line) {
   return line || c <= stock ? c : stock;
 }
 
+// The edge string of an instrument built with n strings (TU8A's StringAction asks the game's 0x1367b30 for it): the
+// physical edge on string 0's side (`first`) or the far one. Stock counts as the game's: 0 and n - 1. A guitar of 7/8:
+// its last string (beyond string 0) and string 5. An extended bass: its low B (slot 4, beyond string 0) and its G
+// (slot 3) or, with six, its high C (slot 5).
+static inline int seven_edge_string(int n, int bass, int first) {
+  if (bass && (n == 5 || n == 6)) return first ? 4 : n == 6 ? 5 : 3;
+  if (n > 6) return first ? n - 1 : 5;
+  return first ? 0 : n - 1;
+}
+
+// The end of the added strings (from 6) whose models a guitar built with `built` strings and loading `loaded`
+// (seven_shown_count's) has to have before its fret grid's cells 6/7 are filled: the ones it loads. A guitar whose
+// added strings are not drawn (string7_line off) has none to wait for, and its lanes and detection keep its count.
+static inline int seven_extra_models_end(int built, int loaded) {
+  const int n = built < loaded ? built : loaded;
+  return n > SEVEN_CAPACITY ? SEVEN_CAPACITY : n < SEVEN_STOCK ? SEVEN_STOCK : n;
+}
+
 // String s (0-7) of a GuitarStrings (host pointer), its ghost when ghost: a host pointer, NULL for none
 uint8_t *seven_strings_string(const void *strings, int s, int ghost);
 // The main string object s (0-7) of a guitar (Rnd_Guitar), NULL for none (rs7string's Child(gs, s, false))
 void *seven_strings_child(void *guitar, int s);
-// 0 when the strings past six the guitar loads (its build count: string 6 of a guitar built with 7; none on a guitar
-// built with 6 or a bass) and their ghosts exist with their models loaded; else the first failing check, as
+// 0 when the strings past six the guitar loads (its loaded count: string 6 of a guitar built with 7; none on a guitar
+// built with 6, a bass, or with string7_line off) and their ghosts exist with their models loaded; else the first failing check, as
 // rs7string's ExtraWhy numbers them (1 no GuitarStrings, 3 no InstrumentInfo, 4 not the guitar's, 8 + (s - 6) * 6 +
-// ghost * 3 + {0 no object, 1 no entity, 2 not loaded}). Only strings below the build count are loaded here (not all
+// ghost * 3 + {0 no object, 1 no entity, 2 not loaded}). Only strings below the loaded count are loaded here (not all
 // eight, as rs7string's): string 7 of a 7-string guitar never loads.
 int seven_strings_extra_why(void *guitar);
 // 1 when the InstrumentInfo is a bass's (its +0x0, the profile's instrument class, 2)

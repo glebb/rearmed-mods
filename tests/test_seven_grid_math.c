@@ -86,6 +86,36 @@ int main(void) {
     CHECK(near(fit.margin, 0.5f));
     CHECK(!seven_frame_fit_for(b0, b1, near_b, 0, 6, 6, 0, &fit));
   }
+  // A guitar's chord frame (the chord part's B2): its origin edge on the floor, covering lanes 0 to the last string
+  {
+    const float m = 0.5f, inverted[3] = {m, 0, 0}, normal[3] = {-5 * d - m, 0, 0};
+    const float h = 5 * d + 2 * m;
+    seven_frame_fit fit;
+    float out[3];
+    // inverted strings: the floor moved by the added lanes (7 strings one, 8 two): no shift, the far edge out past string 5
+    CHECK(seven_floor_move(a0, a1, inverted, 2, 5, 0, out) == 2 && near(out[0], 2 * d));
+    CHECK(seven_frame_fit_for(a0, a1, inverted, 1, 6, 5, 0, &fit) && near(fit.shift, 0) && near(fit.scale, (6 * d + 2 * m) / h));
+    CHECK(seven_frame_fit_for(a0, a1, inverted, 2, 7, 5, 0, &fit) && near(fit.shift, 0) && near(fit.scale, (7 * d + 2 * m) / h));
+    CHECK(near(fit.origin, m + 2 * d) && near(fit.margin, m) && near(fit.spacing, d));
+    // an 8-string frame taken as moved by one spacing (the old chord part's guess) is a spacing off: what B2 must not do
+    CHECK(seven_frame_fit_for(a0, a1, inverted, 1, 7, 5, 0, &fit) && near(fit.shift, -d));
+    // the floor not moved yet (pending): the origin edge moves out to cover the added lanes
+    CHECK(seven_frame_fit_for(a0, a1, inverted, 0, 6, 5, 0, &fit) && near(fit.shift, -d) && near(fit.scale, (6 * d + 2 * m) / h));
+    // normal order: the floor is beyond string 5 and stays; the far edge reaches past string 0 by the added lanes
+    CHECK(seven_floor_move(a0, a1, normal, 1, 5, 0, out) == 0);
+    for (int top = 6; top <= 7; top++)
+      CHECK(seven_frame_fit_for(a0, a1, normal, 0, top, 5, 0, &fit) && near(fit.shift, 0) &&
+            near(fit.scale, ((float)top * d + 2 * m) / h));
+    // a 5-string bass, inverted: the low B's lane (the floor moved one), nothing beyond the G
+    const float D = 2.68f, b0[3] = {0, 0, 0}, b1[3] = {-D, 0, 0}, bb[3] = {m, 0, 0};
+    CHECK(seven_frame_fit_for(b0, b1, bb, 1, 6, 3, 0, &fit) && near(fit.shift, 0) &&
+          near(fit.scale, (4 * D + 2 * m) / (3 * D + 2 * m)));
+    // a 6-string bass in normal order: the floor beyond the G moved one (the C), the far edge past the low B
+    const float bf[3] = {-3 * D - m, 0, 0};
+    CHECK(seven_floor_move(b0, b1, bf, 1, 3, 1, out) == 1 && near(out[0], -D));
+    CHECK(seven_frame_fit_for(b0, b1, bf, 1, 6, 3, 1, &fit) && near(fit.shift, 0) &&
+          near(fit.scale, (5 * D + 2 * m) / (3 * D + 2 * m)));
+  }
   // The glow's scale: 1 for what the stock width covers, wider strings stretch it, never past 3
   {
     CHECK(seven_glow_stretch(5, d, 0.0f) == 1.0f);  // 5 spacings of 1.608 = the stock width 8.04

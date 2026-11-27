@@ -19,6 +19,11 @@ int main(void) {
   CHECK(seven_spacing_scale(NAN, 1.608f) == 1.0f);
   CHECK(seven_spacing_scale(100.0f, 1.608f) == SEVEN_SPACING_KMAX);
   CHECK(seven_spacing_scale(0.01f, 1.608f) == SEVEN_SPACING_KMIN);
+  // the whole range of the setting on both instruments: a bass's 0.5 too (k 0.187 of its 2.680), not clamped
+  CHECK(fabsf(seven_spacing_scale(0.5f, 2.680f) - 0.5f / 2.680f) < 1e-6f);
+  CHECK(fabsf(seven_spacing_scale(4.0f, 2.680f) - 4.0f / 2.680f) < 1e-6f);
+  CHECK(fabsf(seven_spacing_scale(0.5f, 1.608f) - 0.5f / 1.608f) < 1e-6f);
+  CHECK(fabsf(seven_spacing_scale(4.0f, 1.608f) - 4.0f / 1.608f) < 1e-6f);
 
   // a0 = 0, a1 = -d: u = +x, the stock six at 0, -d ... -5d, so the middle is at -2.5 d
   const float d = 1.608f, a0[3] = {0, 0, 0}, a1[3] = {-d, 0, 0};
@@ -139,6 +144,19 @@ int main(void) {
   CHECK(seven_shown_count(7, 0, 0) == 6 && seven_shown_count(8, 0, 0) == 6 && seven_shown_count(6, 0, 0) == 6);
   CHECK(seven_shown_count(5, 1, 1) == 5 && seven_shown_count(6, 1, 1) == 6 && seven_shown_count(4, 1, 1) == 4);
   CHECK(seven_shown_count(5, 1, 0) == 4 && seven_shown_count(6, 1, 0) == 4 && seven_shown_count(4, 1, 0) == 4);
+  // the edge strings: stock as the game's, a 7/8-string guitar's low string and string 5, an extended bass's low B and G / C
+  CHECK(seven_edge_string(6, 0, 1) == 0 && seven_edge_string(6, 0, 0) == 5);
+  CHECK(seven_edge_string(4, 1, 1) == 0 && seven_edge_string(4, 1, 0) == 3);
+  CHECK(seven_edge_string(7, 0, 1) == 6 && seven_edge_string(7, 0, 0) == 5);
+  CHECK(seven_edge_string(8, 0, 1) == 7 && seven_edge_string(8, 0, 0) == 5);
+  CHECK(seven_edge_string(5, 1, 1) == 4 && seven_edge_string(5, 1, 0) == 3);
+  CHECK(seven_edge_string(6, 1, 1) == 4 && seven_edge_string(6, 1, 0) == 5);
+  // the added strings' models a fret grid waits for: those the guitar loads (none with string7_line off)
+  for (int n = 6; n <= 8; n++) {
+    CHECK(seven_extra_models_end(n, seven_shown_count(n, 0, 1)) == n);
+    CHECK(seven_extra_models_end(n, seven_shown_count(n, 0, 0)) == 6);
+  }
+  CHECK(seven_extra_models_end(8, 7) == 7 && seven_extra_models_end(7, 0) == 6 && seven_extra_models_end(9, 9) == 8);
   CHECK(seven_shown_count(0, 0, 0) == 6);  // no build count yet: the game's six
   return check_done("test_seven_spacing");
 }

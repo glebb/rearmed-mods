@@ -14,14 +14,15 @@
 // eight, TM1-TM6; the chord pluck of string 6, PL1; the chord loops' bend bit, bend data and stop-pluck, CLBM, CLBA,
 // CLVB) are instructions here, in place.
 //
-// What runs here is the chord frame on a guitar built with 7 strings (rs7string's B1 and B2). The frame model has the
-// height of six lanes, and no game data sizes it: every chord frame of such a guitar is fitted to the whole guitar, as
-// the game's frame covers all six strings of its own (RS Extended Range 1.0.0-beta.4: whatever strings the chord uses).
-// seven_b1 marks a frame when the chord box builder has made its geometry, with the guitar's last string (6 for 7
-// strings); seven_b2, when Rnd_GemGeom_Build applies that geometry's span, scales the frame along the string axis so it
-// covers lanes 0 to that string, its edge on the highway floor (the grid part moves the floor of inverted strings one
-// spacing out). The game's own Rnd_Gem_SetScaleTranslate then sets what seven_b2 left in its arguments. Guitars built
-// with 6 strings and bass keep the game's frames.
+// What runs here is the chord frame on an extended instrument (rs7string's B1 and B2): a guitar built with 7 or 8
+// strings, a 5/6-string bass. The frame model has the height of six lanes, and no game data sizes it: every chord frame
+// of such an instrument is fitted to all its strings, as the game's frame covers all six strings of its own (RS Extended
+// Range 1.0.0-beta.4: whatever strings the chord uses). seven_b1 marks a frame when the chord box builder has made its
+// geometry; seven_b2, when Rnd_GemGeom_Build applies that geometry's span, scales the frame along the string axis by the
+// grid part's fit (seven_grid_chord_frame) so it covers lanes 0 to the guitar's last string (6 for 7 strings, 7 for 8),
+// or a bass's low B and high C, its edge on the highway floor (the grid part moves the floor of inverted strings out by
+// the added lanes on that side: one for 7 strings and a bass, two for 8). The game's own Rnd_Gem_SetScaleTranslate then
+// sets what seven_b2 left in its arguments. Guitars built with 6 strings and 4-string basses keep the game's frames.
 //
 // And the finger markers on the neck, whose barres cover the seventh string (rs7string's PUBFA, PUBGF and PUBBC; at the end).
 #include <math.h>
@@ -54,93 +55,11 @@ static void clog(const char *fmt, ...) {
 
 // ---- guest memory
 static uint8_t *ptr_at(const void *base, int64_t off) { return base ? rc_mod_ptr((const uint8_t *)base + off) : NULL; }
-static void ld3(float v[3], const uint8_t *p) {
-  for (int i = 0; i < 3; i++) v[i] = RC_LD(float, p + 4 * i);
-}
 
 // The count of strings a guitar (Rnd_Guitar) was built with when it is 7 or 8, else 0
 static int seven_count(const uint8_t *guitar) {
   int n = guitar ? seven_strings_guitar_count(guitar) : 0;
   return n == 7 || n == 8 ? n : 0;
-}
-
-// ---- the frame's fit (rs7string's frets.cpp ChordFrame)
-typedef struct {
-  float scale;    // along the string axis, on the model's extent
-  float shift;    // the origin edge moved, from it towards the lanes
-  float origin;   // the origin edge as the game places it (0 at string 0, string i at -i spacings)
-  float margin;   // the game's margin beyond the outer lane
-  float spacing;  // the string spacing
-} frame_fit;
-
-// The highway floor: b = a fret wire's bottom end (guitar-local). Beyond string 0 on string 6's side (inverted strings)
-// the grid part moves it one string spacing further out (its seven_f1_floor): 1 then.
-static int floor_moved(const float a0[3], const float a1[3], const float b[3]) {
-  float len2 = 0.0f, side = 0.0f;
-  for (int i = 0; i < 3; i++) {
-    const float u = a0[i] - a1[i];
-    len2 += u * u;
-    side += (b[i] - a0[i]) * u;
-  }
-  return len2 > 1e-6f && len2 < 1e6f && side > 0.0f;
-}
-
-// A chord frame is one model whose origin edge sits on the fret wires' bottom end b (the highway floor) and which
-// extends towards the lanes by H = 5d + 2m (d the string spacing, m the game's margin beyond the outer lane of lanes
-// 0-5; rs7string's HYPOTHESIS: the model is symmetric about lanes 0-5). It must cover lanes 0-5, or 0-top (top 6/7: the
-// guitar's last string), each with margin m. The origin edge stays on the floor; only the far edge moves
-// (scale), except where the origin edge lies inside the outermost lane and its margin (a floor that was not moved): then
-// it moves out too (shift). a0 / a1 = the string 0 / 1 attach points, b = fret bar 0's bottom end, all guitar-local;
-// moved = the floor was moved by a spacing. 0 for a degenerate geometry (out untouched).
-static int chord_frame(const float a0[3], const float a1[3], const float b[3], int moved, int top, frame_fit *out) {
-  float u[3], len2 = 0.0f;
-  for (int i = 0; i < 3; i++) {
-    u[i] = a0[i] - a1[i];
-    len2 += u[i] * u[i];
-  }
-  const float d = sqrtf(len2);
-  if (!(d > 1e-3f) || !(d < 1e3f)) return 0;
-  float pb = 0.0f;  // along u (string 1 -> string 0 -> string 6), 0 at string 0: string i lies at -i d
-  for (int i = 0; i < 3; i++) pb += (b[i] - a0[i]) * u[i] / d;
-  const int six = pb > 0.0f;                  // the origin edge lies beyond string 0, on string 6's side
-  const float m = six ? pb : -pb - 5.0f * d;  // the game's margin beyond lane 0 / lane 5
-  if (!(m > 0.05f * d) || !(m < 4.0f * d) || !isfinite(m)) return 0;
-  const float h = 5.0f * d + 2.0f * m;                         // the model's extent
-  const float po = pb + (six && moved ? d : 0.0f);             // the origin edge as placed now
-  const float lo = -5.0f * d - m;                              // string 5's end, margin m
-  const float hi = (top > 5 ? (float)(top - 5) * d : 0.0f) + m;  // string `top`'s (or string 0's) end, margin m
-  float origin, far_edge;
-  if (six) {
-    origin = po + (hi > po ? hi - po : 0.0f);
-    far_edge = lo;
-  } else {
-    origin = po - (po > lo ? po - lo : 0.0f);
-    far_edge = hi;
-  }
-  out->scale = fabsf(far_edge - origin) / h;
-  out->shift = six ? po - origin : origin - po;
-  out->origin = po;
-  out->margin = m;
-  out->spacing = d;
-  return isfinite(out->scale) && isfinite(out->shift) && out->scale > 0.0f;
-}
-
-// The fit of a chord frame up to string `top` on this guitar, from its string 0 / 1 attach points and fret bar 0's
-// bottom end (rs7string's Rs7Frets_ChordFrame). 0 while its strings or bars are not there, or for a degenerate geometry.
-static int guitar_frame(const uint8_t *guitar, int top, frame_fit *out, float b_out[3]) {
-  const uint8_t *strings = ptr_at(guitar, RC_OFF(guitar_strings));
-  const uint8_t *grid = ptr_at(guitar, RC_OFF(guitar_fretgrid));
-  const uint8_t *s0 = ptr_at(strings, RC_OFF(guitar_strings_string));
-  const uint8_t *s1 = ptr_at(strings, RC_OFF(guitar_strings_string) + rc_guest_ptr_size);
-  if (!grid || !s0 || !s1) return 0;
-  float a0[3], a1[3], b[3];
-  const uint8_t *bar0 = FIELD(grid, fretgrid_bars);
-  ld3(a0, s0 + RC_OFF(guitar_string_attach));
-  ld3(a1, s1 + RC_OFF(guitar_string_attach));
-  ld3(b, bar0 + RC_OFF(fretbar_b_local));
-  for (int i = 0; i < 3; i++) b_out[i] = b[i];
-  const int moved = RC_LD(uint8_t, bar0 + RC_OFF(fretbar_valid)) && floor_moved(a0, a1, b);
-  return chord_frame(a0, a1, b, moved, top, out);
 }
 
 // ---- the frames marked (B1) and not yet built (B2). A spin lock: the builder and the build may be other threads.
@@ -212,17 +131,13 @@ static void on_b2(rc_mid_frame *f, void *user) {
   unlock();
   uint8_t *scale = PTR(f, "scale"), *trans = PTR(f, "translate");
   if (!guitar || !scale || !trans) return;
-  frame_fit fit;
+  // the grid part's fit over every string (seven_grid.h): up to the guitar's last string (6 or 7, frame_top's), an
+  // extended bass's low B and high C, with the floor as the grid part moved it (one spacing for 7 strings and a bass,
+  // two for 8)
+  seven_frame_fit fit;
   float b[3];
-  if (!top) {  // an extended bass: the grid part's fit over every string (seven_grid.h)
-    seven_frame_fit g;
-    if (!seven_grid_chord_frame(guitar, &g, b)) {
-      clog("chord frame of an extended bass: no lane geometry on it: the game's frame");
-      return;
-    }
-    fit = (frame_fit){g.scale, g.shift, g.origin, g.margin, g.spacing};
-  } else if (!guitar_frame(guitar, top, &fit, b)) {
-    clog("chord frame up to string %d: no lane geometry on its guitar: the game's frame", top);
+  if (!seven_grid_chord_frame(guitar, &fit, b)) {
+    clog("chord frame up to string %d: no lane geometry on its guitar: the game's frame", top ? top : 6);
     return;
   }
   if (fabsf(fit.scale - 1.0f) < 1e-4f && fabsf(fit.shift) < 1e-3f) return;  // exactly the game's frame
@@ -310,8 +225,9 @@ static void on_sm7(rc_mid_frame *f, void *user) {
 //   seven_pubbc_scale / seven_pubbc_setscale   when a marker's span changed, the barre capsules' scale: the clip ends at
 //                 five guitar gaps, a barre of seven strings is six, so the capsule is scaled up by 6 / 5 (Learn &
 //                 Play: an edit calls Entity_SetScale with the bits this callback leaves in ecx; the Mac: this callback
-//                 calls it). rs7string also scales the clip's seek by the same gap ratio; with the guitar's own gap that
-//                 ratio is 1, so it is left out here (this port has no string spacing setting)
+//                 calls it). The gap is the guitar's (its spacing_guitar7 / 8). rs7string also scales the clip's seek by
+//                 the gap ratio; that is the game's own code here, left as it is, so a spaced guitar's barre of up to six
+//                 strings keeps the stock length
 // All of it runs only when the game has every point (seven_mid_optional): an older RS Re-ARMed keeps the stock markers.
 #define GUITAR_GAP 1.608f  // the game's string gap (rs7string's kGuitarGap); the barre clip ends at five of them
 static int g_barre;       // every point of the fix is taken
@@ -354,8 +270,10 @@ static void on_pubgf(rc_mid_frame *f, void *user) {
 // guitar that is not built with 7 or 8 strings (or a marker with no capsules): the game's own
 static uint32_t barre_scale_bits(rc_mid_frame *f) {
   if (!seven_on || !g_barre || !SEVEN_GET(f, "entity1") || !SEVEN_GET(f, "entity2")) return 0;
-  if (!seven_count(marker_guitar(PTR(f, "owner")))) return 0;
-  const float k = seven_barre_entity_scale((int32_t)SEVEN_GET(f, "span"), GUITAR_GAP, GUITAR_GAP);
+  const uint8_t *guitar = marker_guitar(PTR(f, "owner"));
+  if (!seven_count(guitar)) return 0;
+  // the guitar's own gap: the stock one times its spacing (spacing_guitar7 / 8; 1 without)
+  const float k = seven_barre_entity_scale((int32_t)SEVEN_GET(f, "span"), GUITAR_GAP * seven_spacing_k(guitar), GUITAR_GAP);
   return f32bits(k);
 }
 

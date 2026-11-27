@@ -109,19 +109,15 @@ static int session_is_bass(const uint8_t *s, int n) {
   return det && RC_LD(int32_t, FIELD(det, detection_instrument)) == 2;
 }
 
-// The count from the session's target (7 / 8) or its guitar (4 / 5 / 6 / 7 / 8; six on a guitar built with more than
-// six when the target has six strings: a 6-string target tunes six strings, as rs7string's)
+// The count from the session's target (7 / 8, no more than its guitar was built with) or its guitar (4 / 5 / 6 / 7 / 8;
+// six on a guitar built with more than six when the target has six strings: a 6-string target tunes six strings, as
+// rs7string's): seven_tuner_count
 static void refresh_count(uint8_t *s) {
-  int target = RC_LD(uint8_t, FIELD(s, seven_tuner_target)), n = count_of(s), bass = 0;
-  if (target >= 7) {
-    n = target;
-  } else {
-    void *guitar = rc_mod_ptr(FIELD(s, player_tuner_guitar));
-    int built = guitar ? seven_strings_count(guitar) : 0;
-    if (built > 0) n = built;
-    if (built == 5 || built == 6) bass = session_is_bass(s, built);
-    else if (n > 6) n = 6;
-  }
+  const int target = RC_LD(uint8_t, FIELD(s, seven_tuner_target));
+  void *guitar = rc_mod_ptr(FIELD(s, player_tuner_guitar));
+  const int built = guitar ? seven_strings_count(guitar) : 0;
+  const int n = seven_tuner_count(target, built, count_of(s));
+  const int bass = target < 7 && (built == 5 || built == 6) ? session_is_bass(s, built) : 0;
   if (n != count_of(s) || bass != is_bass(s))
     tlog("session %p: %d strings%s, first string %d", (void *)s, n, bass ? " (bass)" : "",
          bass ? seven_slot_of(SEVEN_BASS, n, 0) : n > 6 ? n - 1 : 0);
@@ -371,20 +367,34 @@ static void on_ts8f2(rc_mid_frame *f, void *user) {
   if (s) RC_ST(int32_t, FIELD(s, player_tuner_string), first_of(s));
 }
 
-// TS8F3: mode 3 selects string 0, or 5 for the reverse pass (the last string of every order): 0 is the first
+// The reverse pass's string 5 (the game's literal): the last of the order, which it is for every order but a 5-string
+// bass's (4, 0..3: no slot 5, its last is its G, slot 3)
+static uint32_t reverse_start(const uint8_t *s, uint32_t string) {
+  return string == 5 && is_bass(s) && count_of(s) == 5 ? RC_LD(uint8_t, FIELD(s, seven_tuner_order) + 4) : string;
+}
+
+// TS8F3: mode 3 selects string 0, or 5 for the reverse pass: 0 is the first of the order, 5 its last
 static void on_ts8f3(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   uint8_t *s = PTR(f, "session");
-  if (s && SEVEN_GET(f, "string") == 0) SEVEN_SET(f, "string", (uint32_t)first_of(s));
+  if (!s) return;
+  const uint32_t string = (uint32_t)SEVEN_GET(f, "string");
+  const uint32_t to = string == 0 ? (uint32_t)first_of(s) : reverse_start(s, string);
+  if (to != string) SEVEN_SET(f, "string", to);
 }
 
 // TS8M2E: mode 2 entered from a menu (sub mode 0, string 0) begins at the first string of the order; the argument
-// itself changes, as mode 5 selects again from it. Sub mode 1 (mode 0's fall-back) and the reverse pass keep theirs.
+// itself changes, as mode 5 selects again from it. Sub mode 1 (mode 0's fall-back) keeps its string, the reverse pass
+// its 5 (the last of the order: a 5-string bass's G)
 static void on_ts8m2e(rc_mid_frame *f, void *user) {
   if (!seven_on) return;
   uint8_t *s = PTR(f, "session");
-  if (s && SEVEN_GET(f, "submode") == 0 && SEVEN_GET(f, "string") == 0)
+  if (!s) return;
+  const uint32_t string = (uint32_t)SEVEN_GET(f, "string");
+  if (SEVEN_GET(f, "submode") == 0 && string == 0)
     SEVEN_SET(f, "string", (uint32_t)first_of(s));
+  else if (reverse_start(s, string) != string)
+    SEVEN_SET(f, "string", reverse_start(s, string));
 }
 
 // ---- single reads

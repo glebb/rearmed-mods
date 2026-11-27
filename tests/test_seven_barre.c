@@ -56,5 +56,8 @@ int main(void) {
   CHECK(seven_barre_entity_scale(7, 1.608f, 1.608f) > 1.1999f && seven_barre_entity_scale(7, 1.608f, 1.608f) < 1.2001f);
   CHECK(seven_barre_entity_scale(8, 1.608f, 1.608f) > 1.3999f && seven_barre_entity_scale(8, 1.608f, 1.608f) < 1.4001f);
   CHECK(seven_barre_entity_scale(7, 0.0f, 1.608f) == 1.0f && seven_barre_entity_scale(0, 1.608f, 1.608f) == 1.0f);
+  // a spaced guitar (spacing_guitar7 = 2 x the stock gap): six of its gaps over the clip's five stock ones
+  CHECK(seven_barre_entity_scale(7, 2 * 1.608f, 1.608f) > 2.3999f && seven_barre_entity_scale(7, 2 * 1.608f, 1.608f) < 2.4001f);
+  CHECK(seven_barre_entity_scale(7, 0.5f * 1.608f, 1.608f) == 1.0f);  // narrower: never below the stock capsule
   return check_done("seven_barre");
 }

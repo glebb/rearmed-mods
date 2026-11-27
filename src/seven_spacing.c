@@ -116,10 +116,12 @@ float seven_spacing_k(const void *guitar) {
   return stock > 1e-3f && now > 1e-3f ? now / stock : 1.0f;
 }
 
-// seven_pubga, after the pitch part's hook (parts register in order): strings 0-5 of a spaced guitar
+// seven_pubga, after the strings part's and the pitch part's hooks (parts register in order): strings 0-5 of a spaced
+// guitar. A point an earlier hook answered (f->go: the strings part's bass strings 4 / 5) is left alone: that hook
+// called the game, which leaves ecx (info, on Learn & Play) as the callee did until all hooks have run
 static void on_pubga(rc_mid_frame *f, void *user) {
   (void)user;
-  if (!seven_on || !seven_feature(SEVEN_F_SPACING) || g_in_query) return;
+  if (!seven_on || f->go || !seven_feature(SEVEN_F_SPACING) || g_in_query) return;
   const unsigned s = (unsigned)(SEVEN_GET(f, "string") & 0xff);
   if (s >= 6) return;
   void *info = (void *)(uintptr_t)SEVEN_GET(f, "info");

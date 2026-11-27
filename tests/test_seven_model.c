@@ -89,10 +89,20 @@ int main(void) {
   seven_bass_setup(&a, 2, 6, 3000);  // the same detector replaces its setup
   CHECK(seven_bass_strings_of(&a) == 6 && seven_bass_max_strings() == 6);
   seven_bass_setup(&c, 2, 5, 8000);  // a is exactly 5000 old: kept (only more than 5000 goes); b (2500) goes
-  CHECK(seven_bass_strings_of(&a) == 6 || seven_bass_strings_of(&c) == 5);
+  CHECK(seven_bass_strings_of(&a) == 6 && seven_bass_strings_of(&c) == 5);
   CHECK(!seven_bass_any_guitar());
   seven_bass_clear();
   CHECK(seven_bass_max_strings() == 0 && !seven_bass_any_guitar());
+  // the clock as ms wraps (after 49.7 days of uptime), and a setup from before the wrap still ages out
+  CHECK(seven_ms_of(1.5) == 1500 && seven_ms_of(4294967.296) == 0 && seven_ms_of(4294968.0) == 704);
+  CHECK(seven_ms_of(-1) == 0 && seven_ms_of(1e30) == 0);
+  seven_bass_setup(&a, 2, 6, seven_ms_of(4294966.0));  // a 6-string bass 1.3 s before the wrap
+  CHECK(seven_bass_max_strings() == 6);
+  seven_bass_setup(&b, 2, 5, seven_ms_of(4294966.0 + 3.0));  // 3 s later, past the wrap: the same song
+  CHECK(seven_bass_strings_of(&a) == 6 && seven_bass_strings_of(&b) == 5);
+  seven_bass_setup(&c, 0, 0, seven_ms_of(4294966.0 + 20.0));  // a later song, a guitar alone: both go
+  CHECK(seven_bass_max_strings() == 0 && seven_bass_any_guitar() && seven_bass_strings_of(&a) == 0);
+  seven_bass_clear();
   seven_bass_setup(&a, 2, 6, 1000);
   seven_bass_setup(&b, 0, 0, 3000);
   seven_bass_setup(&c, 2, 5, 6000);  // a is 5000 old: kept; the table is full: the oldest (a) is replaced

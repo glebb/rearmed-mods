@@ -14,8 +14,8 @@
 // and the game's own code is handed them where it turns an id into a record (begin + id * 0x48 / 0x948):
 //   seven_tp1-tp8, tp11, tp12, seven_cp1, cp2   the T8 / C8 record instead (the game's record when the vector has no
 //               array: the instructions run as the game has them)
-//   seven_ds1   the double-stop count of the post-processing over the T8's frets of seven strings (one stock string
-//               and the seventh is a double stop)
+//   seven_ds1   the double-stop count of the post-processing over the T8's frets of the strings the chord loops cover
+//               (seven_chord_native: 8, 7 on an older RS Re-ARMed; one stock string and an added one is a double stop)
 //   seven_bt1, seven_cs1   the tracker's eval keeps strings 6/7 in the unread name of its template copy (the tails)
 // The section dimming's template read (TP2, and its edit DM1: frets[s] at +0x48) is here too: the strings part left
 // both for this phase.
@@ -31,7 +31,7 @@
 // points let the game's instructions run when the vector has no array (rs7string computed the same stock record);
 // TP2 and TP12 (play time) without an array read one empty T8, as rs7string's kEmptyRecords; no SEH: the vectors are
 // the game's own. 8-string arrangements fill slots 6 and 7 (rs7string with its chord diagrams on, its default); the
-// gameplay loops cover seven.
+// gameplay loops cover eight (seven_chord_native; seven on an older RS Re-ARMed without the marker point seven_e8).
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>

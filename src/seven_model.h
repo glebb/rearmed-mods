@@ -32,8 +32,8 @@ extern const int8_t seven_bass_open[6];    // 28,33,38,43,23,48
 // (NATIVE-FORMAT: guitar 7: 0 -> 6, 1-6 -> 0-5; guitar 8: 0 -> 7, 1 -> 6, 2-7 -> 0-5; bass 5: 0 -> 4, 1-4 -> 0-3;
 // bass 6: the same and 5 -> 5)
 int seven_slot_of(int instrument, int n, int i);
-// Storage slot -> pitch rank (0 = lowest) on an n-string instrument; -1 for a bad argument. The tuner order and the
-// bass finger markers' order use it.
+// Storage slot -> pitch rank (0 = lowest) on an n-string instrument; -1 for a bad argument (the inverse of
+// seven_slot_of, whose order the tuner follows; the finger markers of a 5/6-string bass don't use it yet: README).
 int seven_rank_of(int instrument, int n, int slot);
 
 // The counts each player's instrument is built with (C-lite). The strings part writes them where the game builds
@@ -46,6 +46,11 @@ void seven_set_desired(int player, int guitar, int bass);
 // everyone. A setup more than 5000 ms older than a new one belongs to an earlier song and is dropped. `instrument`
 // is the detector's (2 = bass), `strings` 5 / 6 for an extended bass, else 0.
 void seven_bass_setup(const void *det, int instrument, int strings, uint32_t ms);
+// The clock (rsm_now's seconds, from the machine's start) as the setups' ms: modulo 2^32, so it wraps after 49.7 days
+// as the age test (ms - then, unsigned) expects, where a plain conversion of a larger number is undefined
+static inline uint32_t seven_ms_of(double seconds) {
+  return seconds >= 0 && seconds < 1.8e16 ? (uint32_t)(uint64_t)(seconds * 1000.0) : 0;
+}
 void seven_bass_clear(void);                  // forgets every setup (a test; a game restart)
 int seven_bass_strings_of(const void *det);   // 0 / 5 / 6
 int seven_bass_max_strings(void);             // the largest of the song's players (lock-free read)

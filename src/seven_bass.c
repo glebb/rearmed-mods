@@ -54,7 +54,7 @@ unsigned seven_bass_on_song(const void *det, const void *tuning, int det_instrum
     const int block = seven_chords_block_strings(song);
     strings = seven_bass_song_strings(block > 0, seven_chords_block_instrument(song), block, det_instrument);
   }
-  seven_bass_setup(det, det_instrument, (int)strings, (uint32_t)(rsm_now() * 1000.0));
+  seven_bass_setup(det, det_instrument, (int)strings, seven_ms_of(rsm_now()));
   if (strings || det_instrument == SEVEN_DET_BASS)
     blog("song %p on detector %p: %s", (const void *)song, det,
          strings == 6   ? "6-string extended bass (low B, high C)"

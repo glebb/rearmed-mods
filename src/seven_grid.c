@@ -197,8 +197,8 @@ void seven_grid_frame(void *guitar) {
   if (slot && *slot == FLOOR_PENDING && wants_seven(guitar)) {
     recover_floor(guitar);
     if (*slot != FLOOR_PENDING && once(&g_log_retry))
-      rsm_log("seven-string: frets: the highway floor of a 7-string guitar found its place after its fret bars were "
-              "placed");
+      rsm_log("seven-string: frets: the highway floor of an extended guitar or bass found its place after its fret "
+              "bars were placed");
   }
 }
 

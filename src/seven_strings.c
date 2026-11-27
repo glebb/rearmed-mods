@@ -111,6 +111,7 @@ int seven_strings_info_count(const void *info) { return info ? U8(info, instrume
 int seven_strings_guitar_count(const void *guitar) { return seven_strings_info_count(ptr_at(guitar, RC_OFF(guitar_info))); }
 int seven_strings_count(const void *guitar) { return seven_strings_guitar_count(guitar); }
 int seven_strings_active(const void *info) { return info ? U8(info, seven_info_active) : 0; }
+int seven_strings_loaded(const void *info) { return info ? U8(info, seven_info_loaded) : 0; }
 int seven_strings_info_is_bass(const void *info) { return info && RC_LD(int32_t, FIELD(info, instrument_type)) == 2; }
 int seven_strings_letter_inline(const void *info) { return seven_headstock_letter_inline(info); }
 
@@ -484,7 +485,7 @@ void *seven_strings_child(void *guitar, int s) {
   return seven_strings_string(ptr_at(guitar, RC_OFF(guitar_strings)), s, 0);
 }
 
-// 0 when the strings past six the guitar loads (its build count: string 6 of a guitar built with 7) and their ghosts
+// 0 when the strings past six the guitar loads (its loaded count: string 6 of a guitar built with 7) and their ghosts
 // exist with their models loaded; else the first failing check, rs7string's ExtraWhy: 1 no GuitarStrings, 3 no
 // InstrumentInfo, 4 the GuitarStrings' InstrumentInfo isn't the guitar's, 8 + (s - 6) * 6 + ghost * 3 + {0 no object,
 // 1 no entity, 2 not loaded}. A guitar built with six (or a bass) has none to wait for: 0.
@@ -523,13 +524,14 @@ static void on_shape3(rc_mid_frame *f, void *user) {
 }
 
 // GSHC: the headstock's segment colours over the active strings. The headstock has six segments (the game's check
-// would read past its six): string 6 has one while the guitar shows the 7-string headstock model, its string_size_7
-// (the headstock part's), which then takes string 6's colour as the game's loop gives the others theirs; string 7
-// never has one
+// would read past its six): strings 6 and 7 have one while the guitar shows a 7- or 8-string headstock model with its
+// string_size_7 / _8 (the headstock part's seven_headstock_seg_colour), which then takes that string's colour as the
+// game's loop gives the others theirs; else none. One hook a point does both strings: on Learn & Play the segment and
+// the string are both ecx, so a second hook would read the segment set here as the string.
 // (`guitar` is read by each point itself: SEVEN_GET caches a value's index per place, and the two points list their
 // values in different orders)
 static void *segment7(const void *guitar, int string) {
-  return string == SEVEN_STOCK ? seven_headstock_seg7_colour(guitar) : NULL;
+  return string >= SEVEN_STOCK ? seven_headstock_seg_colour(guitar, string) : NULL;
 }
 static void on_hs_loaded(rc_mid_frame *f, void *user) {
   int s = (int32_t)SEVEN_GET(f, "string");

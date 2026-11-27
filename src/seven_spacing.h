@@ -15,7 +15,8 @@
 #include <math.h>
 
 #define SEVEN_SPACING_STOCK 1.608f  // the game's string spacing
-#define SEVEN_SPACING_KMIN 0.25f    // k stays within these (a wanted value is 0.5 to 4.0 in 1.608)
+#define SEVEN_SPACING_KMIN 0.15f    // k stays within these (a wanted value is 0.5 to 4.0: k 0.31 to 2.49 on a guitar's
+                                    // 1.608, 0.19 to 1.49 on a bass's 2.680)
 #define SEVEN_SPACING_KMAX 4.0f
 
 // k for a wanted spacing (0 = stock) and the stock spacing measured; 1 for no change or a value that makes no sense

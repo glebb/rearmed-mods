@@ -427,7 +427,9 @@ static int grid_build(uint8_t *grid, uint8_t *guitar) {
   if (built > 6) {
     const int why = seven_strings_extra_why(guitar);
     if (why) return not_ready(grid, guitar, 0x100 | (unsigned)why);
-    for (int s = 6; s < built && s < 8; s++)  // a guitar loads the strings it was built with (seven_strings.c)
+    // the added strings it loads (none with string7_line off: its lanes and detection keep the count)
+    const int end = seven_extra_models_end(built, seven_strings_loaded(info));
+    for (int s = 6; s < end; s++)
       if (!model_ready(seven_strings_child(guitar, s))) return not_ready(grid, guitar, 3);
   }
   const unsigned frets = RC_LD(uint8_t, info + RC_OFF(instrument_frets));
@@ -612,8 +614,9 @@ static void on_i1(rc_mid_frame *f, void *user) {
   if ((uint32_t)SEVEN_GET(f, "instrument") == 2) {  // a bass: strings 4 / 5 of an extended bass (the game's table has four)
     const int base = bass_base(s);
     const uint8_t *tuning = P(SEVEN_GET(f, "tuning"));
-    if (base == SEVEN_BASS_NO_BASE || !tuning) return;
-    const uint32_t fret = (uint32_t)SEVEN_GET(f, "midi") - (uint32_t)base - (uint32_t)(int32_t)RC_LD(int16_t, tuning + 2 * s);
+    if (base == SEVEN_BASS_NO_BASE) return;
+    const int32_t t = tuning ? RC_LD(int16_t, tuning + 2 * s) : 0;  // no tuning: standard, as a guitar's string 6/7 below
+    const uint32_t fret = (uint32_t)SEVEN_GET(f, "midi") - (uint32_t)base - (uint32_t)t;
     SEVEN_SET(f, "midi", fret);
     SEVEN_SET(f, "fret", fret);
     f->go = SEVEN_CONT(f, "done");
@@ -728,7 +731,7 @@ static void on_pubwu(rc_mid_frame *f, void *user) {
   uint8_t *guitar = grid ? rc_mod_ptr(grid + RC_OFF(fretgrid_guitar)) : NULL;
   uint8_t *info = guitar ? rc_mod_ptr(guitar + RC_OFF(guitar_info)) : NULL;
   const unsigned n = info ? RC_LD(uint8_t, info + RC_OFF(instrument_strings)) : 0;
-  if (n != 4 && n != 6 && n != 7 && n != 8) return;
+  if (n < 4 || n > 8) return;  // a bass of 4 to 6, a guitar of 6 to 8 (the Mac's edit makes it 6 unless set here)
   SEVEN_SET(f, "count", n);
   f->go = SEVEN_CONT(f, "done");
 }
@@ -745,7 +748,7 @@ static void on_pubgb(rc_mid_frame *f, void *user) {
 // part, past 7 none (as the game's past 5); 0-5 the game's
 static void on_pubga(rc_mid_frame *f, void *user) {
   (void)user;
-  if (!seven_on) return;
+  if (!seven_on || f->go) return;  // answered by the strings part's hook (a bass's strings 4 / 5)
   const unsigned s = (unsigned)SEVEN_GET(f, "string");
   if (s < 6) return;
   void *info = P(SEVEN_GET(f, "info"));
@@ -755,16 +758,17 @@ static void on_pubga(rc_mid_frame *f, void *user) {
   f->go = SEVEN_CONT(f, "ret");
 }
 
-// 0x1367b30's edge string (eax = InstrumentInfo, cl = first): the physical edge of the built count. With 7/8 strings
-// string 6 or 7 lies beyond string 0, so the first edge is the last string and the other edge is string 5.
+// 0x1367b30's edge string (eax = InstrumentInfo, cl = first): the physical edge of the built count
+// (seven_edge_string: with 7/8 strings string 6 or 7 lies beyond string 0, so the first edge is the last string and the
+// other edge is string 5; an extended bass's low B, slot 4, is beyond string 0, its other edge the G or the high C)
 static void on_pubedge(rc_mid_frame *f, void *user) {
   (void)user;
   if (!seven_on) return;
   const uint8_t *info = P(SEVEN_GET(f, "info"));
   if (!info) return;
-  const unsigned n = RC_LD(uint8_t, info + RC_OFF(instrument_strings));
+  const int n = RC_LD(uint8_t, info + RC_OFF(instrument_strings));
   const int first = (uint8_t)SEVEN_GET(f, "first") != 0;
-  const unsigned edge = first ? (n > 6 ? n - 1 : 0) : (n > 6 ? 5 : n - 1);
+  const unsigned edge = (unsigned)seven_edge_string(n, seven_strings_info_is_bass(info), first);
   SEVEN_SET(f, "edge", edge & 0xff);
   f->go = SEVEN_CONT(f, "done");
 }

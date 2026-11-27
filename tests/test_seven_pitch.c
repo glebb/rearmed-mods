@@ -1,6 +1,7 @@
 // The detector's raw candidate floor of a low tuning (src/seven_pitch.h: seven_pitch_floor, rs7string's rsxrp::Floor)
 #include <stdint.h>
 #include "../src/seven_pitch.h"
+#include "../src/seven_tuner.h"
 #include "check.h"
 
 int main(void) {
@@ -20,5 +21,14 @@ int main(void) {
   CHECK(seven_pitch_floor(20, 30) == 20);
   CHECK(seven_pitch_floor(20, 19) == 18);
   CHECK(seven_pitch_floor(16, 10) == 16);
+  // the tuner's string count: a 7/8-string target, no more than the guitar was built with
+  CHECK(seven_tuner_count(7, 7, 6) == 7 && seven_tuner_count(8, 8, 6) == 8);
+  CHECK(seven_tuner_count(8, 7, 6) == 7);  // an 8-string tuning on a guitar built with 7 (no 8-string support)
+  CHECK(seven_tuner_count(7, 0, 6) == 7 && seven_tuner_count(8, 0, 6) == 8);  // the guitar not known yet
+  CHECK(seven_tuner_count(7, 6, 6) == 7);  // a guitar still being rebuilt: the target's count
+  // no target: the build count, six on an extended guitar (a 6-string tuning), a bass's 4 / 5 / 6 kept
+  CHECK(seven_tuner_count(0, 6, 7) == 6 && seven_tuner_count(0, 7, 7) == 6 && seven_tuner_count(0, 8, 6) == 6);
+  CHECK(seven_tuner_count(0, 4, 6) == 4 && seven_tuner_count(0, 5, 6) == 5 && seven_tuner_count(0, 6, 6) == 6);
+  CHECK(seven_tuner_count(0, 0, 5) == 5 && seven_tuner_count(0, 0, 8) == 6);
   return check_done("seven_pitch");
 }

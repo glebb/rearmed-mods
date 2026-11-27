@@ -25,4 +25,15 @@ int seven_tuner_seven_for(const void *offsets, int *t6);
 // (a stock tuning; extra 0, *instrument SEVEN_GUITAR). The tuning names of the tuner (seven_names.c) use it.
 int seven_tuner_strings_for(const void *offsets, int16_t extra[2], int *instrument);
 
+// The session's string count from its 7/8-string target (0 none), the count its guitar was built with (0 not known)
+// and the count it has: the target, but no more than a guitar of 7 or more was built with (an 8-string tuning on a
+// guitar built with 7, when this RS Re-ARMed cannot build eight, tunes seven); else the build count, six on a guitar
+// built with more when the target has six strings (as rs7string's); a 5 or 6 of a bass's build stays (the caller tells
+// a 6-string bass from a guitar)
+static inline int seven_tuner_count(int target, int built, int current) {
+  if (target >= 7) return built >= 7 && built < target ? built : target;
+  const int n = built > 0 ? built : current;
+  return built == 5 || built == 6 ? n : n > 6 ? 6 : n;
+}
+
 #endif

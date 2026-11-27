@@ -1248,22 +1248,6 @@ void *seven_headstock_seg_colour(const void *guitar, int string) {
 }
 void *seven_headstock_seg7_colour(const void *guitar) { return seven_headstock_seg_colour(guitar, SEVEN_STOCK); }
 
-// GSHC for the eighth string (the strings part's hooks stop at the seventh: they give string 7 no segment): the
-// segment of an eight-string guitar's model takes the string's colour as the game's loop gives the others theirs
-static void on_gshc_loaded(rc_mid_frame *f, void *user) {
-  (void)user;
-  int s = (int32_t)SEVEN_GET(f, "string");
-  if (seven_on && s == SEVEN_STOCK + 1 && seven_headstock_seg_colour(PTR(f, "guitar"), s)) f->go = SEVEN_CONT(f, "loaded");
-}
-static void on_gshc_segment(rc_mid_frame *f, void *user) {
-  (void)user;
-  int s = (int32_t)SEVEN_GET(f, "string");
-  void *seg = seven_on && s == SEVEN_STOCK + 1 ? seven_headstock_seg_colour(PTR(f, "guitar"), s) : NULL;
-  if (!seg) return;
-  SEVEN_SET(f, "segment", (uintptr_t)seg);
-  f->go = SEVEN_CONT(f, "done");
-}
-
 int seven_headstock_letter_inline(const void *info) {
   int own = info ? U8(info, instrument_inline) : 0;
   if (own || !info || !seven_on || !g_on) return own;
@@ -1299,7 +1283,5 @@ int seven_headstock_init(void) {
   g_bass_ok = RC_HAS_OFF(headstock_seg_loaded) && seven_mid_optional("seven_psl1", on_psl1_bass, "the extended bass's headstock");
   g_width_ok = RC_HAS_OFF(ni_local_rotate);
   if (!g_width_ok) hlog("this RS Re-ARMed has no ni_local_rotate: the headstock keeps its width");
-  seven_mid_optional("seven_gshc_loaded", on_gshc_loaded, "the eight-string guitar's headstock segment colour");
-  seven_mid_optional("seven_gshc_segment", on_gshc_segment, "the eight-string guitar's headstock segment colour");
   return 0;
 }
