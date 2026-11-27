@@ -44,5 +44,7 @@ int seven_native_manifest(const char *text, size_t size, char **out, size_t *out
 // The mod part: three mid points, taken together or not at all; 0 (an RS Re-ARMed without them leaves the part off, with
 // a log line, and the unit on)
 int seven_native_init(void);
+// Once the unit is on (its edit group switched on): Plain Packages started for the native charts, or the part off
+void seven_native_unit_on(void);
 
 #endif

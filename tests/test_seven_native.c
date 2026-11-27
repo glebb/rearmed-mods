@@ -26,9 +26,11 @@ static int g_bass_feature = 1;  // SEVEN_F_BASS
 int seven_feature(enum seven_feature f) { return f == SEVEN_F_BASS ? g_bass_feature : 0; }
 
 void rsm_log(const char *fmt, ...) { (void)fmt; }
+static int g_plain_starts, g_plain_fails;  // plain_packages_start's calls; answer -1 while g_plain_fails
 int plain_packages_start(const char *by) {
   (void)by;
-  return 0;
+  g_plain_starts++;
+  return g_plain_fails ? -1 : 0;
 }
 void *rc_guest_alloc(size_t n) {
   void *p = window + window_used;
@@ -994,10 +996,22 @@ static void test_callback_sng(void) {
 static void test_init_needs_all_three_points(void) {
   g_taken = 0;
   g_on = 0;
+  g_plain_starts = 0;
+  // the points taken: on, and Plain Packages only once the unit is on (seven_init after its edit group)
+  CHECK(seven_native_init() == 0 && g_on == 1 && g_plain_starts == 0);
+  seven_native_unit_on();
+  CHECK(g_on == 1 && g_plain_starts == 1);
+  // Plain Packages can't start: the part is off
+  g_plain_fails = 1;
+  g_taken = 0;
   CHECK(seven_native_init() == 0 && g_on == 1);
-  g_taken = 1;  // the first call to seven_mid_optional now answers 1, the next two 0
-  g_taken = 2;
+  seven_native_unit_on();
+  CHECK(g_on == 0 && g_plain_starts == 2);
+  g_plain_fails = 0;
+  g_taken = 2;  // the first call to seven_mid_optional now answers 1, the next two 0
   CHECK(seven_native_init() == 0 && g_on == 0);
+  seven_native_unit_on();
+  CHECK(g_on == 0 && g_plain_starts == 2);  // without its points nothing starts
 }
 
 int main(void) {

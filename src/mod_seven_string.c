@@ -118,6 +118,7 @@ __attribute__((constructor)) static void seven_init(void) {
     return;
   }
   seven_on = 1;
+  seven_native_unit_on();
   for (int i = 0; i < g_nafter; i++)
     if (*g_after[i].on && rc_edit_enable(g_after[i].group))
       rsm_log("seven-string: no edits of %s on %s: its fix calls the game from its own points", g_after[i].group,

@@ -160,13 +160,18 @@ int seven_native_init(void) {
   const int b = seven_mid_optional("seven_native_json", on_json, "native charts");
   const int c = seven_mid_optional("seven_native_sng", on_sng, "native charts");
   g_on = a && b && c;
-  // a native package is a plain archive: Plain Packages comes on with it, whatever its own switch says
-  if (g_on && plain_packages_start("native charts")) g_on = 0;
-  if (a || b || c) {
-    if (g_on)
-      rsm_log("seven-string: native N-string charts: on (PSXR packages, ExtendedRange manifests, SNXR charts; Plain Packages on with them)");
-    else
-      rsm_log("seven-string: native N-string charts: off, this RS Re-ARMed lacks some of their mid points");
-  }
+  if ((a || b || c) && !g_on) rsm_log("seven-string: native N-string charts: off, this RS Re-ARMed lacks some of their mid points");
   return 0;
+}
+
+void seven_native_unit_on(void) {
+  // a native package is a plain archive: Plain Packages comes on with it, whatever its own switch says (only now that the
+  // unit is on: a unit that stays off leaves Plain Packages to its own switch)
+  if (!g_on) return;
+  if (plain_packages_start("native charts")) {
+    g_on = 0;
+    rsm_log("seven-string: native N-string charts: off, Plain Packages could not start");
+    return;
+  }
+  rsm_log("seven-string: native N-string charts: on (PSXR packages, ExtendedRange manifests, SNXR charts; Plain Packages on with them)");
 }
