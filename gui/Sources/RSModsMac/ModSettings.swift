@@ -810,9 +810,9 @@ private struct SevenStringSettings: View {
                     .font(.callout.monospaced()).frame(width: 64)
             }
         }
-        Toggle("A line over the 7th string's fret wire", isOn: flag("string7_line"))
+        Toggle("Draw the added strings (7th and 8th, a bass's low B and high C; needs a game restart)", isOn: flag("string7_line"))
         Toggle("Chord diagrams with a 7th row (needs a game restart)", isOn: flag("diagrams7"))
-        Toggle("No wrong-instrument warning in 7-string Drop A, A and G Standard", isOn: flag("lowrange"))
+        Toggle("Tuner: hear the lowest string of an extended guitar or bass, no wrong-instrument warning in 7-string Drop A, A and G Standard", isOn: flag("lowrange"))
         Divider()
         Picker("A 7- or 8-note chord counts as played", selection: store.binding(Section.sevenString, "ChordWideMisses")) {
             Text("Only with every note").tag("0")
@@ -820,7 +820,7 @@ private struct SevenStringSettings: View {
             Text("With up to two notes missed").tag("2")
         }
         Divider()
-        Toggle("Names for 7-string tunings", isOn: onOff("TuningNames"))
+        Toggle("Names for 7- and 8-string and 5- and 6-string bass tunings", isOn: onOff("TuningNames"))
         HStack {
             Text("Before")
             TextField("", text: store.binding(Section.sevenString, "TuningNamePrefix")).frame(width: 80)
@@ -830,14 +830,14 @@ private struct SevenStringSettings: View {
         }
         .disabled(!onOff("TuningNames").wrappedValue)
         Divider()
-        Toggle("Seven-peg headstock", isOn: onOff("Headstock7"))
+        Toggle("Headstocks with the extra pegs (7- and 8-string guitar, 5- and 6-string bass)", isOn: onOff("Headstock7"))
         HStack {
             Text("Its wood")
             Slider(value: wood, in: 0.05...1, step: 0.05)
             Text(String(format: "%.2f", wood.wrappedValue)).font(.callout.monospaced()).frame(width: 40)
         }
         .disabled(!onOff("Headstock7").wrappedValue)
-        Text("For 7- and 8-string charts, such as DotCharter's, and 5- and 6-string bass: extra strings, its notes and chords, the fret grid, tuner and chord diagrams over seven strings, after rs7string. Six-string songs and four-string bass stay as the game has them. Colors, spacing and the line and warning switches change while the game runs; the rest from the next start. DotCharter's unencrypted charts need Plain Packages too.")
+        Text("For 7- and 8-string charts, such as DotCharter's, and 5- and 6-string bass: the extra strings, their notes and chords, the fret grid, tuner, chord diagrams and headstock, after RS Extended Range (rs7string). Six-string songs and four-string bass stay as the game has them. Colors and the tuner switch change while the game runs, a spacing with the next instrument the game builds; the rest from the next start. Native packages (_rsxr_p.psarc) switch Plain Packages on themselves; DotCharter's older unencrypted charts need it on.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

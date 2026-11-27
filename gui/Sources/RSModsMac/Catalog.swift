@@ -147,7 +147,7 @@ enum Catalog {
         ModToggle(label: "Discord Rich Presence", key: "DiscordRichPresence",
                   help: "Discord shows that you play RS Re-ARMed, and the song, its artist and the game mode while you play one. Needs the Discord app running on this Mac."),
         ModToggle(label: "Seven-String Guitar", key: "SevenString",
-                  help: "A low B string for 7-string charts (DotCharter's), after rs7string. From the game's next start.",
+                  help: "7- and 8-string guitar and 5- and 6-string bass charts (DotCharter's, RS Extended Range's native packages), after RS Extended Range (rs7string). From the game's next start.",
                   note: "Needs RS Re-ARMed 1.12.0 in Learn & Play, 1.13.0 on the Mac"),
         ModToggle(label: "Plain Packages", key: "PlainPackages",
                   help: "Unencrypted song archives, as DotCharter writes its 7-string charts, load as the encrypted ones do. From the game's next start.",
@@ -268,8 +268,8 @@ enum Catalog {
         ("7-string guitar", "spacing_guitar7"), ("8-string guitar", "spacing_guitar8"),
         ("5-string bass", "spacing_bass5"), ("6-string bass", "spacing_bass6"),
     ]
-    // The defaults of wave 2's keys. Not in `defaults`, which mirrors the library's DEFAULTS table (rsmods_ini.c): the
-    // library reads these keys through seven_settings_parse, which has its own defaults, and doesn't write them.
+    // The slider's text and back: the library's own rules (seven_parse_spacing); the keys' defaults are in `defaults`
+    // with the library's DEFAULTS table (rsmods_ini.c)
     static func spacingText(slider: Double) -> String { slider < 0.5 ? "" : String(format: "%.1f", min(slider, 4)) }
     static func spacingSlider(text: String) -> Double {
         guard let v = Double(text.trimmingCharacters(in: .whitespaces)), v >= 0.5, v <= 4 else { return 0 }

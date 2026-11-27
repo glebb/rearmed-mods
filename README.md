@@ -546,7 +546,8 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     game loads a package, its manifests and its charts are translated to the form the unit reads. Plain Packages comes
     on with it (a native package is a plain archive), whatever its own switch says. It needs the RS Re-ARMed mid
     points `seven_native_psarc`, `seven_native_json` and `seven_native_sng`; without them native packages aren't
-    listed. The mods' own readers (song lists, the key finder, Extended Range, Tone Host, Song Stems) read them too. On the Mac the game lists
+    listed. The mods' own readers (song lists, the key finder, Extended Range, Tone Host, Song Stems) read them too, and
+    the form Song Bridge serves a native package in (its table and charts encrypted). On the Mac the game lists
     `*_m.psarc` only, so a native package needs that name there.
   * `SevenString`, `[Seven String]` `string6_N` and `string6_CB` (the low B's color, normal and colorblind; empty: light
     grey), `string7_N` and `string7_CB` (the eighth string's, empty: pink, FF66CC; upstream's `string7_color`),
@@ -557,8 +558,9 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     `spacing_bass6` (empty or 0: the game's spacing; 0.5 to 4.0: how far apart the strings are on the neck, and the
     headstock's pegs), `string7_line` (1; 0: the added strings of every extended instrument aren't drawn, their lanes,
     notes and detection stay, and they're kept out of the sections' dimming; read at the start), `diagrams7` (1: the chord book's
-    seventh row; read at the start), `lowrange` (1: no wrong-instrument warning in 7-string Drop A, A Standard and G
-    Standard). Other values than those are logged, and the key takes its default.
+    seventh row; read at the start), `lowrange` (1: the tuner hears the lowest string of an extended guitar or bass, and
+    no wrong-instrument warning in 7-string Drop A, A Standard and G Standard). Other values than those are logged, and
+    the key takes its default.
     The app's Seven-String page sets them. The colors and `lowrange` change while the game runs (the file is read
     again every half second), a spacing with the next instrument the game builds (a song for another instrument or
     string count), the switch, `string7_line`, `diagrams7` and the headstock's keys from the next start.
@@ -575,23 +577,30 @@ What each mod does, its settings, and how it differs from RSMods on Windows.
     lane and notes, chord frames over the low B, the seven-peg headstock, B STANDARD 7STR in the tuner. Played with a
     guitar the same day: it works; the tuner's reading of the low B and a seven-row chord diagram were not checked
     one by one. A chart published for Windows (`_p.psarc`) has to be converted to a Mac archive (`_m.psarc`:
-    the song files' and audio's folders, and the song files encrypted with the Mac's key) before the Mac game lists it;
-    RS Re-ARMed and these mods have no converter for that.
+    the song files' and audio's folders, and a stock package's song files encrypted with the Mac's key) before the Mac
+    game lists it; RS Re-ARMed and these mods have no converter for that. A native package keeps its charts plain
+    (`_rsxr_m.psarc`, the magic `PSXR` kept): a rocksmithconvert change, not released yet, converts one so.
   * Different: all or nothing, as in rs7string: a part that can't start leaves the guitar with six strings, and the log
     says why. rs7string's switches for its other code paths aren't here; its defaults are the behaviour. On the Mac the
     game's list of a chord's expected notes keeps six entries, where Learn & Play's holds eight: a chord of seven or eight
-    notes is judged by the mod's own chord detection in both.
+    notes is judged by the mod's own chord detection in both. As upstream's (its LowChord), a chord of two or three
+    notes with one below E1 is judged by the mod's detection on every song, its lowest note also heard on its octave:
+    that includes a stock bass's double stops on a low string tuned below E (Drop D, Drop C).
   * Checked in Learn & Play in scripted runs (2026-11-26) with a native chart (`_rsxr_p.psarc`: a 7-string Lead, a
     5-string Bass): listed, B STANDARD 7STR, the chart converted as it loads and played on seven strings with the
     seven-peg headstock, the tuner on the low B, chord frames over the low B and the fret range glow over all
     strings, no fault.
-  * Not checked in the game yet: everything about 8 strings, bass with five or six strings, local co-op, the spacing
-    keys, and the Mac with native charts. They were written from RS Extended Range's sources (beta.4 to beta.6) without running
+  * Played (2026-11-27): the native Nickelback chart's 7-string Lead on the Mac too, and an 8-string native chart
+    (F# STANDARD 8STR, its Lead) on eight strings in Learn & Play (scripted) and on the Mac, with no fault.
+  * Not checked in the game yet: bass with five or six strings, local co-op, the spacing keys, `string7_line = 0`, and
+    the arrangement scrolling. They were written from RS Extended Range's sources (beta.4 to beta.6) without running
     the game, in both editions; the first runs will show what is left. Each part that needs a mid point or edit
     an older RS Re-ARMed lacks stays off alone, and the log names the point.
   * Known limits, as upstream's: in co-op with a guitar and a bass, the bass's low B's glow, fret wires and scale
     markers use the guitar's B color; a rare wrong tail color on a six-string bass in Riff Repeater; co-op setups made
-    back to back within five seconds. Parts the Mac can't have are named in the log (`unsupported` in
+    back to back within five seconds. Not upstream's: the finger markers' barres of a 5/6-string bass go by its slots,
+    not its strings' order (a barre over the low B and the E is drawn from the E up); with a guitar `spacing_*`, a barre
+    marker of up to six strings keeps the stock length. Parts the Mac can't have are named in the log (`unsupported` in
     RS Re-ARMed's `mids.map`).
   * Songs with more than five arrangements: not this unit's, but RS Re-ARMed's own fix (`RS_MODS_ARRANGEMENTS`): the
     Learn a Song page of the original game crashes on them; with the fix its other arrangements scroll, four at a
@@ -751,7 +760,12 @@ a few periods when it is alone and not when a quieter note rings under it, lets 
 and a gap after a note stay a gap, makes no step at a note's start, the shift Pitch Shifter chooses for a song from its
 tuning, its cents and the guitar's own tuning (drop and open tunings, a bass, which arrangement), a manifest's tones for Tone Host's plan of a song, where a value goes in a preset for a plug-in's engine,
 the guitar Tone Host measures a tone's loudness with and its meter,
-and the move of a Tone Host config into a profile) and the app's
+the move of a Tone Host config into a profile, and Seven-String Guitar's pure parts for 7- and 8-string guitars and
+5- and 6-string basses with a stock 6/4-string control: the native format's converters (charts, manifests, packages),
+the songs' notes and tunings read from them, the instrument model and settings, the tuner's count and edges, the string
+spacing, the chord frame and barre fits, the colours and the headstocks; `tests/test_seven_fixtures.c` reads the two
+real RS Extended Range packages, a 7-string Lead with a 5-string Bass and an 8-string Lead, from `$RSXR_FIXTURES` or
+`~/Downloads` and skips them when they aren't there) and the app's
 (`gui/Tests`: settings, a section that is a list, install and update for both editions, the app's profile backups,
 Tone Host's interface, profiles and install). None needs the game. They also check the app against `src/rsmods_ini.c`: the same defaults,
 the same key names, and no two actions on one default key. A mod's work in the game is checked by playing it.
