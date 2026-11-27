@@ -209,7 +209,9 @@ static void follow_song(void) {
     // the tuner's six strings; the name and the cents of the arrangement that has them, or of the song's first
     const rsm_arrangement *a = n > 0 ? pitch_auto_with(arr, n, bass, g_tuner) : NULL;
     one = a ? *a : n > 0 ? arr[0] : (rsm_arrangement){.name = "?"};
-    if (!a && n > 0) snprintf(one.name, sizeof one.name, "?");
+    // none has them: "?", a bass's when the tone is (rsm_is_bass goes by the name: a bass's first four strings decide,
+    // not its six with an extended bass's low B and high C)
+    if (!a) snprintf(one.name, sizeof one.name, "%s", bass ? "Bass ?" : "?");
     memcpy(one.tuning, g_tuner, sizeof one.tuning);
     how = ", the tuner's";
   } else if (played)
