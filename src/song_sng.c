@@ -98,6 +98,50 @@ typedef struct {
   sk_event e;
 } note;
 
+enum { MAX_STRINGS = 8 };  // a guitar's, the 7th and 8th strings (slots 6 and 7) with the six stock ones
+
+// The extended strings' frets of each chord template (slots 6 and 7 of an extended guitar): the RS7X block after
+// MetaData (seven_chords.h: STRS, then CHDT's {int8 fret, int8 finger} per template and column), -1 none. Returns the
+// columns read (0: no block, or not a guitar's); `frets` is templates x 2, filled with -1 first.
+static int block_columns(const uint8_t *p, size_t n, uint32_t templates, int8_t *frets) {
+  memset(frets, -1, (size_t)templates * 2);
+  if (n < 16 || memcmp(p, "RS7X", 4)) return 0;
+  uint16_t header;
+  uint32_t count, size;
+  memcpy(&header, p + 6, 2), memcpy(&size, p + 8, 4), memcpy(&count, p + 12, 4);
+  if (size > n || header < 16 || header > size) return 0;
+  int columns = 0;
+  size_t at = header;
+  for (uint32_t i = 0; i < count && size - at >= 12; i++) {
+    const uint8_t *id = p + at;
+    uint32_t len;
+    memcpy(&len, id + 8, 4);
+    at += 12;
+    if (len > size - at) return 0;
+    const uint8_t *b = p + at;
+    at += len;
+    if (!memcmp(id, "STRS", 4)) {
+      if (len < 4 || b[0] != 0) return 0;  // an extended bass's block has no columns: its strings are stock slots
+      columns = b[2];
+    } else if (!memcmp(id, "CHDT", 4) && columns > 0 && len >= 4) {
+      uint32_t rows;
+      memcpy(&rows, b, 4);
+      if (rows != templates || (len - 4) / 2 / (size_t)columns < rows) return 0;
+      for (uint32_t t = 0; t < rows; t++)
+        for (int c = 0; c < columns && c < 2; c++) frets[t * 2 + c] = (int8_t)b[4 + ((size_t)t * columns + c) * 2];
+    }
+  }
+  return columns;
+}
+
+// The older 7-string format (packages before the block): the 7th string's fret in a template's name[31],
+// ((finger + 1) << 5) | (fret + 1), when the name ends before it (seven_chords.c's old_name_column); -1 none
+static int old_name_fret(const uint8_t *tmpl) {
+  const uint8_t *name = tmpl + 40;
+  if (!memchr(name, 0, 31) || (name[31] & 0x1f) == 0) return -1;
+  return (name[31] & 0x1f) - 1;
+}
+
 static int by_time(const void *a, const void *b) {
   float x = ((const sk_event *)a)->time, y = ((const sk_event *)b)->time;
   return x < y ? -1 : x > y;
@@ -106,7 +150,7 @@ static int by_time(const void *a, const void *b) {
 int sng_parse(const uint8_t *d, size_t n, int bass, double cents, sng_arrangement *out) {
   // the open notes of the six stock slots; a bass's slots 4 and 5 are an extended bass's low B and high C (native charts:
   // seven_slot_of), unused by a four-string one
-  static const int GUITAR[6] = {40, 45, 50, 55, 59, 64}, BASS[6] = {28, 33, 38, 43, 23, 48};
+  static const int GUITAR[6] = {40, 45, 50, 55, 59, 64}, BASS[6] = {28, 33, 38, 43, 23, 48}, GUITAR_EXT[2] = {35, 30};
   reader r = {d, d + n, 0};
   int shift = (int)lround(cents / 100);
   memset(out, 0, sizeof *out);
@@ -165,12 +209,12 @@ int sng_parse(const uint8_t *d, size_t n, int bass, double cents, sng_arrangemen
           int32_t m = i32_at(t + 4 * s);
           if (m >= 0) x->e.midi[x->e.n++] = m + shift;
         }
-        x->string = -1;
+        x->string = -1;  // the 7th and 8th strings' notes are added once the tuning is read
         x->e.chord = chord;
       } else {
         x->e.chord = -1;
         x->string = (int8_t)q[16], x->fret = (int8_t)q[17];
-        x->e.n = x->string >= 0 && x->string < 6 ? -1 : 0;  // the 7th and 8th strings: not here
+        x->e.n = x->string >= 0 && x->string < MAX_STRINGS ? -1 : 0;
       }
     }
     count(&r, 4), count(&r, 4), count(&r, 4);
@@ -178,28 +222,44 @@ int sng_parse(const uint8_t *d, size_t n, int bass, double cents, sng_arrangemen
   // the metadata: capo, tuning
   const uint8_t *meta = skip(&r, 40 + 1 + 32 + 2 + 4);
   uint32_t strings = u32(&r);
-  int tuning[6] = {0};
+  int tuning[MAX_STRINGS] = {0};
   for (uint32_t s = 0; s < strings && !r.bad; s++) {
     const uint8_t *t = skip(&r, 2);
-    if (t && s < 6) tuning[s] = (int16_t)(t[0] | t[1] << 8);
+    if (t && s < MAX_STRINGS) tuning[s] = (int16_t)(t[0] | t[1] << 8);
   }
   if (r.bad) {
     free(notes), free(level_notes);
     return 0;
   }
   int capo = (int8_t)meta[40];
+  // a 7- or 8-string guitar's extended strings (slots 6 and 7): their chord frets from the RS7X block after the rest of
+  // MetaData (two floats and MaxDifficulty), or the older format's name[31]; a bass's extended strings are stock slots
+  const int ext = bass || strings < 7 || strings > MAX_STRINGS ? 0 : (int)strings - 6;
+  int8_t *ext_frets = NULL;
+  if (ext && templates) {
+    ext_frets = malloc((size_t)templates * 2);
+    if (ext_frets && r.e - r.p >= 12 && !block_columns(r.p + 12, (size_t)(r.e - r.p - 12), templates, ext_frets) &&
+        strings == 7)
+      for (uint32_t t = 0; t < templates; t++) ext_frets[t * 2] = (int8_t)old_name_fret(tmpl + (size_t)t * 72);
+  }
   out->ev = malloc((kept ? kept : 1) * sizeof *out->ev);
   for (size_t i = 0; i < kept; i++) {
     sk_event e = notes[i].e;
     if (e.n < 0) {  // a single note: its string's note
       int s = notes[i].string, f = notes[i].fret;
+      if (s >= 6 && s - 6 >= ext) continue;  // past the arrangement's strings
       if (f == 0 && capo > 0) f = capo;
       e.n = 1;
-      e.midi[0] = (bass ? BASS : GUITAR)[s] + tuning[s] + f + shift;
+      e.midi[0] = (s < 6 ? (bass ? BASS : GUITAR)[s] : GUITAR_EXT[s - 6]) + tuning[s] + f + shift;
+    } else if (e.chord >= 0 && ext_frets) {  // a chord's 7th and 8th strings: open note + tuning + the authored fret
+      for (int c = 0; c < ext && e.n < SK_MAX_NOTES; c++) {
+        const int f = ext_frets[e.chord * 2 + c];
+        if (f >= 0) e.midi[e.n++] = GUITAR_EXT[c] + tuning[6 + c] + f + shift;
+      }
     }
     if (e.n > 0) out->ev[out->n++] = e;
   }
-  free(notes);
+  free(notes), free(ext_frets);
   qsort(out->ev, (size_t)out->n, sizeof *out->ev, by_time);  // a merge of the levels' notes
   out->beats = malloc((nbeats ? nbeats : 1) * sizeof *out->beats);
   for (uint32_t i = 0; i < nbeats; i++) {

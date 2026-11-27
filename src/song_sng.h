@@ -11,7 +11,10 @@
 // two fingerprint lists (20), its notes (63 bytes + u32 bends + 12 bytes each: time +12, string +16, fret +17,
 // chord +20, phrase iteration +32, sustain +55) and three int lists; then the metadata (capo +40, string count
 // +79, then int16 tuning[]). The whole chart is, for each phrase iteration, the notes of the level that is its
-// phrase's MaxDifficulty.
+// phrase's MaxDifficulty. A 7- or 8-string guitar (seven_chords.h) has its 7th and 8th strings as note strings 6 and 7
+// (open B1 and F#1, the MetaData tuning's entries 6 and 7) and their chord frets in the RS7X block after MetaData
+// (CHDT), or for an older 7-string package in a template's name[31]; an extended bass's low B and high C are the stock
+// slots 4 and 5.
 #ifndef SONG_SNG_H
 #define SONG_SNG_H
 

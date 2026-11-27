@@ -62,7 +62,11 @@ static void note(buf *b, float t, float sus, int string, int fret, int chord, in
   u32(b, 0);  // no bends
 }
 
-static buf make_sng(void) {
+// A chart on a guitar of `strings` (6, or 7 and 8: the 7th string tuned down a tone, A1, a note on it at 7 s, string 6
+// fret 3, and the G chord's extended strings in an RS7X block: fret 2 on the 7th, open on the 8th; with `old_format`
+// in the template's name[31] instead, fret 4 on the 7th, and no block); 5: a 5-string bass's chart, six tuning entries as
+// the native form has them and a note on its low B (stock slot 4) at 7 s, fret 1)
+static buf make_sng_on(int strings, int old_format) {
   buf b = {0};
   u32(&b, 0);  // beats
   u32(&b, 2);  // phrases: the first's notes are in level 1, the second's in level 0
@@ -71,7 +75,10 @@ static buf make_sng(void) {
   memcpy(at(&b, 44) + 4, &zero, 4);
   u32(&b, 1);  // a chord template: G major, open (G2 B2 D3 G3 B3 G4)
   int32_t g[6] = {43, 47, 50, 55, 59, 67};
-  memcpy(at(&b, 72) + 16, g, sizeof g);
+  uint8_t *tpl = at(&b, 72);
+  memcpy(tpl + 16, g, sizeof g);
+  memcpy(tpl + 40, "G", 2);
+  if (old_format) tpl[40 + 31] = (uint8_t)((1 << 5) | (4 + 1));  // finger 0, fret 4
   u32(&b, 0), u32(&b, 0);  // chord notes, vocals
   u32(&b, 2);              // phrase iterations: phrase 0, then 1
   memcpy(at(&b, 24), &zero, 4);
@@ -82,9 +89,11 @@ static buf make_sng(void) {
   // level 0: a note of iteration 0 (not this level's), and iteration 1's E on the low string, fret 0, capo 2
   u32(&b, 0);
   for (int i = 0; i < 4; i++) u32(&b, 0);
-  u32(&b, 2);
+  u32(&b, strings != 6 ? 3 : 2);
   note(&b, 1.0f, 0, 0, 3, -1, 0);
   note(&b, 5.0f, 1.5f, 0, 0, -1, 1);
+  if (strings > 6) note(&b, 7.0f, 0, 6, 3, -1, 1);
+  if (strings == 5) note(&b, 7.0f, 0, 4, 1, -1, 1);
   u32(&b, 0), u32(&b, 0), u32(&b, 0);
   // level 1: iteration 0's G chord, then D on the A string fret 5, and iteration 1's note (not this level's)
   u32(&b, 1);
@@ -96,12 +105,30 @@ static buf make_sng(void) {
   u32(&b, 0), u32(&b, 0), u32(&b, 0);
   uint8_t *meta = at(&b, 79);
   meta[40] = 2;  // capo
-  u32(&b, 6);
-  int16_t tuning[6] = {-2, 0, 0, 0, 0, 0};  // drop D
-  put(&b, tuning, sizeof tuning);
+  const int entries = strings < 6 ? 6 : strings;
+  u32(&b, (uint32_t)entries);
+  int16_t tuning[8] = {-2, 0, 0, 0, 0, 0, -2, 0};  // drop D (and drop A)
+  put(&b, tuning, 2 * (size_t)entries);
   put(&b, NULL, 12);  // the rest of the metadata
+  if (strings > 6 && !old_format) {
+    const uint32_t cols = (uint32_t)strings - 6, strs = 4 + cols, chdt = 4 + 2 * cols, size = 16 + 12 + strs + 12 + chdt;
+    put(&b, "RS7X\x01\x00\x10\x00", 8);
+    put(&b, &size, 4);
+    u32(&b, 2);
+    put(&b, "STRS\x01\x00\x01\x00", 8);
+    put(&b, &strs, 4);
+    const uint8_t h[6] = {0, (uint8_t)strings, (uint8_t)cols, 0, 6, 7};
+    put(&b, h, strs);
+    put(&b, "CHDT\x01\x00\x01\x00", 8);
+    put(&b, &chdt, 4);
+    u32(&b, 1);
+    const int8_t fg[4] = {2, 1, 0, -1};
+    put(&b, fg, 2 * cols);
+  }
   return b;
 }
+
+static buf make_sng(void) { return make_sng_on(6, 0); }
 
 static buf encrypt_sng(const buf *plain) {
   static const uint8_t KEY_MAC[32] = {0x98, 0x21, 0x33, 0x0E, 0x34, 0xB9, 0x1F, 0x70, 0xD0, 0xA4, 0x8C, 0xBD, 0x62, 0x59, 0x93, 0x12,
@@ -228,6 +255,31 @@ int main(void) {
   CHECK(back && sng_parse(back, n, 1, -1200, &a) && a.n == 3 && a.ev[0].midi[0] == 38 - 12 && a.ev[1].midi[0] == 43 - 12);  // a bass
   sng_free(&a);
   CHECK(back && !sng_parse(back, n - 20, 0, 0, &a));  // cut short
+  // a 7- and an 8-string guitar: the chord's extended strings from the RS7X block, A1 = 35 - 2 + 2 and F#1 open
+  for (int strings = 7; strings <= 8; strings++) {
+    buf e = make_sng_on(strings, 0);
+    sng_arrangement ea;
+    CHECK(sng_parse(e.p, e.n, 0, 0, &ea) && ea.n == 4 && ea.ev[1].n == strings && ea.ev[1].midi[6] == 35);
+    if (ea.n == 4) CHECK(ea.ev[3].time == 7.0f && ea.ev[3].n == 1 && ea.ev[3].midi[0] == 35 - 2 + 3);  // the 7th string's note
+    if (strings == 8 && ea.n == 4) CHECK(ea.ev[1].midi[7] == 30);
+    sng_free(&ea);
+    free(e.p);
+  }
+  {  // a 5-string bass: its low B is stock slot 4 (B0, 23), fret 1: C1
+    buf e = make_sng_on(5, 0);
+    sng_arrangement ea;
+    CHECK(sng_parse(e.p, e.n, 1, 0, &ea) && ea.n == 4 && ea.ev[1].n == 6);
+    if (ea.n == 4) CHECK(ea.ev[3].time == 7.0f && ea.ev[3].n == 1 && ea.ev[3].midi[0] == 24 && ea.ev[2].midi[0] == 28);
+    sng_free(&ea);
+    free(e.p);
+  }
+  {  // the older 7-string format: the 7th string's chord fret in name[31] (fret 4: 37)
+    buf e = make_sng_on(7, 1);
+    sng_arrangement ea;
+    CHECK(sng_parse(e.p, e.n, 0, 0, &ea) && ea.n == 4 && ea.ev[1].n == 7 && ea.ev[1].midi[6] == 37);
+    sng_free(&ea);
+    free(e.p);
+  }
   free(back);
   // unencrypted (flags 1): the zlib stream right after the IV slot
   buf open = {0};
