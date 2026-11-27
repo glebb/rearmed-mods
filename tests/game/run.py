@@ -11,8 +11,9 @@ The game takes keys only while its window has the focus: keep the screen free wh
 at a time: the runner takes ~/rs-gametest/.game-lock (waiting up to 30 min for another run) and always quits its game
 (keyfifo's quit, then SIGTERM, then SIGKILL), on Ctrl-C too.
 
-With RS Re-ARMed's test input in the build (RS_AUDIO_FAKE_INPUT), every game gets FAKE_INPUT (RS_GAMETEST_FAKE_INPUT
-overrides it) and the cases' "heard" checks run; without it they are SKIP. A case whose route is not driven yet is
+With RS Re-ARMed's test input in the build (RS_AUDIO_FAKE_INPUT), every game gets fake_input() (RS_GAMETEST_FAKE_INPUT
+overrides it): channel 1 a WAV that cycles through the cases' lowest notes, channel 2 silence; the cases' "heard"
+checks run. Without it they are SKIP. A case whose route is not driven yet is
 MANUAL in the report, with its steps. The charts of a game start's cases are put in dlc/gametest/ before it starts
 (the game lists dlc at its start).
 
@@ -46,12 +47,53 @@ from gt_game import (Driver, EventSink, Game, GameEnded, Interrupted, Lock, MAIN
 PLAYER = os.path.expanduser("~/Library/Application Support/RS Re-ARMed")
 PLAYER_APPS = os.path.expanduser("~/Applications")
 INI_MARK = "; gametest: written by tests/game/run.py"
+OVERRIDES = "; gametest: the test base and the case's keys"
 SNAP_SECS = 3
-# The test input (rs-rearmed shims/coreaudio/rs_audio_fake.h): player 1's channel an E2 that the tuner reads in tune
-# (an exact E2 reads 12-14 cents sharp in both editions), player 2's silent. The test saves' INPUT hears channel 1.
-FAKE_INPUT = "tone:39.88,silence"
+# The test input (rs-rearmed shims/coreaudio/rs_audio_fake.h). The test saves' INPUT hears its channel 1 in both
+# editions; channel 2 (player 2's) is silent. Channel 1 is one WAV, looped, of the fixtures' plucked notes one after
+# another (4 s each): the lowest note of every song case, so one game start serves them all and each case waits for
+# its own note: the stock song's E2 (40), the 7-string's B1 (35), the 8-string's F#1 (30), the 5-string basses' B0
+# (23) and A0 (21). Without the fixtures' sounds: a plucked E2 that the tuner reads in tune (an exact E2 reads 12-14
+# cents sharp in both editions).
+FAKE_NOTES = (40, 35, 30, 23, 21)
+FAKE_FALLBACK = "tone:39.88,silence"
 # Capabilities a case may need that this runner or the builds do not have yet (gt_cases: needs=...)
-NOT_DRIVEN = {"tonehost_plugin", "coop_route"}
+NOT_DRIVEN = {"coop_route"}
+
+
+def fake_input(root):
+    """-> the RS_AUDIO_FAKE_INPUT value: <root>/runner/fake-cycle.wav (made from fixtures/audio, again when a source
+    is newer) and silence, or FAKE_FALLBACK."""
+    import wave
+    try:
+        with open(os.path.join(root, "fixtures", "fixtures.json")) as f:
+            audio = json.load(f).get("audio") or {}
+    except (OSError, ValueError):
+        audio = {}
+    by_midi = {}
+    for a in audio.values():
+        if isinstance(a, dict) and len(a.get("midi") or []) == 1 and a.get("file"):
+            by_midi[a["midi"][0]] = os.path.join(root, "fixtures", a["file"])
+    srcs = [by_midi.get(n) for n in FAKE_NOTES]
+    if not all(p and os.path.exists(p) for p in srcs):
+        return FAKE_FALLBACK
+    out = os.path.join(root, "runner", "fake-cycle.wav")
+    if not os.path.exists(out) or any(os.path.getmtime(p) > os.path.getmtime(out) for p in srcs):
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        params, frames = None, []
+        for p in srcs:
+            with wave.open(p, "rb") as w:
+                if params and w.getparams()[:3] != params[:3]:
+                    return FAKE_FALLBACK  # the sounds differ in channels, width or rate: not one file
+                params = w.getparams()
+                frames.append(w.readframes(w.getnframes()))
+        tmp = out + ".new"
+        with wave.open(tmp, "wb") as w:
+            w.setparams(params)
+            for fr in frames:
+                w.writeframes(fr)
+        os.replace(tmp, out)
+    return out + ",silence"
 
 
 def say(*a):
@@ -193,7 +235,7 @@ def ini_text(base, *overrides):
     by_section = {}
     for (sec, key), v in keys.items():
         by_section.setdefault(sec, []).append((key, v))
-    out = [INI_MARK, base.rstrip("\n"), "", "; gametest: the test base and the case's keys"]
+    out = [INI_MARK, base.rstrip("\n"), "", OVERRIDES]
     for sec, kv in by_section.items():
         out.append("[%s]" % sec)
         out += ["%s = %s" % (k, v) for k, v in kv]
@@ -656,19 +698,26 @@ class Runner:
         group_dir = os.path.join(self.run_dir, inst.edition, "_" + label)
         env = dict(g["env"])
         if "fake_input" not in self.missing[inst.edition]:
-            env.setdefault("RS_AUDIO_FAKE_INPUT", os.environ.get("RS_GAMETEST_FAKE_INPUT", FAKE_INPUT))
+            env.setdefault("RS_AUDIO_FAKE_INPUT", os.environ.get("RS_GAMETEST_FAKE_INPUT") or fake_input(self.root))
             env.setdefault("RS_AUDIO_LOG", "1")  # the input's peak line (rs_audio_input.c:362)
         base = base_ini(inst)
-        placed = self.place_charts(inst, g)
-        write_ini(inst.ini, ini_text(base, C.TEST_BASE, g["start_ini"]))
         s = Session(self, inst, label, env, group_dir)
         self.session = s
         rec_sess = {"label": label, "edition": inst.edition, "env": env, "start_ini": {"%s/%s" % k: v for k, v in
                                                                                          g["start_ini"].items()},
-                    "charts": placed, "starts": s.starts, "cases": [c.name for c in g["cases"]]}
+                    "charts": [], "starts": s.starts, "cases": [c.name for c in g["cases"]]}
         self.sessions[inst.edition].append(rec_sess)
+        # the installs are another run's while it holds the lock (setup.py empties dlc/gametest): the charts and the
+        # settings go in only once the lock is ours
         self.lock.acquire()
         try:
+            try:
+                rec_sess["charts"] = self.place_charts(inst, g)
+                write_ini(inst.ini, ini_text(base, C.TEST_BASE, g["start_ini"]))
+            except Stuck as e:
+                for c in g["cases"]:
+                    res.append(self.case_result(c, inst.edition, None, "FAIL", 0.0, why=str(e)))
+                return
             try:
                 s.start()
             except Stuck as e:
@@ -701,12 +750,7 @@ class Runner:
         say("  %s: %s" % (case.name, case.doc))
         text = ini_text(base, C.TEST_BASE, g["start_ini"], case.ini)
         cr.begin()  # before the settings change: the mods' lines about it are the case's
-        mark = s.d.mark()
-        if write_ini(inst.ini, text):
-            try:
-                s.d.wait_for(L.INI_RELOADED, 6, mark=mark, what="RSMods.ini reread")
-            except Stuck:
-                s.d.note("no `RSMods.ini (re)loaded` line in 6 s")
+        self.apply_ini(s, inst, text)
         with open(os.path.join(case_dir, "RSMods.ini"), "w") as f:
             f.write(text)
         cr.t0 = time.time()
@@ -754,6 +798,32 @@ class Runner:
         say("    %s in %.1f s%s%s" % (status, elapsed, "; failed: " + ", ".join(failed) if failed else "",
                                      "; skipped: " + ", ".join(skipped) if skipped else ""))
         return r
+
+    def apply_ini(self, s, inst, text):
+        """The case's settings in the game. The mods write RSMods.ini themselves now and then (rsm_set: the pitch
+        shifter's semitones when a song is left, a camera key, ...), by reading it and renaming a new one over it: one
+        that read the file before this write puts the old settings back. So the runner's part (from OVERRIDES on) is
+        checked after the mods reread the file, and written again if it is gone."""
+        want = text[text.index(OVERRIDES):]
+        for attempt in range(3):
+            mark = s.d.mark()
+            try:
+                with open(inst.ini, errors="replace") as f:
+                    now = f.read()
+            except OSError:
+                now = ""
+            if OVERRIDES in now and now[now.index(OVERRIDES):] == want:
+                if attempt == 0 and now == text:
+                    return  # as it is: nothing to reread
+                if attempt:
+                    return
+            write_ini(inst.ini, text)
+            try:
+                s.d.wait_for(L.INI_RELOADED, 6, mark=mark, what="RSMods.ini reread")
+            except Stuck:
+                s.d.note("no `RSMods.ini (re)loaded` line in 6 s")
+            s.d.hold(1.0)
+        s.d.note("RSMods.ini: the case's keys were put back by the game three times")
 
     def case_result(self, case, edition, cr, status, elapsed, why=None, where=None, checks=()):
         return {"case": case.name, "edition": edition, "status": status, "time_s": round(elapsed, 1),

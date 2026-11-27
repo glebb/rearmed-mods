@@ -118,8 +118,19 @@ def open_song(d, key, search):
     """From anywhere to the song's page."""
     if d.screen not in (SONGS,):
         open_song_list(d)
-    find_song(d, key, search)
-    d.press("return", SONG_PAGE, settle=0.5, retry=5, tries=3)
+    for attempt in range(2):
+        find_song(d, key, search)
+        try:
+            d.press("return", SONG_PAGE, settle=0.5, retry=5, tries=2)
+            return
+        except Stuck:
+            # the list can show "No Matching Songs" while its search box counts a match (seen on the Mac after the
+            # last letter): clear the search and look again
+            if d.screen != SONGS or attempt:
+                raise
+            d.note("the song's Return did nothing: the search again")
+            d.key("esc")
+            d.poll(1.0)
 
 
 def play_from_page(d, tuner=None):

@@ -176,8 +176,8 @@ class TestChecks(unittest.TestCase):
     def test_events_source(self):
         ev = [json.dumps({"event": "song", "song_key": "SixteenSaltines", "tones": []}),
               json.dumps({"event": "state", "song_key": "SixteenSaltines"})]
-        r = {x["name"]: x for x in L.evaluate(C.checks_companion(FakeCtx()), {"game": [], "companion": [],
-                                                                               "events": ev})}
+        r = {x["name"]: x for x in L.evaluate(C.companion_checks("SixteenSaltines"), {"game": [], "companion": [],
+                                                                                       "events": ev})}
         self.assertEqual(r["companion: song event"]["status"], L.PASS)
         self.assertEqual(r["companion: state with the song"]["status"], L.PASS)
         self.assertEqual(r["companion: tone event"]["status"], L.FAIL)
@@ -487,7 +487,10 @@ class TestSettingsAndPlan(unittest.TestCase):
         r = run.Runner(a)
         r.missing["mac"] = set(run.NOT_DRIVEN)
         r.missing["mac"].add("fake_input")
-        cases = C.select("smoke") + [C.BY_NAME["line_off"], C.BY_NAME["guitar8"], C.BY_NAME["coop"]]
+        # a case with a start-time setting of its own (none of the set has one now)
+        own = C.Case("own_start", ["x"], "a start-time setting", route=lambda ctx: None,
+                     start_ini={("Seven String", "string7_line"): "0"})
+        cases = C.select("smoke") + [own, C.BY_NAME["guitar8"], C.BY_NAME["coop"]]
         groups = r.plan(cases, "mac")
         first = groups[0]
         self.assertEqual(first["key"], ((), ()))
@@ -497,15 +500,20 @@ class TestSettingsAndPlan(unittest.TestCase):
         names = [[c.name for c in g["cases"]] for g in groups]
         g_sb = next(n for n in names if "songbridge" in n)
         self.assertNotIn("guitar8", g_sb)
-        self.assertIn(["line_off"], names)
+        self.assertIn(["own_start"], names)
         skipped = next(g for g in groups if g["key"] == ("skipped",))
         self.assertIn("coop", [c.name for c in skipped["cases"]])
 
     def test_suites(self):
         smoke = [c.name for c in C.select("smoke")]
-        self.assertEqual(smoke, ["boot", "song", "bass", "pause_menu", "songbridge", "companion", "guitar7", "exit_save"])
+        self.assertEqual(smoke, ["boot", "song", "bass", "pause_menu", "songbridge", "guitar7", "exit_save"])
         ext = {c.name for c in C.select("extended")}
-        self.assertEqual(ext, {"guitar7", "guitar8", "bass5", "line_off", "alternates", "coop", "hearing", "songbridge"})
+        self.assertEqual(ext, {"guitar7", "guitar8", "bass5", "alternates", "coop", "songbridge"})
+        reg = {c.name for c in C.select("regression")}
+        self.assertTrue({"score_attack", "guitarcade", "tools", "song_lists", "mods"} <= reg)
+        self.assertFalse({"score_attack", "guitarcade"} & set(smoke))
+        # one game start for every case that needs no start-time setting of its own
+        self.assertTrue(all(not c.start_ini and not c.env for c in C.CASES))
         self.assertEqual(len(C.select("all")), len(C.CASES))
 
     def test_charts_from_fixtures_json(self):
@@ -535,6 +543,32 @@ class TestSettingsAndPlan(unittest.TestCase):
             self.assertTrue(c.get("key") and c.get("search"), c)
             for form in ("pc", "mac"):
                 self.assertTrue(os.path.exists(c["files"][form]), (name, form, c["files"]))
+
+
+class TestFakeInput(unittest.TestCase):
+    def test_the_cycle_of_low_notes(self):
+        import wave
+        with tempfile.TemporaryDirectory() as root:
+            os.makedirs(os.path.join(root, "fixtures", "audio"))
+            audio = {}
+            for n in run.FAKE_NOTES:
+                p = os.path.join(root, "fixtures", "audio", "pluck_%d.wav" % n)
+                with wave.open(p, "wb") as w:
+                    w.setnchannels(1), w.setsampwidth(2), w.setframerate(48000)
+                    w.writeframes(bytes([n, 0]) * 480)
+                audio[str(n)] = {"file": "audio/pluck_%d.wav" % n, "midi": [n]}
+            with open(os.path.join(root, "fixtures", "fixtures.json"), "w") as f:
+                json.dump({"audio": audio}, f)
+            v = run.fake_input(root)
+            path, second = v.split(",")
+            self.assertEqual(second, "silence")
+            with wave.open(path, "rb") as w:
+                data = w.readframes(w.getnframes())
+            self.assertEqual(len(data), 960 * len(run.FAKE_NOTES))
+            self.assertEqual([data[i * 960] for i in range(len(run.FAKE_NOTES))], list(run.FAKE_NOTES))
+            os.remove(os.path.join(root, "fixtures", "audio", "pluck_30.wav"))
+            os.remove(path)
+            self.assertEqual(run.fake_input(root), run.FAKE_FALLBACK)
 
 
 class TestLock(unittest.TestCase):
